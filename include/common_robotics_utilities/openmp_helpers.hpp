@@ -1,0 +1,152 @@
+#pragma once
+
+#include <cstdint>
+#include <stdexcept>
+
+#include <omp.h>
+
+namespace common_robotics_utilities
+{
+namespace openmp_helpers
+{
+/// Returns the OpenMP thread number in the current OpenMP parallel context.
+/// If called from outside an OpenMP parallel context or without OpenMP enabled,
+/// it will return 0.
+inline int32_t GetContextOmpThreadNum()
+{
+#if defined(_OPENMP)
+  return static_cast<int32_t>(omp_get_thread_num());
+#else
+  return 0;
+#endif
+}
+
+/// Returns the maximum number of OpenMP threads available in the current OpenMP
+/// parallel context. If called outside an OpenMP parallel context or without
+/// OpenMP enabled, it will return 1.
+inline int32_t GetContextMaxNumOmpThreads()
+{
+#if defined(_OPENMP)
+  const int32_t max_threads = static_cast<int32_t>(omp_get_max_threads());
+  if (max_threads > 0)
+  {
+    return max_threads;
+  }
+  else
+  {
+    throw std::runtime_error("OpenMP max threads <= 0");
+  }
+#else
+  return 1;
+#endif
+}
+
+/// Returns the current number of OpenMP threads available in the current OpenMP
+/// parallel context. If called outside an OpenMP parallel context or without
+/// OpenMP enabled, it will return 1.
+inline int32_t GetContextNumOmpThreads()
+{
+#if defined(_OPENMP)
+  const int32_t num_threads = static_cast<int32_t>(omp_get_num_threads());
+  if (num_threads > 0)
+  {
+    return num_threads;
+  }
+  else
+  {
+    throw std::runtime_error("OpenMP num threads <= 0");
+  }
+#else
+  return 1;
+#endif
+}
+
+/// Returns the maximum number of OpenMP threads available in an OpenMP parallel
+/// context. If called without OpenMP enabled, it will return 1.
+/// Use caution if calling from within an existing OpenMP context, since nested
+/// contexts are not enabled by default.
+inline int32_t GetMaxNumOmpThreads()
+{
+#if defined(_OPENMP)
+  int32_t max_num_threads = 0;
+#pragma omp parallel
+  {
+    max_num_threads = GetContextMaxNumOmpThreads();
+  }
+  return max_num_threads;
+#else
+  return 1;
+#endif
+}
+
+/// Returns the current number of OpenMP threads available in an OpenMP parallel
+/// context. If called without OpenMP enabled, it will return 1.
+/// Use caution if calling from within an existing OpenMP context, since nested
+/// contexts are not enabled by default.
+inline int32_t GetNumOmpThreads()
+{
+#if defined(_OPENMP)
+  int32_t num_threads = 0;
+#pragma omp parallel
+  {
+    num_threads = GetContextNumOmpThreads();
+  }
+  return num_threads;
+#else
+  return 1;
+#endif
+}
+
+/// Returns the maximum possible number of OpenMP threads in the program. If
+/// called without OpenMP enabled, it will return 1.
+inline int32_t GetOmpThreadLimit()
+{
+#if defined(_OPENMP)
+  const int32_t thread_limit = static_cast<int32_t>(omp_get_thread_limit());
+  if (thread_limit > 0)
+  {
+    return thread_limit;
+  }
+  else
+  {
+    throw std::runtime_error("OpenMP thread limit <= 0");
+  }
+#else
+  return 1;
+#endif
+}
+
+/// RAII wrapper for disabling OpenMP temporarily.
+/// This wrapper changes OpenMP settings for *all* of the current program!
+/// It will throw an exception if called from within an existing OpenMP parallel
+/// context.
+class DisableOmpWrapper
+{
+public:
+  DisableOmpWrapper()
+  {
+    if (GetContextNumOmpThreads() > 1)
+    {
+      throw std::runtime_error(
+          "Cannot create DisableOmpWrapper inside an OpenMP parallel context");
+    }
+    starting_num_omp_threads_ = GetNumOmpThreads();
+#if defined(_OPENMP)
+    omp_set_num_threads(1);
+#endif
+  }
+
+  ~DisableOmpWrapper()
+  {
+#if defined(_OPENMP)
+    omp_set_num_threads(starting_num_omp_threads_);
+#endif
+  }
+
+private:
+  int32_t starting_num_omp_threads_ = 0;
+};
+
+}  // namespace openmp_helpers
+}  // namespace common_robotics_utilities
+

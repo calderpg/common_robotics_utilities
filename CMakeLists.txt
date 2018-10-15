@@ -1,0 +1,119 @@
+cmake_minimum_required(VERSION 2.8.3)
+project(common_robotics_utilities)
+
+## Find catkin macros and libraries
+## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
+## is used, also find other catkin packages
+find_package(catkin REQUIRED COMPONENTS std_msgs sensor_msgs geometry_msgs)
+find_package(cmake_modules REQUIRED)
+find_package(Eigen3 REQUIRED)
+set(Eigen3_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIR})
+find_package(OpenMP)
+
+###################################
+## catkin specific configuration ##
+###################################
+## The catkin_package macro generates cmake config files for your package
+## Declare things to be passed to dependent projects
+## LIBRARIES: libraries you create in this project
+## CATKIN_DEPENDS: catkin_packages dependent projects also need
+## DEPENDS: system dependencies of this project
+catkin_package(INCLUDE_DIRS
+               include
+               LIBRARIES
+               ${PROJECT_NAME}
+               CATKIN_DEPENDS
+               std_msgs
+               sensor_msgs
+               geometry_msgs
+               DEPENDS
+               Eigen3)
+
+###########
+## Build ##
+###########
+
+## Specify additional locations of header files
+## Your package locations should be listed before other locations
+include_directories(include SYSTEM ${catkin_INCLUDE_DIRS}
+                                   ${Eigen3_INCLUDE_DIRS})
+
+## Build options
+add_compile_options(-std=c++11)
+add_compile_options(-Wall)
+add_compile_options(-Wextra)
+add_compile_options(-Werror)
+add_compile_options(-Wconversion)
+add_compile_options(-Wshadow)
+add_compile_options(-O3)
+add_compile_options(-g)
+
+## It's not clear if add_compile_options does the right things for flags that
+## may differ between languages and target type.
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
+set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
+set(CMAKE_EXE_LINKER_FLAGS
+    "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
+set(CMAKE_SHARED_LINKER_FLAGS
+    "${CMAKE_SHARED_LINKER_FLAGS} ${OpenMP_SHARED_LINKER_FLAGS}")
+
+# Utility library
+add_library(${PROJECT_NAME}
+            include/${PROJECT_NAME}/base64_helpers.hpp
+            include/${PROJECT_NAME}/color_builder.hpp
+            include/${PROJECT_NAME}/conversions.hpp
+            include/${PROJECT_NAME}/dynamic_spatial_hashed_voxel_grid.hpp
+            include/${PROJECT_NAME}/gaussian_distributions.hpp
+            include/${PROJECT_NAME}/math.hpp
+            include/${PROJECT_NAME}/openmp_helpers.hpp
+            include/${PROJECT_NAME}/path_processing.hpp
+            include/${PROJECT_NAME}/print.hpp
+            include/${PROJECT_NAME}/random_rotation_generator.hpp
+            include/${PROJECT_NAME}/ros_conversions.hpp
+            include/${PROJECT_NAME}/serialization.hpp
+            include/${PROJECT_NAME}/simple_astar_search.hpp
+            include/${PROJECT_NAME}/simple_dtw.hpp
+            include/${PROJECT_NAME}/simple_graph.hpp
+            include/${PROJECT_NAME}/simple_graph_search.hpp
+            include/${PROJECT_NAME}/simple_hausdorff_distance.hpp
+            include/${PROJECT_NAME}/simple_hierarchical_clustering.hpp
+            include/${PROJECT_NAME}/simple_kmeans_clustering.hpp
+            include/${PROJECT_NAME}/simple_knearest_neighbors.hpp
+            include/${PROJECT_NAME}/simple_prm_planner.hpp
+            include/${PROJECT_NAME}/simple_prngs.hpp
+            include/${PROJECT_NAME}/simple_rrt_planner.hpp
+            include/${PROJECT_NAME}/time_optimal_trajectory_parametrization.hpp
+            include/${PROJECT_NAME}/utility.hpp
+            include/${PROJECT_NAME}/voxel_grid.hpp
+            include/${PROJECT_NAME}/zlib_helpers.hpp
+            src/${PROJECT_NAME}/base64_helpers.cpp
+            src/${PROJECT_NAME}/conversions.cpp
+            src/${PROJECT_NAME}/math.cpp
+            src/${PROJECT_NAME}/ros_conversions.cpp
+            src/${PROJECT_NAME}/serialization.cpp
+            src/${PROJECT_NAME}/time_optimal_trajectory_parametrization.cpp
+            src/${PROJECT_NAME}/zlib_helpers.cpp)
+add_dependencies(${PROJECT_NAME} ${catkin_EXPORTED_TARGETS})
+target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} z)
+
+# Tests
+add_executable(planning_test test/planning_test.cpp)
+add_dependencies(planning_test ${PROJECT_NAME})
+target_link_libraries(planning_test ${PROJECT_NAME})
+
+#############
+## Install ##
+#############
+
+## Mark library for installation
+install(TARGETS ${PROJECT_NAME}
+    ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+    LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
+    RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+)
+## Mark cpp header files for installation
+install(DIRECTORY include/${PROJECT_NAME}/
+    DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
+    FILES_MATCHING PATTERN "*.hpp"
+    PATTERN ".svn" EXCLUDE
+)

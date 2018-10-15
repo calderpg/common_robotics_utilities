@@ -2,9 +2,11 @@
 
 #include <omp.h>
 
+#include <chrono>
 #include <cstdint>
 #include <functional>
 #include <limits>
+#include <map>
 #include <stdexcept>
 #include <utility>
 #include <vector>
@@ -184,7 +186,8 @@ int64_t AddNodeToRoadmap(
   return new_node_index;
 }
 
-/// Attempt to build a roadmap consisting of a graph of states.
+/// Attempt to grow a roadmap consisting of a graph of states.
+/// @param roadmap roadmap to grow. This may be empty to start with.
 /// @param sampling_fn function to sample new states.
 /// @param distance_fn distance function for state-to-state distance. If
 /// use_parallel is true, this must be thread-safe.
@@ -205,9 +208,11 @@ int64_t AddNodeToRoadmap(
 /// it is a duplicate of an existing state? A new state is considered a
 /// duplicate if one of the K neighboring states has distance zero from the
 /// state.
-/// @return roadmap.
+/// @return statistics as a map<string, double> of useful statistics collected
+/// while growing the roadmap.
 template<typename T>
-simple_graph::Graph<T> BuildRoadMap(
+std::map<std::string, double> GrowRoadMap(
+    simple_graph::Graph<T>& roadmap,
     const std::function<T(void)>& sampling_fn,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const T&)>& state_validity_check_fn,
@@ -218,19 +223,45 @@ simple_graph::Graph<T> BuildRoadMap(
     const bool distance_is_symmetric = true,
     const bool add_duplicate_states = false)
 {
-  simple_graph::Graph<T> roadmap;
+  std::map<std::string, double> statistics;
+  statistics["total_samples"] = 0.0;
+  statistics["successful_samples"] = 0.0;
+  statistics["duplicate_samples"] = 0.0;
+  statistics["failed_samples"] = 0.0;
+  // Update the start time
+  const std::chrono::time_point<std::chrono::steady_clock> start_time
+      = std::chrono::steady_clock::now();
   while (!termination_check_fn(static_cast<int64_t>(roadmap.Size())))
   {
     const T random_state = sampling_fn();
+    statistics["total_samples"] += 1.0;
     if (state_validity_check_fn(random_state))
     {
+      const size_t pre_size = roadmap.Size();
       AddNodeToRoadmap(random_state, NNDistanceDirection::ROADMAP_TO_NEW_STATE,
                        roadmap, distance_fn, edge_validity_check_fn, K,
                        use_parallel, distance_is_symmetric,
                        add_duplicate_states);
+      const size_t post_size = roadmap.Size();
+      if (post_size > pre_size)
+      {
+        statistics["successful_samples"] += 1.0;
+      }
+      else
+      {
+        statistics["duplicate_samples"] += 1.0;
+      }
+    }
+    else
+    {
+      statistics["failed_samples"] += 1.0;
     }
   }
-  return roadmap;
+  const std::chrono::time_point<std::chrono::steady_clock> cur_time
+      = std::chrono::steady_clock::now();
+  const std::chrono::duration<double> growing_time(cur_time - start_time);
+  statistics["growing_time"] = growing_time.count();
+  return statistics;
 }
 
 /// Update edge distances in a roadmap.

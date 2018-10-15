@@ -280,11 +280,10 @@ void DoTest()
   {
     return (current_roadmap_size >= 100);
   };
-  const auto roadmap
-      = simple_prm_planner::BuildRoadMap<Waypoint>(
-          state_sampling_fn, WaypointDistance, check_state_validity_fn,
-          check_edge_validity_fn, roadmap_termination_fn,
-          K, false, true, false);
+  simple_graph::Graph<Waypoint> roadmap;
+  simple_prm_planner::GrowRoadMap<Waypoint>(
+      roadmap, state_sampling_fn, WaypointDistance, check_state_validity_fn,
+      check_edge_validity_fn, roadmap_termination_fn, K, false, true, false);
   std::cout << "Roadmap" << std::endl;
   DrawRoadmap(test_env, roadmap);
   // Run planning tests

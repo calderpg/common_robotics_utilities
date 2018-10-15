@@ -23,20 +23,25 @@ private:
   int64_t z_ = -1;
 
 public:
-  GridIndex() : x(-1), y(-1), z(-1) {}
+  GridIndex() : x_(-1), y_(-1), z_(-1) {}
 
   GridIndex(const int64_t x, const int64_t y, const int64_t z)
       : x_(x), y_(y), z_(z) {}
 
   int64_t X() const { return x_; }
 
-  int64_t Y() const { return Y_; }
+  int64_t Y() const { return y_; }
 
   int64_t Z() const { return z_; }
 
   bool operator==(const GridIndex& other) const
   {
     return (X() == other.X() && Y() == other.Y() && Z() == other.Z());
+  }
+
+  bool operator!=(const GridIndex& other) const
+  {
+    return !(*this == other);
   }
 };
 
@@ -205,7 +210,7 @@ public:
     return ((cell_x_size_ == cell_y_size_) && (cell_x_size_ == cell_z_size_));
   }
 
-  uint64_t SerializeSelf(std::vector<uint8_t>& buffer)
+  uint64_t SerializeSelf(std::vector<uint8_t>& buffer) const
   {
     const uint64_t start_buffer_size = buffer.size();
     // Serialize everything needed to reproduce the grid sizes
@@ -267,7 +272,7 @@ public:
       *this = GridSizes();
     }
     // Figure out how many bytes were read
-    const uint64_t bytes_read = current_position - current;
+    const uint64_t bytes_read = current_position - starting_offset;
     return bytes_read;
   }
 
@@ -523,7 +528,7 @@ private:
         = GridSizes::Deserialize(buffer, current_position);
     sizes_ = sizes_deserialized.first;
     current_position += sizes_deserialized.second;
-    if (sizes_.TotalCells() != data_.size())
+    if (sizes_.TotalCells() != static_cast<int64_t>(data_.size()))
     {
       throw std::runtime_error("sizes_.NumCells() != data_.size()");
     }
@@ -538,7 +543,7 @@ private:
       throw std::runtime_error("sizes_.Valid() != initialized_");
     }
     // Figure out how many bytes were read
-    const uint64_t bytes_read = current_position - current;
+    const uint64_t bytes_read = current_position - starting_offset;
     return bytes_read;
   }
 
@@ -577,26 +582,6 @@ protected:
 
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
-  static uint64_t Serialize(
-      const VoxelGridBase<T, BackingStore>& grid, std::vector<uint8_t>& buffer,
-      const std::function<uint64_t(
-        const T&, std::vector<uint8_t>&)>& value_serializer)
-  {
-    return grid.SerializeSelf(buffer, value_serializer);
-  }
-
-  static std::pair<VoxelGridBase<T, BackingStore>, uint64_t> Deserialize(
-      const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const std::function<std::pair<T, uint64_t>(
-        const std::vector<uint8_t>&, const uint64_t)>& value_deserializer)
-  {
-    VoxelGridBase<T, BackingStore> temp_grid;
-    const uint64_t bytes_read
-        = temp_grid.DeserializeSelf(buffer, starting_offset,
-                                    value_deserializer);
-    return std::make_pair(temp_grid, bytes_read);
-  }
 
   VoxelGridBase(const Eigen::Isometry3d& origin_transform,
                 const GridSizes& sizes,
@@ -654,7 +639,7 @@ public:
   {
     const Eigen::Translation3d origin_translation(-sizes.XSize() * 0.5,
                                                   -sizes.YSize() * 0.5,
-                                                  -sizes.Zsize() * 0.5);
+                                                  -sizes.ZSize() * 0.5);
     const Eigen::Isometry3d origin_transform
         = origin_translation * Eigen::Quaterniond::Identity();
     Initialize(origin_transform, sizes, default_value, oob_value);
@@ -685,7 +670,7 @@ public:
     current_position
         += DerivedDeserializeSelf(buffer, current_position, value_deserializer);
     // Figure out how many bytes were read
-    const uint64_t bytes_read = current_position - current;
+    const uint64_t bytes_read = current_position - starting_offset;
     return bytes_read;
   }
 
@@ -1105,7 +1090,7 @@ public:
 
 /// If you want a VoxelGrid<T> this is the class to use. Since you should never
 /// inherit from it, this class is final.
-template<typename T, typename BackingStore>
+template<typename T, typename BackingStore=std::vector<T>>
 class VoxelGrid final : public VoxelGridBase<T, BackingStore>
 {
 private:
@@ -1148,6 +1133,26 @@ private:
   }
 
 public:
+  static uint64_t Serialize(
+      const VoxelGrid<T, BackingStore>& grid, std::vector<uint8_t>& buffer,
+      const std::function<uint64_t(
+        const T&, std::vector<uint8_t>&)>& value_serializer)
+  {
+    return grid.SerializeSelf(buffer, value_serializer);
+  }
+
+  static std::pair<VoxelGrid<T, BackingStore>, uint64_t> Deserialize(
+      const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
+      const std::function<std::pair<T, uint64_t>(
+        const std::vector<uint8_t>&, const uint64_t)>& value_deserializer)
+  {
+    VoxelGrid<T, BackingStore> temp_grid;
+    const uint64_t bytes_read
+        = temp_grid.DeserializeSelf(buffer, starting_offset,
+                                    value_deserializer);
+    return std::make_pair(temp_grid, bytes_read);
+  }
+
   VoxelGrid(const Eigen::Isometry3d& origin_transform,
             const GridSizes& sizes,
             const T& default_value)
@@ -1167,7 +1172,7 @@ public:
   VoxelGrid(const GridSizes& sizes, const T& default_value, const T& oob_value)
       : VoxelGridBase<T, BackingStore>(sizes, default_value, oob_value) {}
 
-  VoxelGrid() : VoxelGridBase() {}
+  VoxelGrid() : VoxelGridBase<T, BackingStore>() {}
 };
 }  // namespace voxel_grid
 }  // namespace common_robotics_utilities

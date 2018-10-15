@@ -72,7 +72,9 @@ using MapStringIsometry3d
   = std::map<std::string, Eigen::Isometry3d, std::less<std::string>,
   Eigen::aligned_allocator<std::pair<const std::string, Eigen::Isometry3d>>>;
 
-bool Equal(const Eigen::Vector3d& v1, const Eigen::Vector3d& v2);
+bool Equal3d(const Eigen::Vector3d& v1, const Eigen::Vector3d& v2);
+
+bool Equal4d(const Eigen::Vector4d& v1, const Eigen::Vector4d& v2);
 
 bool CloseEnough(const double p1, const double p2, const double threshold);
 

@@ -7,9 +7,23 @@ namespace common_robotics_utilities
 {
 namespace math
 {
-bool Equal(const Eigen::Vector3d& v1, const Eigen::Vector3d& v2)
+bool Equal3d(const Eigen::Vector3d& v1, const Eigen::Vector3d& v2)
 {
   if ((v1.x() == v2.x()) && (v1.y() == v2.y()) && (v1.z() == v2.z()))
+  {
+    return true;
+  }
+  else
+  {
+    return false;
+  }
+}
+
+
+bool Equal4d(const Eigen::Vector4d& v1, const Eigen::Vector4d& v2)
+{
+  if ((v1(0) == v2(0)) && (v1(1) == v2(1))
+      && (v1(2) == v2(2)) && (v1(3) == v2(3)))
   {
     return true;
   }

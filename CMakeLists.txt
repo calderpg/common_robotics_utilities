@@ -5,7 +5,6 @@ project(common_robotics_utilities)
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
 find_package(catkin REQUIRED COMPONENTS std_msgs sensor_msgs geometry_msgs)
-find_package(cmake_modules REQUIRED)
 find_package(Eigen3 REQUIRED)
 set(Eigen3_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIR})
 find_package(OpenMP)
@@ -47,6 +46,7 @@ add_compile_options(-Wconversion)
 add_compile_options(-Wshadow)
 add_compile_options(-O3)
 add_compile_options(-g)
+add_compile_options(-flto)
 
 ## It's not clear if add_compile_options does the right things for flags that
 ## may differ between languages and target type.
@@ -100,6 +100,10 @@ target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} z)
 add_executable(planning_test test/planning_test.cpp)
 add_dependencies(planning_test ${PROJECT_NAME})
 target_link_libraries(planning_test ${PROJECT_NAME})
+
+add_executable(voxel_grid_test test/voxel_grid_test.cpp)
+add_dependencies(voxel_grid_test ${PROJECT_NAME})
+target_link_libraries(voxel_grid_test ${PROJECT_NAME})
 
 #############
 ## Install ##

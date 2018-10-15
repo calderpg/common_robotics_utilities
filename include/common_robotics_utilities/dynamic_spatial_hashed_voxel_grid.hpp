@@ -41,7 +41,7 @@ public:
         ChunkRegion(base_deserialized.first), base_deserialized.second);
   }
 
-  ChunkRegion() : base(Eigen::Vector4d(0.0, 0.0, 0.0, 1.0)) {}
+  ChunkRegion() : base_(Eigen::Vector4d(0.0, 0.0, 0.0, 1.0)) {}
 
   ChunkRegion(const double base_x, const double base_y, const double base_z)
     : base_(Eigen::Vector4d(base_x, base_y, base_z, 1.0)) {}
@@ -73,6 +73,8 @@ public:
 };
 
 /// Enums to help us out.
+enum class DSHVGFillType : uint8_t {FILL_CHUNK, FILL_CELL};
+
 enum class DSHVGFillStatus : uint8_t {NOT_FILLED, CHUNK_FILLED, CELL_FILLED};
 
 enum class DSHVGFoundStatus {NOT_FOUND, FOUND_IN_CHUNK, FOUND_IN_CELL};
@@ -146,7 +148,7 @@ public:
   explicit operator bool() const { return HasValue(); }
 };
 
-template<typename T, typename BackingStore=std::vector<T>>
+template<typename T, typename BackingStore>
 class DynamicSpatialHashedVoxelGridChunk
 {
 private:
@@ -184,7 +186,7 @@ private:
       }
       else
       {
-        return GetDataIndex(x_cell, y_cell, z_cell);
+        return sizes_.GetDataIndex(x_cell, y_cell, z_cell);
       }
     }
   }
@@ -221,12 +223,14 @@ private:
   {
     data_.clear();
     data_.resize(sizes_.TotalCells(), value);
+    fill_status_ = DSHVGFillStatus::CELL_FILLED;
   }
 
   void SetChunkFilledContents(const T& value)
   {
     data_.clear();
     data_.resize(1, value);
+    fill_status_ = DSHVGFillStatus::CHUNK_FILLED;
   }
 
 public:
@@ -256,23 +260,23 @@ public:
 
   DynamicSpatialHashedVoxelGridChunk(const ChunkRegion& region,
                                      const GridSizes& sizes,
-                                     const DSHVGFillStatus fill_status,
+                                     const DSHVGFillType fill_type,
                                      const T& initial_value)
-      : region_(region), sizes_(sizes), fill_status_(fill_status)
+      : region_(region), sizes_(sizes)
   {
     if (sizes_.Valid())
     {
-      if (fill_status_ == DSHVGFillStatus::CELL_FILLED)
+      if (fill_type == DSHVGFillType::FILL_CELL)
       {
         SetCellFilledContents(initial_value);
       }
-      else if (fill_status_ == DSHVGFillStatus::CHUNK_FILLED)
+      else if (fill_type == DSHVGFillType::FILL_CHUNK)
       {
         SetChunkFilledContents(initial_value);
       }
       else
       {
-        throw std::invalid_argument("Cannot create a chunk with NOT_FILLED");
+        throw std::invalid_argument("Invalid fill_type");
       }
     }
     else
@@ -317,19 +321,18 @@ public:
         = ChunkRegion::Deserialize(buffer, current_position);
     region_ = region_deserialized.first;
     current_position += region_deserialized.second;
-    inverse_origin_transform_ = origin_transform_.inverse();
+    // Deserialize the cell sizes
+    const std::pair<GridSizes, uint64_t> sizes_deserialized
+        = GridSizes::Deserialize(buffer, current_position);
+    sizes_ = sizes_deserialized.first;
+    current_position += sizes_deserialized.second;
     // Deserialize the data
     const std::pair<BackingStore, uint64_t> data_deserialized
         = serialization::DeserializeVectorLike<T, BackingStore>(
               buffer, current_position, value_deserializer);
     data_ = data_deserialized.first;
     current_position += data_deserialized.second;
-    // Deserialize the cell sizes
-    const std::pair<GridSizes, uint64_t> sizes_deserialized
-        = GridSizes::Deserialize(buffer, current_position);
-    sizes_ = sizes_deserialized.first;
-    current_position += sizes_deserialized.second;
-    // Deserialize the initialized
+    // Deserialize the fill status
     const std::pair<uint8_t, uint64_t> fill_status_deserialized
         = serialization::DeserializeMemcpyable<uint8_t>(buffer,
                                                         current_position);
@@ -338,7 +341,7 @@ public:
     // Safety checks
     if (fill_status_ == DSHVGFillStatus::CELL_FILLED)
     {
-      if (data_.size() != sizes_.TotalCells())
+      if (static_cast<int64_t>(data_.size()) != sizes_.TotalCells())
       {
         throw std::runtime_error("sizes_.NumCells() != data_.size()");
       }
@@ -358,7 +361,7 @@ public:
       }
     }
     // Figure out how many bytes were read
-    const uint64_t bytes_read = current_position - current;
+    const uint64_t bytes_read = current_position - starting_offset;
     return bytes_read;
   }
 
@@ -531,9 +534,16 @@ private:
     // Serialize the chunk sizes
     GridSizes::Serialize(chunk_sizes_, buffer);
     // Serialize the data
+    const auto chunk_serializer
+        = [&] (const DynamicSpatialHashedVoxelGridChunk<T, BackingStore>& chunk,
+               std::vector<uint8_t>& serialize_buffer)
+    {
+      return DynamicSpatialHashedVoxelGridChunk<T, BackingStore>::Serialize(
+            chunk, serialize_buffer, value_serializer);
+    };
     serialization::SerializeUnorderedMap<
         ChunkRegion, DynamicSpatialHashedVoxelGridChunk<T, BackingStore>>(
-            chunks_, buffer, ChunkRegion::Serialize, value_serializer);
+            chunks_, buffer, ChunkRegion::Serialize, chunk_serializer);
     // Serialize the initialized
     serialization::SerializeMemcpyable<uint8_t>(
         static_cast<uint8_t>(initialized_), buffer);
@@ -566,6 +576,13 @@ private:
     chunk_sizes_ = chunk_sizes_deserialized.first;
     current_position += chunk_sizes_deserialized.second;
     // Deserialize the data
+    const auto chunk_deserializer
+        = [&] (const std::vector<uint8_t>& deserialize_buffer,
+               const uint64_t offset)
+    {
+      return DynamicSpatialHashedVoxelGridChunk<T, BackingStore>::Deserialize(
+            deserialize_buffer, offset, value_deserializer);
+    };
     const std::pair<
         std::unordered_map<ChunkRegion,
                            DynamicSpatialHashedVoxelGridChunk<T, BackingStore>>,
@@ -574,7 +591,7 @@ private:
                 ChunkRegion,
                 DynamicSpatialHashedVoxelGridChunk<T, BackingStore>>(
                     buffer, current_position, ChunkRegion::Deserialize,
-                    value_deserializer);
+                    chunk_deserializer);
     chunks_ = chunks_deserialized.first;
     current_position += chunks_deserialized.second;
     // Deserialize the initialized
@@ -584,7 +601,7 @@ private:
     initialized_ = static_cast<bool>(initialized_deserialized.first);
     current_position += initialized_deserialized.second;
     // Safety checks
-    if (sizes_.Valid() != initialized_)
+    if (chunk_sizes_.Valid() != initialized_)
     {
       throw std::runtime_error("sizes_.Valid() != initialized_");
     }
@@ -593,7 +610,7 @@ private:
       throw std::runtime_error("chunks.size() > 0 with invalid chunk sizes");
     }
     // Figure out how many bytes were read
-    const uint64_t bytes_read = current_position - current;
+    const uint64_t bytes_read = current_position - starting_offset;
     return bytes_read;
   }
 
@@ -622,7 +639,7 @@ private:
   }
 
   void AllocateChunkAt(
-      const ChunkRegion& chunk_region, const DSHVGFillStatus fill_type)
+      const ChunkRegion& chunk_region, const DSHVGFillType fill_type)
   {
     chunks_[chunk_region]
         = DynamicSpatialHashedVoxelGridChunk<T, BackingStore>(
@@ -658,28 +675,6 @@ protected:
 
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
-  static uint64_t Serialize(
-      const DynamicSpatialHashedVoxelGridBase<T, BackingStore>& grid,
-      std::vector<uint8_t>& buffer,
-      const std::function<uint64_t(
-        const T&, std::vector<uint8_t>&)>& value_serializer)
-  {
-    return grid.SerializeSelf(buffer, value_serializer);
-  }
-
-  static std::pair<DynamicSpatialHashedVoxelGridBase<T, BackingStore>, uint64_t>
-  Deserialize(
-      const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const std::function<std::pair<T, uint64_t>(
-        const std::vector<uint8_t>&, const uint64_t)>& value_deserializer)
-  {
-    DynamicSpatialHashedVoxelGridBase<T, BackingStore> temp_grid;
-    const uint64_t bytes_read
-        = temp_grid.DeserializeSelf(buffer, starting_offset,
-                                    value_deserializer);
-    return std::make_pair(temp_grid, bytes_read);
-  }
 
   DynamicSpatialHashedVoxelGridBase(const GridSizes& chunk_sizes,
                                     const T& default_value)
@@ -736,7 +731,7 @@ public:
     current_position
         += DerivedDeserializeSelf(buffer, current_position, value_deserializer);
     // Figure out how many bytes were read
-    const uint64_t bytes_read = current_position - current;
+    const uint64_t bytes_read = current_position - starting_offset;
     return bytes_read;
   }
 
@@ -841,9 +836,9 @@ public:
       }
       else
       {
-        const DSHVGFillStatus fill_type
-            = (DSHVGSetStatus::SET_CELL) ? DSHVGFillStatus::CELL_FILLED
-                                         : DSHVGFillStatus::CHUNK_FILLED;
+        const DSHVGFillType fill_type
+            = (set_type == DSHVGSetType::SET_CELL)
+                ? DSHVGFillType::FILL_CELL : DSHVGFillType::FILL_CHUNK;
         AllocateChunkAt(region, fill_type);
         return SetValue4d(location, set_type, value);
       }
@@ -892,9 +887,9 @@ public:
       }
       else
       {
-        const DSHVGFillStatus fill_type
-            = (DSHVGSetStatus::SET_CELL) ? DSHVGFillStatus::CELL_FILLED
-                                         : DSHVGFillStatus::CHUNK_FILLED;
+        const DSHVGFillType fill_type
+            = (set_type == DSHVGSetType::SET_CELL)
+                ? DSHVGFillType::FILL_CELL : DSHVGFillType::FILL_CHUNK;
         AllocateChunkAt(region, fill_type);
         return SetValue4d(location, set_type, value);
       }
@@ -946,7 +941,7 @@ public:
     inverse_origin_transform_ = origin_transform_.inverse();
   }
 
-  bool HasUniformCellSize() const { return sizes_.UniformCellSize(); }
+  bool HasUniformCellSize() const { return chunk_sizes_.UniformCellSize(); }
 
   const
   std::unordered_map<ChunkRegion,
@@ -966,7 +961,7 @@ public:
 
 /// If you want a DynamicSpatialHashedVoxelGrid<T> this is the class to use.
 /// Since you should never inherit from it, this class is final.
-template<typename T, typename BackingStore>
+template<typename T, typename BackingStore=std::vector<T>>
 class DynamicSpatialHashedVoxelGrid final
     : public DynamicSpatialHashedVoxelGridBase<T, BackingStore>
 {
@@ -1007,6 +1002,28 @@ private:
   }
 
 public:
+  static uint64_t Serialize(
+      const DynamicSpatialHashedVoxelGrid<T, BackingStore>& grid,
+      std::vector<uint8_t>& buffer,
+      const std::function<uint64_t(
+        const T&, std::vector<uint8_t>&)>& value_serializer)
+  {
+    return grid.SerializeSelf(buffer, value_serializer);
+  }
+
+  static std::pair<DynamicSpatialHashedVoxelGrid<T, BackingStore>, uint64_t>
+  Deserialize(
+      const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
+      const std::function<std::pair<T, uint64_t>(
+        const std::vector<uint8_t>&, const uint64_t)>& value_deserializer)
+  {
+    DynamicSpatialHashedVoxelGrid<T, BackingStore> temp_grid;
+    const uint64_t bytes_read
+        = temp_grid.DeserializeSelf(buffer, starting_offset,
+                                    value_deserializer);
+    return std::make_pair(temp_grid, bytes_read);
+  }
+
   DynamicSpatialHashedVoxelGrid(const GridSizes& chunk_sizes,
                                 const T& default_value)
       : DynamicSpatialHashedVoxelGridBase<T, BackingStore>(
@@ -1018,7 +1035,8 @@ public:
       : DynamicSpatialHashedVoxelGridBase<T, BackingStore>(
           origin_transform, chunk_sizes, default_value) {}
 
-  DynamicSpatialHashedVoxelGrid() : DynamicSpatialHashedVoxelGridBase() {}
+  DynamicSpatialHashedVoxelGrid()
+      : DynamicSpatialHashedVoxelGridBase<T, BackingStore>() {}
 };
 }  // namespace voxel_grid
 }  // namespace common_robotics_utilities
@@ -1031,9 +1049,11 @@ namespace std
     std::size_t operator()(
         const common_robotics_utilities::voxel_grid::ChunkRegion& region) const
     {
-        using std::size_t;
-        using std::hash;
-        return (std::hash<Eigen::Vector4d>()(region.Base()));
+      const Eigen::Vector4d& base = region.Base();
+      std::size_t hash_val = 0;
+      common_robotics_utilities::utility::hash_combine(
+          hash_val, base(0), base(1), base(2));
+      return hash_val;
     }
   };
 }

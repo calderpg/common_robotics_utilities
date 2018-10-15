@@ -240,7 +240,7 @@ void DoTest()
   std::mt19937_64 prng(prng_seed);
   const std::vector<Waypoint> keypoints
       = {Waypoint(1, 1), Waypoint(18, 18), Waypoint(7, 13), Waypoint(9, 5)};
-  // Bind all helper functions
+  // Bind helper functions used by multiple planners
   const std::function<bool(const Waypoint&)> check_state_validity_fn
       = [&] (const Waypoint& waypoint)
   {
@@ -255,12 +255,13 @@ void DoTest()
   {
     return SampleWaypoint(test_env, prng);
   };
-  // Make RRT helpers
+  // RRT and BiRRT parameters
   const double rrt_step_size = 3.0;
   const double rrt_goal_bias = 0.1;
   const double rrt_timeout = 5.0;
   const double birrt_tree_sampling_bias = 0.5;
   const double birrt_p_switch_trees = 0.25;
+  // Make RRT helpers
   auto nearest_neighbors_fn
       = simple_rrt_planner::MakeLinearNearestNeighborsFunction<Waypoint>(
           WaypointDistance, false);
@@ -293,8 +294,10 @@ void DoTest()
     {
       if (sdx != gdx)
       {
+        // Get start & goal waypoints
         const Waypoint& start = keypoints.at(sdx);
         const Waypoint& goal = keypoints.at(gdx);
+        // Plan with PRM
         std::cout << "PRM Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
         const auto path
@@ -302,6 +305,7 @@ void DoTest()
                 start, goal, roadmap, WaypointDistance, check_edge_validity_fn,
                 K, false, true, false, true).first;
         DrawPath(test_env, {start}, {goal}, ResampleWaypoints(path));
+        // Plan with Lazy-PRM
         std::cout << "Lazy-PRM Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
         const auto lazy_path
@@ -309,6 +313,7 @@ void DoTest()
                 start, goal, roadmap, WaypointDistance, check_edge_validity_fn,
                 K, false, true, false, true).first;
         DrawPath(test_env, {start}, {goal}, ResampleWaypoints(lazy_path));
+        // Plan with A*
         std::cout << "A* Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
         const auto astar_path
@@ -318,6 +323,7 @@ void DoTest()
                     check_edge_validity_fn, WaypointDistance, WaypointDistance,
                     HashWaypoint, true).first;
         DrawPath(test_env, {start}, {goal}, astar_path);
+        // Plan with RRT-Extend
         std::cout << "RRT-Extend Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
         const auto rrt_sample_fn
@@ -340,6 +346,7 @@ void DoTest()
                     simple_rrt_planner
                         ::MakeRRTTimeoutTerminationFunction(rrt_timeout)).first;
         DrawPath(test_env, {start}, {goal}, ResampleWaypoints(rrt_extend_path));
+        // Plan with RRT-Connect
         std::cout << "RRT-Connect Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
         std::vector<simple_rrt_planner::SimpleRRTPlannerState<Waypoint>>
@@ -355,6 +362,7 @@ void DoTest()
                         ::MakeRRTTimeoutTerminationFunction(rrt_timeout)).first;
         DrawPath(test_env, {start}, {goal},
                  ResampleWaypoints(rrt_connect_path));
+        // Plan with BiRRT-Extend
         std::cout << "BiRRT-Extend Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
         std::vector<simple_rrt_planner::SimpleRRTPlannerState<Waypoint>>
@@ -377,6 +385,7 @@ void DoTest()
                     prng).first;
         DrawPath(test_env, {start}, {goal},
                  ResampleWaypoints(birrt_extent_path));
+        // Plan with BiRRT-Connect
         std::cout << "BiRRT-Connect Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
         std::vector<simple_rrt_planner::SimpleRRTPlannerState<Waypoint>>

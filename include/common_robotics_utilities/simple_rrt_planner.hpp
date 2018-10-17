@@ -209,7 +209,7 @@ bool CheckTreeLinkage(const std::vector<SimpleRRTPlannerState<T>>& nodes)
     }
     // Check the linkage to the parent state
     const int64_t parent_index = current_state.GetParentIndex();
-    if (parent_index > current_index)
+    if (parent_index > static_cast<int64_t>(current_index))
     {
       std::cerr << "Invalid parent index " << parent_index << " for state "
                 << current_index

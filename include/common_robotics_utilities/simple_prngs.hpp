@@ -1,7 +1,9 @@
 #pragma once
 
 #include <array>
+#include <cmath>
 #include <cstdint>
+#include <limits>
 
 namespace common_robotics_utilities
 {
@@ -52,7 +54,7 @@ public:
     for (unsigned long long i = 0; i < z; i++)
     {
       // This should prevent the compiler from optimizing out the loop
-      temp = next();
+      temp = Next();
       __asm__ __volatile__("");
     }
   }
@@ -112,7 +114,7 @@ public:
     temp = 0u;
     for (unsigned long long i = 0; i < z; i++)
     {
-      temp = next();
+      temp = Next();
       // This should prevent the compiler from optimizing out the loop
       __asm__ __volatile__("");
     }
@@ -177,7 +179,7 @@ public:
     temp = 0u;
     for (unsigned long long i = 0; i < z; i++)
     {
-      temp = next();
+      temp = Next();
       // This should prevent the compiler from optimizing out the loop
       __asm__ __volatile__("");
     }

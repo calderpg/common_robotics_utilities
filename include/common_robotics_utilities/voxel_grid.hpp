@@ -8,6 +8,7 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/maybe.hpp>
 #include <common_robotics_utilities/serialization.hpp>
 #include <common_robotics_utilities/utility.hpp>
 
@@ -400,7 +401,7 @@ class VoxelGridBase;
 // unlike std::optional<T>, since it needs to pass the caller a const/mutable
 // reference to the item in the voxel grid.
 template<typename T>
-class GridQuery
+class GridQuery : public ReferencingMaybe<T>
 {
 private:
   template<typename Item, typename BackingStore> friend class VoxelGridBase;
@@ -408,40 +409,10 @@ private:
   // This constructor is protected because users should not be able to create
   // GridQuery<T> with a value on their own, creation should only be possible
   // within a VoxelGridBase<T> to which the GridQuery<T> references.
-  explicit GridQuery(T& item) : item_ptr_(std::addressof(item)) {}
-
-  T* const item_ptr_ = nullptr;
+  explicit GridQuery(T& item) : ReferencingMaybe<T>(item) {}
 
 public:
-  GridQuery() : item_ptr_(nullptr) {}
-
-  T& Value()
-  {
-    if (HasValue())
-    {
-      return *item_ptr_;
-    }
-    else
-    {
-      throw std::runtime_error("GridQuery does not have value");
-    }
-  }
-
-  T& Value() const
-  {
-    if (HasValue())
-    {
-      return *item_ptr_;
-    }
-    else
-    {
-      throw std::runtime_error("GridQuery does not have value");
-    }
-  }
-
-  bool HasValue() const { return item_ptr_ != nullptr; }
-
-  explicit operator bool() const { return HasValue(); }
+  GridQuery() : ReferencingMaybe<T>() {}
 };
 
 /// This is the base class for all voxel grid classes. It is pure virtual to

@@ -144,9 +144,9 @@ ClosestPair GetClosestClustersParallel(
           // Compute cluster-cluster distance
           double minimum_distance = std::numeric_limits<double>::infinity();
           double maximum_distance = 0.0;
-          for (const int64_t& cluster1_index : cluster1)
+          for (const int64_t& cluster1_index : first_cluster)
           {
-            for (const int64_t& cluster2_index : cluster2)
+            for (const int64_t& cluster2_index : second_cluster)
             {
               const double distance
                   = distance_matrix(cluster1_index, cluster2_index);
@@ -211,9 +211,9 @@ ClosestPair GetClosestClustersSerial(
           // Compute cluster-cluster distance
           double minimum_distance = std::numeric_limits<double>::infinity();
           double maximum_distance = 0.0;
-          for (const int64_t& cluster1_index : cluster1)
+          for (const int64_t& cluster1_index : first_cluster)
           {
-            for (const int64_t& cluster2_index : cluster2)
+            for (const int64_t& cluster2_index : second_cluster)
             {
               const double distance
                   = distance_matrix(cluster1_index, cluster2_index);

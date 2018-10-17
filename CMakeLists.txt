@@ -82,6 +82,7 @@ add_library(${PROJECT_NAME}
             include/${PROJECT_NAME}/simple_knearest_neighbors.hpp
             include/${PROJECT_NAME}/simple_prm_planner.hpp
             include/${PROJECT_NAME}/simple_prngs.hpp
+            include/${PROJECT_NAME}/simple_robot_model_interface.hpp
             include/${PROJECT_NAME}/simple_rrt_planner.hpp
             include/${PROJECT_NAME}/time_optimal_trajectory_parametrization.hpp
             include/${PROJECT_NAME}/utility.hpp

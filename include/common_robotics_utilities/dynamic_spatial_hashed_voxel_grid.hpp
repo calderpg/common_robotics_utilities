@@ -367,6 +367,74 @@ public:
 
   DSHVGFillStatus FillStatus() const { return fill_status_; }
 
+  DynamicSpatialHashedGridQuery<const T> GetImmutableInternal(
+      const GridIndex& internal_cell_index) const
+  {
+    if (fill_status_ == DSHVGFillStatus::CELL_FILLED)
+    {
+      if (sizes_.IndexInBounds(internal_cell_index))
+      {
+        return DynamicSpatialHashedGridQuery<const T>(
+            AccessIndex(sizes_.GetDataIndex(internal_cell_index)),
+            DSHVGFoundStatus::FOUND_IN_CELL);
+      }
+      else
+      {
+        return DynamicSpatialHashedGridQuery<const T>();
+      }
+    }
+    else if (fill_status_ == DSHVGFillStatus::CHUNK_FILLED)
+    {
+      if (internal_cell_index == GridIndex(0, 0, 0))
+      {
+        return DynamicSpatialHashedGridQuery<const T>(
+            AccessIndex(0), DSHVGFoundStatus::FOUND_IN_CHUNK);
+      }
+      else
+      {
+        return DynamicSpatialHashedGridQuery<const T>();
+      }
+    }
+    else
+    {
+      throw std::runtime_error("Chunk is not filled");
+    }
+  }
+
+  DynamicSpatialHashedGridQuery<T> GetMutableInternal(
+      const GridIndex& internal_cell_index) const
+  {
+    if (fill_status_ == DSHVGFillStatus::CELL_FILLED)
+    {
+      if (sizes_.IndexInBounds(internal_cell_index))
+      {
+        return DynamicSpatialHashedGridQuery<T>(
+            AccessIndex(sizes_.GetDataIndex(internal_cell_index)),
+            DSHVGFoundStatus::FOUND_IN_CELL);
+      }
+      else
+      {
+        return DynamicSpatialHashedGridQuery<T>();
+      }
+    }
+    else if (fill_status_ == DSHVGFillStatus::CHUNK_FILLED)
+    {
+      if (internal_cell_index == GridIndex(0, 0, 0))
+      {
+        return DynamicSpatialHashedGridQuery<T>(
+            AccessIndex(0), DSHVGFoundStatus::FOUND_IN_CHUNK);
+      }
+      else
+      {
+        return DynamicSpatialHashedGridQuery<T>();
+      }
+    }
+    else
+    {
+      throw std::runtime_error("Chunk is not filled");
+    }
+  }
+
   DynamicSpatialHashedGridQuery<const T> GetImmutable(
       const Eigen::Vector4d& location) const
   {
@@ -499,6 +567,25 @@ public:
     {
       throw std::runtime_error("Cannot set unfilled chunk");
     }
+  }
+
+  Eigen::Vector4d GetCellLocationInGridFrame(
+      const GridIndex& internal_cell_index) const
+  {
+    Eigen::Vector4d cell_position =
+        sizes_.IndexToLocationInGridFrame(internal_cell_index);
+    // We need to move from position to offset vector
+    cell_position(3) = 0.0;
+    return region_.Base() + cell_position;
+  }
+
+  Eigen::Vector4d GetChunkCenterInGridFrame() const
+  {
+    const Eigen::Vector4d center_offset(sizes_.XSize() * 0.5,
+                                        sizes_.YSize() * 0.5,
+                                        sizes_.ZSize() * 0.5,
+                                        0.0);
+    return region_.Base() + center_offset;
   }
 };
 
@@ -900,25 +987,18 @@ public:
     }
   }
 
-  Eigen::Vector3d GetCellSizes() const
-  {
-    return chunk_sizes_.CellSizes();
-  }
+  const GridSizes& GetChunkGridSizes() const { return chunk_sizes_; }
 
-  Eigen::Vector3d GetChunkSizes() const
-  {
-    return chunk_sizes_.Sizes();
-  }
+  Eigen::Vector3d GetCellSizes() const { return chunk_sizes_.CellSizes(); }
+
+  Eigen::Vector3d GetChunkSizes() const { return chunk_sizes_.Sizes(); }
 
   Eigen::Matrix<int64_t, 3, 1> GetChunkNumCells() const
   {
     return chunk_sizes_.NumCells();
   }
 
-  const T& GetDefaultValue() const
-  {
-    return default_value_;
-  }
+  const T& GetDefaultValue() const { return default_value_; }
 
   void SetDefaultValue(const T& default_value)
   {

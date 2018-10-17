@@ -18,7 +18,7 @@ inline constexpr float ColorChannelFromHex(uint8_t hexval)
 /// Clamp @param val color channel to [0, 1].
 inline float TrimColorValue(const float val)
 {
-  return ClampValue<float>(val, 0.0f, 1.0f);
+  return utility::ClampValue<float>(val, 0.0f, 1.0f);
 }
 
 /// Convert @param colorval to hex value.
@@ -114,8 +114,9 @@ template<typename ColorType>
 inline ColorType MakeFromHexColors(
     const uint8_t r, const uint8_t g, const uint8_t b, const uint8_t a=0xff)
 {
-  return MakeFromFloatColors(ColorChannelFromHex(r), ColorChannelFromHex(g),
-                             ColorChannelFromHex(b), ColorChannelFromHex(a));
+  return MakeFromFloatColors<ColorType>(
+      ColorChannelFromHex(r), ColorChannelFromHex(g), ColorChannelFromHex(b),
+      ColorChannelFromHex(a));
 }
 
 /// Make a color value of ColorType from the provided color chanel values. This
@@ -125,8 +126,9 @@ template<typename ColorType>
 inline ColorType MakeFromMixedColors(
     const uint8_t r, const uint8_t g, const uint8_t b, const float a=1.0f)
 {
-  return MakeFromFloatColors(ColorChannelFromHex(r), ColorChannelFromHex(g),
-                             ColorChannelFromHex(b), TrimColorValue(a));
+  return MakeFromFloatColors<ColorType>(
+      ColorChannelFromHex(r), ColorChannelFromHex(g), ColorChannelFromHex(b),
+      TrimColorValue(a));
 }
 
 /// Interpolates a color in the "hot-to-cold" pattern for @param value given
@@ -162,9 +164,9 @@ inline ColorType InterpolateHotToCold(
     g = 1.0 + 4.0 * (min_value + 0.75 * range - real_value) / range;
     b = 0.0;
   }
-  return MakeFromFloatColors(static_cast<float>(r),
-                             static_cast<float>(g),
-                             static_cast<float>(b), 1.0f);
+  return MakeFromFloatColors<ColorType>(
+      static_cast<float>(r), static_cast<float>(g), static_cast<float>(b),
+      1.0f);
 }
 
 /// Converts between two color types wth float (or float-like) R,G,B,A members.
@@ -214,113 +216,91 @@ inline ColorType LookupUniqueColor(const uint32_t color_code,
 {
   if (color_code == 0)
   {
-    return RGBAColorBuilder<ColorType>::MakeFromFloatColors(
-        1.0f, 1.0f, 1.0f, 0.0f);
+    return MakeFromFloatColors<ColorType>(1.0f, 1.0f, 1.0f, 0.0f);
   }
   if (color_code == 1)
   {
-    return RGBAColorBuilder<ColorType>::MakeFromMixedColors(
-        0xff, 0x00, 0xb3, alpha);
+    return MakeFromMixedColors<ColorType>(0xff, 0x00, 0xb3, alpha);
   }
   else if (color_code == 2)
   {
-    return RGBAColorBuilder<ColorType>::MakeFromMixedColors(
-        0x80, 0x75, 0x3e, alpha);
+    return MakeFromMixedColors<ColorType>(0x80, 0x75, 0x3e, alpha);
   }
   else if (color_code == 3)
   {
-    return RGBAColorBuilder<ColorType>::MakeFromMixedColors(
-        0xff, 0x00, 0x68, alpha);
+    return MakeFromMixedColors<ColorType>(0xff, 0x00, 0x68, alpha);
   }
   else if (color_code == 4)
   {
-    return RGBAColorBuilder<ColorType>::MakeFromMixedColors(
-        0xa6, 0xd7, 0xbd, alpha);
+    return MakeFromMixedColors<ColorType>(0xa6, 0xd7, 0xbd, alpha);
   }
   else if (color_code == 5)
   {
-    return RGBAColorBuilder<ColorType>::MakeFromMixedColors(
-        0xc1, 0x20, 0x00, alpha);
+    return MakeFromMixedColors<ColorType>(0xc1, 0x20, 0x00, alpha);
   }
   else if (color_code == 6)
   {
-    return RGBAColorBuilder<ColorType>::MakeFromMixedColors(
-        0xce, 0x62, 0xa2, alpha);
+    return MakeFromMixedColors<ColorType>(0xce, 0x62, 0xa2, alpha);
   }
   else if (color_code == 7)
   {
-    return RGBAColorBuilder<ColorType>::MakeFromMixedColors(
-        0x81, 0x66, 0x70, alpha);
+    return MakeFromMixedColors<ColorType>(0x81, 0x66, 0x70, alpha);
   }
   else if (color_code == 8)
   {
-    return RGBAColorBuilder<ColorType>::MakeFromMixedColors(
-        0x00, 0x34, 0x7d, alpha);
+    return MakeFromMixedColors<ColorType>(0x00, 0x34, 0x7d, alpha);
   }
   else if (color_code == 9)
   {
-    return RGBAColorBuilder<ColorType>::MakeFromMixedColors(
-        0xf6, 0x8e, 0x76, alpha);
+    return MakeFromMixedColors<ColorType>(0xf6, 0x8e, 0x76, alpha);
   }
   else if (color_code == 10)
   {
-    return RGBAColorBuilder<ColorType>::MakeFromMixedColors(
-        0x00, 0x8a, 0x53, alpha);
+    return MakeFromMixedColors<ColorType>(0x00, 0x8a, 0x53, alpha);
   }
   else if (color_code == 11)
   {
-    return RGBAColorBuilder<ColorType>::MakeFromMixedColors(
-        0xff, 0x5c, 0x7a, alpha);
+    return MakeFromMixedColors<ColorType>(0xff, 0x5c, 0x7a, alpha);
   }
   else if (color_code == 12)
   {
-    return RGBAColorBuilder<ColorType>::MakeFromMixedColors(
-        0x53, 0x7a, 0x37, alpha);
+    return MakeFromMixedColors<ColorType>(0x53, 0x7a, 0x37, alpha);
   }
   else if (color_code == 13)
   {
-    return RGBAColorBuilder<ColorType>::MakeFromMixedColors(
-        0xff, 0x00, 0x8e, alpha);
+    return MakeFromMixedColors<ColorType>(0xff, 0x00, 0x8e, alpha);
   }
   else if (color_code == 14)
   {
-    return RGBAColorBuilder<ColorType>::MakeFromMixedColors(
-        0xb3, 0x51, 0x28, alpha);
+    return MakeFromMixedColors<ColorType>(0xb3, 0x51, 0x28, alpha);
   }
   else if (color_code == 15)
   {
-    return RGBAColorBuilder<ColorType>::MakeFromMixedColors(
-        0xf4, 0x00, 0xc8, alpha);
+    return MakeFromMixedColors<ColorType>(0xf4, 0x00, 0xc8, alpha);
   }
   else if (color_code == 16)
   {
-    return RGBAColorBuilder<ColorType>::MakeFromMixedColors(
-        0x7f, 0x0d, 0x18, alpha);
+    return MakeFromMixedColors<ColorType>(0x7f, 0x0d, 0x18, alpha);
   }
   else if (color_code == 17)
   {
-    return RGBAColorBuilder<ColorType>::MakeFromMixedColors(
-        0x93, 0x00, 0xaa, alpha);
+    return MakeFromMixedColors<ColorType>(0x93, 0x00, 0xaa, alpha);
   }
   else if (color_code == 18)
   {
-    return RGBAColorBuilder<ColorType>::MakeFromMixedColors(
-        0x59, 0x15, 0x33, alpha);
+    return MakeFromMixedColors<ColorType>(0x59, 0x15, 0x33, alpha);
   }
   else if (color_code == 19)
   {
-    return RGBAColorBuilder<ColorType>::MakeFromMixedColors(
-        0xf1, 0x13, 0x3a, alpha);
+    return MakeFromMixedColors<ColorType>(0xf1, 0x13, 0x3a, alpha);
   }
   else if (color_code == 20)
   {
-    return RGBAColorBuilder<ColorType>::MakeFromMixedColors(
-        0x23, 0x16, 0x2c, alpha);
+    return MakeFromMixedColors<ColorType>(0x23, 0x16, 0x2c, alpha);
   }
   else
   {
-    return RGBAColorBuilder<ColorType>::MakeFromFloatColors(
-        0.0f, 0.0f, 0.0f, alpha);
+    return MakeFromFloatColors<ColorType>(0.0f, 0.0f, 0.0f, alpha);
   }
 }
 }  // namespace color_builder

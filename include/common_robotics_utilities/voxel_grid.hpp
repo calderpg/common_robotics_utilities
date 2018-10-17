@@ -28,11 +28,17 @@ public:
   GridIndex(const int64_t x, const int64_t y, const int64_t z)
       : x_(x), y_(y), z_(z) {}
 
-  int64_t X() const { return x_; }
+  const int64_t& X() const { return x_; }
 
-  int64_t Y() const { return y_; }
+  const int64_t& Y() const { return y_; }
 
-  int64_t Z() const { return z_; }
+  const int64_t& Z() const { return z_; }
+
+  int64_t& X() { return x_; }
+
+  int64_t& Y() { return y_; }
+
+  int64_t& Z() { return z_; }
 
   bool operator==(const GridIndex& other) const
   {
@@ -367,12 +373,32 @@ public:
   {
     return (index.X() * Stride1()) + (index.Y() * Stride2()) + index.Z();
   }
+
+  Eigen::Vector4d IndexToLocationInGridFrame(const GridIndex& index) const
+  {
+    return IndexToLocationInGridFrame(index.X(), index.Y(), index.Z());
+  }
+
+  Eigen::Vector4d IndexToLocationInGridFrame(const int64_t x_index,
+                                             const int64_t y_index,
+                                             const int64_t z_index) const
+  {
+    const Eigen::Vector4d point_in_grid_frame(
+          CellXSize() * (static_cast<double>(x_index) + 0.5),
+          CellYSize() * (static_cast<double>(y_index) + 0.5),
+          CellZSize() * (static_cast<double>(z_index) + 0.5),
+          1.0);
+    return point_in_grid_frame;
+  }
 };
 
 // Forward-declare for use in GridQuery.
 template<typename T, typename BackingStore=std::vector<T>>
 class VoxelGridBase;
 
+// While this looks like a std::optional<T>, it *does not own* the item of T,
+// unlike std::optional<T>, since it needs to pass the caller a const/mutable
+// reference to the item in the voxel grid.
 template<typename T>
 class GridQuery
 {
@@ -916,6 +942,8 @@ public:
     }
   }
 
+  const GridSizes& GetGridSizes() const { return sizes_; }
+
   double GetXSize() const { return sizes_.XSize(); }
 
   double GetYSize() const { return sizes_.YSize(); }
@@ -1026,19 +1054,14 @@ public:
 
   Eigen::Vector4d GridIndexToLocationInGridFrame(const GridIndex& index) const
   {
-    return GridIndexToLocationInGridFrame(index.X(), index.Y(), index.Z());
+    return sizes_.IndexToLocationInGridFrame(index);
   }
 
   Eigen::Vector4d GridIndexToLocationInGridFrame(const int64_t x_index,
                                                  const int64_t y_index,
                                                  const int64_t z_index) const
   {
-    const Eigen::Vector4d point_in_grid_frame(
-          sizes_.CellXSize() * (static_cast<double>(x_index) + 0.5),
-          sizes_.CellYSize() * (static_cast<double>(y_index) + 0.5),
-          sizes_.CellZSize() * (static_cast<double>(z_index) + 0.5),
-          1.0);
-    return point_in_grid_frame;
+    return sizes_.IndexToLocationInGridFrame(x_index, y_index, z_index);
   }
 
   Eigen::Vector4d GridIndexToLocation(const GridIndex& index) const

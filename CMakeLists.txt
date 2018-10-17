@@ -65,6 +65,7 @@ add_library(${PROJECT_NAME}
             include/${PROJECT_NAME}/dynamic_spatial_hashed_voxel_grid.hpp
             include/${PROJECT_NAME}/gaussian_distributions.hpp
             include/${PROJECT_NAME}/math.hpp
+            include/${PROJECT_NAME}/maybe.hpp
             include/${PROJECT_NAME}/openmp_helpers.hpp
             include/${PROJECT_NAME}/path_processing.hpp
             include/${PROJECT_NAME}/print.hpp

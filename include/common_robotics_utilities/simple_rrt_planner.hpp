@@ -288,7 +288,7 @@ bool CheckTreeLinkage(const std::vector<SimpleRRTPlannerState<T>>& nodes)
             return false;
           }
         }
-        else if (current_child_index == current_index)
+        else if (current_child_index == static_cast<int64_t>(current_index))
         {
           std::cerr << "Invalid child index " << current_child_index
                     << " for state " << current_index

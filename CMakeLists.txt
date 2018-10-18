@@ -98,7 +98,11 @@ add_library(${PROJECT_NAME}
 add_dependencies(${PROJECT_NAME} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} z)
 
-# Tests
+# Tests/examples
+add_executable(clustering_test test/clustering_test.cpp)
+add_dependencies(clustering_test ${PROJECT_NAME})
+target_link_libraries(clustering_test ${PROJECT_NAME})
+
 add_executable(planning_test test/planning_test.cpp)
 add_dependencies(planning_test ${PROJECT_NAME})
 target_link_libraries(planning_test ${PROJECT_NAME})

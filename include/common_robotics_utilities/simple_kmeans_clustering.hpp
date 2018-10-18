@@ -37,7 +37,7 @@ std::vector<int32_t> PerformSingleClusteringIteration(
     const int64_t closest_cluster_index
         = simple_knearest_neighbors::GetKNearestNeighborsSerial(
             current_cluster_centers, datapoint, distance_fn, 1).at(0).first;
-    new_cluster_labels = static_cast<int32_t>(closest_cluster_index);
+    new_cluster_labels.at(idx) = static_cast<int32_t>(closest_cluster_index);
   };
   if (use_parallel)
   {
@@ -126,7 +126,6 @@ Container ComputeClusterCentersWeighted(
 
 /// Checks for convergence - i.e. if @param old_labels and @param new_labels are
 /// the same. @returns if the labels are the same.
-template<typename DataType, typename Container=std::vector<DataType>>
 bool CheckForConvergence(const std::vector<int32_t>& old_labels,
                          const std::vector<int32_t>& new_labels)
 {
@@ -160,7 +159,7 @@ template<typename DataType, typename Container=std::vector<DataType>>
 std::vector<int32_t> ClusterWeighted(
     const Container& data, const std::vector<double>& data_weights,
     const std::function<double(const DataType&, const DataType&)>& distance_fn,
-    const std::function<DataType(const Container&)>& weighted_average_fn,
+    const std::function<DataType(const Container&, const std::vector<double>&)>& weighted_average_fn,
     const int32_t num_clusters, const int64_t prng_seed,
     const bool do_preliminary_clustering, const bool use_parallel = false)
 {
@@ -172,7 +171,7 @@ std::vector<int32_t> ClusterWeighted(
   {
     std::cerr << "[K-means clustering] Provided num_clusters = 1,"
                  << " returning default labels of cluster == 0" << std::endl;
-    return std::vector<uint32_t>(data.size(), 0u);
+    return std::vector<int32_t>(data.size(), 0u);
   }
   else if (num_clusters == 0)
   {
@@ -182,8 +181,8 @@ std::vector<int32_t> ClusterWeighted(
   bool enable_preliminary_clustering = do_preliminary_clustering;
   if (enable_preliminary_clustering)
   {
-    const size_t subset_size
-        = static_cast<size_t>(std::ceil(
+    const int64_t subset_size
+        = static_cast<int64_t>(std::ceil(
             static_cast<double>(data.size()) * 0.125));
     if (subset_size >= (num_clusters * 5))
     {
@@ -237,9 +236,9 @@ std::vector<int32_t> ClusterWeighted(
     random_subset_weights.shrink_to_fit();
     // Run clustering on the subset
     std::vector<int32_t> random_subset_labels
-        = Cluster(
-            random_subset, distance_fn, weighted_average_fn, num_clusters,
-            false, use_parallel);
+        = ClusterWeighted<DataType, Container>(
+            random_subset, random_subset_weights, distance_fn,
+            weighted_average_fn, num_clusters, false, use_parallel);
     // Now we use the centers of the clusters to form the cluster centers
     cluster_centers
         = ComputeClusterCentersWeighted(
@@ -250,7 +249,7 @@ std::vector<int32_t> ClusterWeighted(
   {
     // This makes sure we don't get duplicates
     std::unordered_map<size_t, uint8_t> index_map;
-    while (index_map.size() < num_clusters)
+    while (static_cast<int64_t>(index_map.size()) < num_clusters)
     {
       const size_t random_index = initialization_distribution(prng);
       index_map[random_index] = 1u;
@@ -267,12 +266,12 @@ std::vector<int32_t> ClusterWeighted(
     }
     cluster_centers.shrink_to_fit();
   }
-  if (cluster_centers.size() != num_clusters)
+  if (static_cast<int64_t>(cluster_centers.size()) != num_clusters)
   {
     throw std::runtime_error("cluster_centers.size() != num_clusters");
   }
   // Run the first iteration of clustering
-  std::vector<uint32_t> cluster_labels
+  std::vector<int32_t> cluster_labels
       = PerformSingleClusteringIteration(
           data, cluster_centers, distance_fn, use_parallel);
   bool converged = false;
@@ -287,7 +286,7 @@ std::vector<int32_t> ClusterWeighted(
             data, data_weights, cluster_labels, weighted_average_fn,
             num_clusters, use_parallel);
     // Cluster with the new centers
-    const std::vector<uint32_t> new_cluster_labels
+    const std::vector<int32_t> new_cluster_labels
         = PerformSingleClusteringIteration(
             data, cluster_centers, distance_fn, use_parallel);
     // Check for convergence
@@ -325,9 +324,9 @@ std::vector<int32_t> Cluster(
   {
     return average_fn(cluster_members);
   };
-  return ClusterWeighted(data, data_weights, distance_fn, weighted_average_fn,
-                         num_clusters, prng_seed, do_preliminary_clustering,
-                         use_parallel);
+  return ClusterWeighted<DataType, Container>(
+      data, data_weights, distance_fn, weighted_average_fn, num_clusters,
+      prng_seed, do_preliminary_clustering, use_parallel);
 }
 }  // namespace simple_kmeans_clustering
 }  // namespace common_robotics_utilities

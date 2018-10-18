@@ -172,11 +172,12 @@ ClosestPair GetClosestClustersParallel(
     }
   }
   ClosestPair closest_clusters;
-  for (const ClosestPair& clusters : per_thread_closest_clusters)
+  for (const ClosestPair& per_thread_closest_cluster_pair
+       : per_thread_closest_clusters)
   {
-    if (clusters.Distance() < closest_clusters.Distance())
+    if (per_thread_closest_cluster_pair.Distance() < closest_clusters.Distance())
     {
-      closest_clusters = clusters;
+      closest_clusters = per_thread_closest_cluster_pair;
     }
   }
   return closest_clusters;
@@ -324,7 +325,7 @@ ClosestPair GetClosestValueToOtherParallel(
           {
             per_thread_closest_value_other.at(thread_num)
                 = ClosestPair(Item(value_idx, false),
-                              Item(cluster_distance, true),
+                              Item(cluster_idx, true),
                               cluster_distance);
           }
         }
@@ -398,7 +399,7 @@ ClosestPair GetClosestValueToOtherSerial(
           if (cluster_distance < closest_value_other.Distance())
           {
             closest_value_other = ClosestPair(Item(value_idx, false),
-                                              Item(cluster_distance, true),
+                                              Item(cluster_idx, true),
                                               cluster_distance);
           }
         }
@@ -500,7 +501,7 @@ std::pair<std::vector<Container>, double> Cluster(
 /// specified by @param strategy, and @param use_parallel selects if parallel
 /// search should be used internally.
 template<typename DataType, typename Container=std::vector<DataType>>
-std::pair<std::vector<Container>, double> Cluster(
+std::pair<std::vector<Container>, double> ClusterWithDistanceMatrix(
     const Container& data, const Eigen::MatrixXd& distance_matrix,
     const double max_cluster_distance, const ClusterStrategy strategy,
     const bool use_parallel = false)

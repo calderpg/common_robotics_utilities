@@ -404,21 +404,21 @@ QueryPathAndAddNodesMultiStartSingleGoal(
   {
     const T& start = starts[start_idx];
     start_node_indices[start_idx]
-        = AddNodeToRoadmap(start, NNDistanceDirection::NEW_STATE_TO_ROADMAP,
-                           roadmap, distance_fn, edge_validity_check_fn, K,
-                           use_parallel, distance_is_symmetric,
-                           add_duplicate_states);
+        = AddNodeToRoadmap<T>(start, NNDistanceDirection::NEW_STATE_TO_ROADMAP,
+                              roadmap, distance_fn, edge_validity_check_fn, K,
+                              use_parallel, distance_is_symmetric,
+                              add_duplicate_states);
   }
   // Add the goal node to the roadmap
   const int64_t goal_node_index
-      = AddNodeToRoadmap(goal, NNDistanceDirection::ROADMAP_TO_NEW_STATE,
-                         roadmap, distance_fn, edge_validity_check_fn, K,
-                         use_parallel, distance_is_symmetric,
-                         add_duplicate_states);
+      = AddNodeToRoadmap<T>(goal, NNDistanceDirection::ROADMAP_TO_NEW_STATE,
+                            roadmap, distance_fn, edge_validity_check_fn, K,
+                            use_parallel, distance_is_symmetric,
+                            add_duplicate_states);
   // Call Dijkstra's
   const auto dijkstras_solution
-      = simple_graph_search::PerformDijkstrasAlgorithm(roadmap,
-                                                       goal_node_index);
+      = simple_graph_search::PerformDijkstrasAlgorithm<T>(roadmap,
+                                                          goal_node_index);
   // Identify the lowest-distance starting state
   double best_start_node_distance = std::numeric_limits<double>::infinity();
   int64_t best_start_node_index = -1;
@@ -459,9 +459,46 @@ QueryPathAndAddNodesMultiStartSingleGoal(
         previous_index = dijkstras_solution.GetPreviousIndex(current_index);
       }
     }
-    return std::make_pair(ExtractSolutionPath(roadmap, solution_path_indices),
-                          start_node_distance);
+    return std::make_pair(ExtractSolutionPath<T, Allocator>(
+        roadmap, solution_path_indices), start_node_distance);
   }
+}
+
+/// Find the best path from one of a set of starting states to a single goal.
+/// @param starts multiple start states.
+/// @param goal goal state.
+/// @param roadmap existing roadmap.
+/// @param distance_fn distance function for state-to-state distance. If
+/// use_parallel is true, this must be thread-safe.
+/// @param edge_validity_check_fn edge validity checking function. If
+/// use_parallel is true, this must be thread-safe.
+/// @param K number of K neighboring states in the roadmap to attempt to connect
+/// the new state to.
+/// @param use_parallel use parallel operations when possible.
+/// @param distance_is_symmetric is the distance symmetric
+/// (i.e. distance_fn(a, b) == distance_fn(b, a))? Asymmetric distance functions
+/// are more expensive to work with and should be avoided when possible.
+/// @param add_duplicate_states should @param state be added to the roadmap if
+/// it is a duplicate of an existing state? @param state is considered a
+/// duplicate if one of the K neighboring states has distance zero from @param
+/// state.
+/// @return pair<path, length> of the best path from a single start to the goal.
+/// If no solution exists, path is empty and length is infinity.
+template<typename T, typename Allocator=std::allocator<T>>
+std::pair<std::vector<T, Allocator>, double>
+QueryPathMultiStartSingleGoal(
+    const std::vector<T, Allocator>& starts, const T& goal,
+    const simple_graph::Graph<T>& roadmap,
+    const std::function<double(const T&, const T&)>& distance_fn,
+    const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
+    const size_t K, const bool use_parallel = true,
+    const bool distance_is_symmetric = true,
+    const bool add_duplicate_states = false)
+{
+  auto working_copy = roadmap;
+  return QueryPathAndAddNodesMultiStartSingleGoal<T, Allocator>(
+      starts, goal, working_copy, distance_fn, edge_validity_check_fn, K,
+      use_parallel, distance_is_symmetric, add_duplicate_states);
 }
 
 /// Find the best path from start state to goal state.
@@ -498,24 +535,62 @@ QueryPathAndAddNodesSingleStartSingleGoal(
 {
   // Add the start node to the roadmap
   const int64_t start_node_index
-      = AddNodeToRoadmap(start, NNDistanceDirection::NEW_STATE_TO_ROADMAP,
-                         roadmap, distance_fn, edge_validity_check_fn, K,
-                         use_parallel, distance_is_symmetric,
-                         add_duplicate_states);
+      = AddNodeToRoadmap<T>(start, NNDistanceDirection::NEW_STATE_TO_ROADMAP,
+                            roadmap, distance_fn, edge_validity_check_fn, K,
+                            use_parallel, distance_is_symmetric,
+                            add_duplicate_states);
   // Add the goal node to the roadmap
   const int64_t goal_node_index
-      = AddNodeToRoadmap(goal, NNDistanceDirection::ROADMAP_TO_NEW_STATE,
-                         roadmap, distance_fn, edge_validity_check_fn, K,
-                         use_parallel, distance_is_symmetric,
-                         add_duplicate_states);
+      = AddNodeToRoadmap<T>(goal, NNDistanceDirection::ROADMAP_TO_NEW_STATE,
+                            roadmap, distance_fn, edge_validity_check_fn, K,
+                            use_parallel, distance_is_symmetric,
+                            add_duplicate_states);
   // Call graph A*
   const std::pair<std::vector<int64_t>, double> astar_result
-      = simple_graph_search::PerformAstarSearch(
+      = simple_graph_search::PerformAstarSearch<T>(
           roadmap, start_node_index, goal_node_index, distance_fn,
           limit_astar_pqueue_duplicates);
   // Convert the solution path from A* provided as indices into real states
-  return std::make_pair(ExtractSolutionPath(roadmap, astar_result.first),
-                        astar_result.second);
+  return std::make_pair(ExtractSolutionPath<T, Allocator>(
+      roadmap, astar_result.first), astar_result.second);
+}
+
+/// Find the best path from start state to goal state.
+/// @param start start state.
+/// @param goal goal state.
+/// @param roadmap existing roadmap.
+/// @param distance_fn distance function for state-to-state distance. If
+/// use_parallel is true, this must be thread-safe.
+/// @param edge_validity_check_fn edge validity checking function. If
+/// use_parallel is true, this must be thread-safe.
+/// @param K number of K neighboring states in the roadmap to attempt to connect
+/// the new state to.
+/// @param use_parallel use parallel operations when possible.
+/// @param distance_is_symmetric is the distance symmetric
+/// (i.e. distance_fn(a, b) == distance_fn(b, a))? Asymmetric distance functions
+/// are more expensive to work with and should be avoided when possible.
+/// @param add_duplicate_states should @param state be added to the roadmap if
+/// it is a duplicate of an existing state? @param state is considered a
+/// duplicate if one of the K neighboring states has distance zero from @param
+/// state.
+/// @return pair<path, length> of the best path from start to goal.
+/// If no solution exists, path is empty and length is infinity.
+template<typename T, typename Allocator=std::allocator<T>>
+std::pair<std::vector<T, Allocator>, double>
+QueryPathSingleStartSingleGoal(
+    const T& start, const T& goal, const simple_graph::Graph<T>& roadmap,
+    const std::function<double(const T&, const T&)>& distance_fn,
+    const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
+    const size_t K, const bool use_parallel = true,
+    const bool distance_is_symmetric = true,
+    const bool add_duplicate_states = false,
+    const bool limit_astar_pqueue_duplicates=true)
+{
+  auto working_copy = roadmap;
+  return QueryPathAndAddNodesSingleStartSingleGoal<T, Allocator>(
+      start, goal, working_copy, distance_fn, edge_validity_check_fn, K,
+      use_parallel, distance_is_symmetric, add_duplicate_states,
+        limit_astar_pqueue_duplicates);
 }
 
 /// Find the best path from start state to goal state in a lazy manner, i.e.
@@ -558,24 +633,68 @@ LazyQueryPathAndAddNodesSingleStartSingleGoal(
 {
   // Add the start node to the roadmap
   const int64_t start_node_index
-      = AddNodeToRoadmap(start, NNDistanceDirection::NEW_STATE_TO_ROADMAP,
-                         roadmap, distance_fn, edge_validity_check_fn, K,
-                         use_parallel, distance_is_symmetric,
-                         add_duplicate_states);
+      = AddNodeToRoadmap<T>(start, NNDistanceDirection::NEW_STATE_TO_ROADMAP,
+                            roadmap, distance_fn, edge_validity_check_fn, K,
+                            use_parallel, distance_is_symmetric,
+                            add_duplicate_states);
   // Add the goal node to the roadmap
   const int64_t goal_node_index
-      = AddNodeToRoadmap(goal, NNDistanceDirection::ROADMAP_TO_NEW_STATE,
-                         roadmap, distance_fn, edge_validity_check_fn, K,
-                         use_parallel, distance_is_symmetric,
-                         add_duplicate_states);
+      = AddNodeToRoadmap<T>(goal, NNDistanceDirection::ROADMAP_TO_NEW_STATE,
+                            roadmap, distance_fn, edge_validity_check_fn, K,
+                            use_parallel, distance_is_symmetric,
+                            add_duplicate_states);
   // Call graph A*
   const std::pair<std::vector<int64_t>, double> astar_result
-      = simple_graph_search::PerformLazyAstarSearch(
+      = simple_graph_search::PerformLazyAstarSearch<T>(
           roadmap, start_node_index, goal_node_index, edge_validity_check_fn,
           distance_fn, distance_fn, limit_astar_pqueue_duplicates);
   // Convert the solution path from A* provided as indices into real states
-  return std::make_pair(ExtractSolutionPath(roadmap, astar_result.first),
-                        astar_result.second);
+  return std::make_pair(ExtractSolutionPath<T, Allocator>(
+      roadmap, astar_result.first), astar_result.second);
+}
+
+/// Find the best path from start state to goal state in a lazy manner, i.e.
+/// the edge validity and distances of the graph are not trusted and instead the
+/// provided @param edge_validity_check_fn and @param distance_fn are used. This
+/// is used in "lazy-PRM" where collision checking is deferred from roadmap
+/// construction to query time. Note that this can be much more expensive than
+/// normal PRM queries, so it sohuld only be used when the roadmap is frequently
+/// changing or vastly larger than the region needed for most queries.
+/// @param start start state.
+/// @param goal goal state.
+/// @param roadmap existing roadmap.
+/// @param distance_fn distance function for state-to-state distance. If
+/// use_parallel is true, this must be thread-safe.
+/// @param edge_validity_check_fn edge validity checking function. If
+/// use_parallel is true, this must be thread-safe.
+/// @param K number of K neighboring states in the roadmap to attempt to connect
+/// the new state to.
+/// @param use_parallel use parallel operations when possible.
+/// @param distance_is_symmetric is the distance symmetric
+/// (i.e. distance_fn(a, b) == distance_fn(b, a))? Asymmetric distance functions
+/// are more expensive to work with and should be avoided when possible.
+/// @param add_duplicate_states should @param state be added to the roadmap if
+/// it is a duplicate of an existing state? @param state is considered a
+/// duplicate if one of the K neighboring states has distance zero from @param
+/// state.
+/// @return pair<path, length> of the best path from start to goal.
+/// If no solution exists, path is empty and length is infinity.
+template<typename T, typename Allocator=std::allocator<T>>
+std::pair<std::vector<T, Allocator>, double>
+LazyQueryPathSingleStartSingleGoal(
+    const T& start, const T& goal, const simple_graph::Graph<T>& roadmap,
+    const std::function<double(const T&, const T&)>& distance_fn,
+    const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
+    const size_t K, const bool use_parallel = true,
+    const bool distance_is_symmetric = true,
+    const bool add_duplicate_states = false,
+    const bool limit_astar_pqueue_duplicates=true)
+{
+  auto working_copy = roadmap;
+  return LazyQueryPathAndAddNodesSingleStartSingleGoal<T, Allocator>(
+      start, goal, working_copy, distance_fn, edge_validity_check_fn, K,
+      use_parallel, distance_is_symmetric, add_duplicate_states,
+        limit_astar_pqueue_duplicates);
 }
 
 /// Find the best path from one of a set of starting states to one of a set of
@@ -619,10 +738,10 @@ QueryPathMultiStartMultiGoal(
   for (size_t goal_idx = 0; goal_idx < goals.size(); goal_idx++)
   {
     possible_solutions.at(goal_idx)
-        = QueryPathMultiStartSingleGoal(starts, goals.at(goal_idx), roadmap,
-                                        distance_fn, edge_validity_check_fn, K,
-                                        use_parallel, distance_is_symmetric,
-                                        add_duplicate_states);
+        = QueryPathMultiStartSingleGoal<T, Allocator>(
+            starts, goals.at(goal_idx), roadmap, distance_fn,
+            edge_validity_check_fn, K, use_parallel, distance_is_symmetric,
+            add_duplicate_states);
   }
   double best_solution_distance = std::numeric_limits<double>::infinity();
   int64_t best_solution_index = -1;
@@ -645,125 +764,6 @@ QueryPathMultiStartMultiGoal(
     return std::make_pair(std::vector<T, Allocator>(),
                           std::numeric_limits<double>::infinity());
   }
-}
-
-/// Find the best path from one of a set of starting states to a single goal.
-/// @param starts multiple start states.
-/// @param goal goal state.
-/// @param roadmap existing roadmap.
-/// @param distance_fn distance function for state-to-state distance. If
-/// use_parallel is true, this must be thread-safe.
-/// @param edge_validity_check_fn edge validity checking function. If
-/// use_parallel is true, this must be thread-safe.
-/// @param K number of K neighboring states in the roadmap to attempt to connect
-/// the new state to.
-/// @param use_parallel use parallel operations when possible.
-/// @param distance_is_symmetric is the distance symmetric
-/// (i.e. distance_fn(a, b) == distance_fn(b, a))? Asymmetric distance functions
-/// are more expensive to work with and should be avoided when possible.
-/// @param add_duplicate_states should @param state be added to the roadmap if
-/// it is a duplicate of an existing state? @param state is considered a
-/// duplicate if one of the K neighboring states has distance zero from @param
-/// state.
-/// @return pair<path, length> of the best path from a single start to the goal.
-/// If no solution exists, path is empty and length is infinity.
-template<typename T, typename Allocator=std::allocator<T>>
-std::pair<std::vector<T, Allocator>, double>
-QueryPathMultiStartSingleGoal(
-    const std::vector<T, Allocator>& starts, const T& goal,
-    const simple_graph::Graph<T>& roadmap,
-    const std::function<double(const T&, const T&)>& distance_fn,
-    const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
-    const size_t K, const bool use_parallel = true,
-    const bool distance_is_symmetric = true,
-    const bool add_duplicate_states = false)
-{
-  auto working_copy = roadmap;
-  return QueryPathAndAddNodesMultiStartSingleGoal(
-      starts, goal, working_copy, distance_fn, edge_validity_check_fn, K,
-      use_parallel, distance_is_symmetric, add_duplicate_states);
-}
-
-/// Find the best path from start state to goal state.
-/// @param start start state.
-/// @param goal goal state.
-/// @param roadmap existing roadmap.
-/// @param distance_fn distance function for state-to-state distance. If
-/// use_parallel is true, this must be thread-safe.
-/// @param edge_validity_check_fn edge validity checking function. If
-/// use_parallel is true, this must be thread-safe.
-/// @param K number of K neighboring states in the roadmap to attempt to connect
-/// the new state to.
-/// @param use_parallel use parallel operations when possible.
-/// @param distance_is_symmetric is the distance symmetric
-/// (i.e. distance_fn(a, b) == distance_fn(b, a))? Asymmetric distance functions
-/// are more expensive to work with and should be avoided when possible.
-/// @param add_duplicate_states should @param state be added to the roadmap if
-/// it is a duplicate of an existing state? @param state is considered a
-/// duplicate if one of the K neighboring states has distance zero from @param
-/// state.
-/// @return pair<path, length> of the best path from start to goal.
-/// If no solution exists, path is empty and length is infinity.
-template<typename T, typename Allocator=std::allocator<T>>
-std::pair<std::vector<T, Allocator>, double>
-QueryPathSingleStartSingleGoal(
-    const T& start, const T& goal, const simple_graph::Graph<T>& roadmap,
-    const std::function<double(const T&, const T&)>& distance_fn,
-    const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
-    const size_t K, const bool use_parallel = true,
-    const bool distance_is_symmetric = true,
-    const bool add_duplicate_states = false,
-    const bool limit_astar_pqueue_duplicates=true)
-{
-  auto working_copy = roadmap;
-  return QueryPathAndAddNodesSingleStartSingleGoal(
-      start, goal, working_copy, distance_fn, edge_validity_check_fn, K,
-      use_parallel, distance_is_symmetric, add_duplicate_states,
-        limit_astar_pqueue_duplicates);
-}
-
-/// Find the best path from start state to goal state in a lazy manner, i.e.
-/// the edge validity and distances of the graph are not trusted and instead the
-/// provided @param edge_validity_check_fn and @param distance_fn are used. This
-/// is used in "lazy-PRM" where collision checking is deferred from roadmap
-/// construction to query time. Note that this can be much more expensive than
-/// normal PRM queries, so it sohuld only be used when the roadmap is frequently
-/// changing or vastly larger than the region needed for most queries.
-/// @param start start state.
-/// @param goal goal state.
-/// @param roadmap existing roadmap.
-/// @param distance_fn distance function for state-to-state distance. If
-/// use_parallel is true, this must be thread-safe.
-/// @param edge_validity_check_fn edge validity checking function. If
-/// use_parallel is true, this must be thread-safe.
-/// @param K number of K neighboring states in the roadmap to attempt to connect
-/// the new state to.
-/// @param use_parallel use parallel operations when possible.
-/// @param distance_is_symmetric is the distance symmetric
-/// (i.e. distance_fn(a, b) == distance_fn(b, a))? Asymmetric distance functions
-/// are more expensive to work with and should be avoided when possible.
-/// @param add_duplicate_states should @param state be added to the roadmap if
-/// it is a duplicate of an existing state? @param state is considered a
-/// duplicate if one of the K neighboring states has distance zero from @param
-/// state.
-/// @return pair<path, length> of the best path from start to goal.
-/// If no solution exists, path is empty and length is infinity.
-template<typename T, typename Allocator=std::allocator<T>>
-std::pair<std::vector<T, Allocator>, double>
-LazyQueryPathSingleStartSingleGoal(
-    const T& start, const T& goal, const simple_graph::Graph<T>& roadmap,
-    const std::function<double(const T&, const T&)>& distance_fn,
-    const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
-    const size_t K, const bool use_parallel = true,
-    const bool distance_is_symmetric = true,
-    const bool add_duplicate_states = false,
-    const bool limit_astar_pqueue_duplicates=true)
-{
-  auto working_copy = roadmap;
-  return LazyQueryPathAndAddNodesSingleStartSingleGoal(
-      start, goal, working_copy, distance_fn, edge_validity_check_fn, K,
-      use_parallel, distance_is_symmetric, add_duplicate_states,
-        limit_astar_pqueue_duplicates);
 }
 }  // namespace simple_prm_planner
 }  // namespace common_robotics_utilities

@@ -413,6 +413,16 @@ void DoTest()
       }
     }
   }
+  // Plan with PRM
+  const std::vector<Waypoint> starts = {keypoints.at(0), keypoints.at(1)};
+  const std::vector<Waypoint> goals = {keypoints.at(2), keypoints.at(3)};
+  std::cout << "Multi start/goal PRM Path (" << print::Print(starts) << " to "
+            << print::Print(goals) << ")" << std::endl;
+  const auto path
+      = simple_prm_planner::QueryPathMultiStartMultiGoal<Waypoint>(
+          starts, goals, roadmap, WaypointDistance, check_edge_validity_fn, K,
+          false, true, false).first;
+  DrawPath(test_env, starts, goals, ResampleWaypoints(path));
 }
 }  // namespace planning_test
 }  // namespace common_robotics_utilities

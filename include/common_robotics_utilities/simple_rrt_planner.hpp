@@ -353,7 +353,7 @@ std::vector<std::vector<T, Allocator>> ExtractSolutionPaths(
   for (size_t idx = 0; idx < goal_state_indices.size(); idx++)
   {
     std::vector<T, Allocator> solution_path
-        = ExtractSolutionPath(nodes, goal_state_indices.at(idx));
+        = ExtractSolutionPath<T, Allocator>(nodes, goal_state_indices.at(idx));
     solution_paths.at(idx) = solution_path;
   }
   return solution_paths;
@@ -538,7 +538,8 @@ std::pair<std::vector<std::vector<StateType, StateAllocator>>,
   }
   // Put together the results
   const std::vector<std::vector<StateType, StateAllocator>> planned_paths
-      = ExtractSolutionPaths(tree, goal_state_indices);
+      = ExtractSolutionPaths<StateType, StateAllocator>(
+          tree, goal_state_indices);
   const std::chrono::time_point<std::chrono::steady_clock> cur_time
       = std::chrono::steady_clock::now();
   const std::chrono::duration<double> planning_time(cur_time - start_time);
@@ -830,10 +831,12 @@ std::pair<std::vector<std::vector<StateType, Allocator>>,
   {
     // Extract the portion in the start tree
     std::vector<StateType, Allocator> start_path
-        = ExtractSolutionPath(start_tree, goal_bridge.first);
+        = ExtractSolutionPath<StateType, Allocator>(
+            start_tree, goal_bridge.first);
     // Extract the portion in the goal tree
     std::vector<StateType, Allocator> goal_path
-        = ExtractSolutionPath(goal_tree, goal_bridge.second);
+        = ExtractSolutionPath<StateType, Allocator>(
+            goal_tree, goal_bridge.second);
     // Reverse the goal tree part
     std::reverse(goal_path.begin(), goal_path.end());
     // Combine

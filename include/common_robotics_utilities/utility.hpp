@@ -1,11 +1,5 @@
 #pragma once
 
-#include <fcntl.h>
-#include <string.h>
-#include <unistd.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-
 #include <cstdlib>
 #include <string>
 #include <map>
@@ -435,65 +429,6 @@ inline std::map<Key, Value, Compare, PairAllocator> MakeFromKeysAndValues(
   else
   {
     throw std::invalid_argument("keys.size() != values.size()");
-  }
-}
-
-/// Check if the process is being run under a debugger. This only works for
-/// "normal" cases of debugging, not cases where the debugger is trying to hide.
-/// See: https://stackoverflow.com/questions/3596781/
-///          how-to-detect-if-the-current-process-is-being-run-by-gdb
-inline bool IsDebuggerPresent()
-{
-  // In /proc/self/status, TracerPid: # records the PID of an attached tracer.
-  static const char key_string[] = "TracerPid:";
-  const int status_fd = open("/proc/self/status", O_RDONLY);
-  if (status_fd == -1)
-  {
-    return false;
-  }
-  char buf[1024];
-  const ssize_t num_read = read(status_fd, buf, sizeof(buf) - 1);
-  if (num_read > 0)
-  {
-    buf[num_read] = 0;
-    const auto found_tracer_pid = strstr(buf, key_string);
-    if (found_tracer_pid)
-    {
-      // We retrieve the PID from the buffer we just read (atoi reads the next
-      // number, with any number of leading whitespace characters) and check if
-      // it is greater than zero.
-      if (std::atoi(found_tracer_pid + sizeof(key_string) - 1) > 0)
-      {
-        return true;
-      }
-    }
-  }
-  return false;
-}
-
-inline void InteractiveWaitToContinue()
-{
-  if (IsDebuggerPresent() == false)
-  {
-    std::cout << "Press ENTER to continue..." << std::endl;
-    std::cin.get();
-  }
-  else
-  {
-    std::cout << "Process is under debugger, use breakpoints" << std::endl;
-  }
-}
-
-inline void ConditionalPrintWaitForInteractiveInput(
-    const std::string& msg, const int32_t msg_level, const int32_t print_level)
-{
-  if (UNLIKELY(msg_level <= print_level))
-  {
-    const std::string printstr = "[" + std::to_string(msg_level) + "/"
-                                 + std::to_string(print_level) + "] "
-                                 + msg + "\n";
-    std::cout << printstr << std::flush;
-    InteractiveWaitToContinue();
   }
 }
 

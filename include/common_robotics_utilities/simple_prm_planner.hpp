@@ -321,7 +321,7 @@ void UpdateRoadMapEdges(
 #if defined(_OPENMP)
 #pragma omp parallel for
 #endif
-    for (size_t current_node_index = 0; current_node_index < roadmap.size();
+    for (size_t current_node_index = 0; current_node_index < roadmap.Size();
          current_node_index++)
     {
       update_node_fn(current_node_index);
@@ -329,7 +329,7 @@ void UpdateRoadMapEdges(
   }
   else
   {
-    for (size_t current_node_index = 0; current_node_index < roadmap.size();
+    for (size_t current_node_index = 0; current_node_index < roadmap.Size();
          current_node_index++)
     {
       update_node_fn(current_node_index);

@@ -285,6 +285,8 @@ void DoTest()
   simple_prm_planner::GrowRoadMap<Waypoint>(
       roadmap, state_sampling_fn, WaypointDistance, check_state_validity_fn,
       check_edge_validity_fn, roadmap_termination_fn, K, false, true, false);
+  simple_prm_planner::UpdateRoadMapEdges<Waypoint>(
+      roadmap, check_edge_validity_fn, WaypointDistance, false);
   std::cout << "Roadmap" << std::endl;
   DrawRoadmap(test_env, roadmap);
   // Run planning tests

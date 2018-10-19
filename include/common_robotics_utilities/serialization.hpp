@@ -454,6 +454,7 @@ DeserializeMemcpyableVectorLike(
   const size_t serialized_length = sizeof(T) * size;
   VectorLike deserialized(size);
   memcpy(deserialized.data(), &buffer[current_position], serialized_length);
+  current_position += serialized_length;
   // Figure out how many bytes were read
   const uint64_t bytes_read = current_position - starting_offset;
   return std::make_pair(deserialized, bytes_read);

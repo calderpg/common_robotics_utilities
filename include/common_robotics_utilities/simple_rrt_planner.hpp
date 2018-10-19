@@ -193,7 +193,7 @@ public:
 /// form a single connected tree, since it can be useful to store multiple
 /// trees in the same container.
 template<typename T, typename Allocator=std::allocator<T>>
-bool CheckTreeLinkage(const std::vector<SimpleRRTPlannerState<T>>& nodes)
+inline bool CheckTreeLinkage(const std::vector<SimpleRRTPlannerState<T>>& nodes)
 {
   // Step through each state in the tree.
   // Make sure that the linkage to the parent and child states are correct.
@@ -319,7 +319,7 @@ bool CheckTreeLinkage(const std::vector<SimpleRRTPlannerState<T>>& nodes)
 /// @param nodes tree produced by RRT planner.
 /// @param goal_state_index index of goal state in @param nodes.
 template<typename T, typename Allocator=std::allocator<T>>
-std::vector<T, Allocator> ExtractSolutionPath(
+inline std::vector<T, Allocator> ExtractSolutionPath(
     const std::vector<SimpleRRTPlannerState<T>>& nodes,
     const int64_t goal_state_index)
 {
@@ -344,7 +344,7 @@ std::vector<T, Allocator> ExtractSolutionPath(
 /// /// @param nodes tree produced by RRT planner.
 /// @param goal_state_indices indices of goal states in @param nodes.
 template<typename T, typename Allocator=std::allocator<T>>
-std::vector<std::vector<T, Allocator>> ExtractSolutionPaths(
+inline std::vector<std::vector<T, Allocator>> ExtractSolutionPaths(
     const std::vector<SimpleRRTPlannerState<T>>& nodes,
     const std::vector<int64_t>& goal_state_indices)
 {
@@ -403,8 +403,8 @@ std::vector<std::vector<T, Allocator>> ExtractSolutionPaths(
 template<typename StateType,
          typename SampleType=StateType,
          typename StateAllocator=std::allocator<StateType>>
-std::pair<std::vector<std::vector<StateType, StateAllocator>>,
-          std::map<std::string, double>> RRTPlanMultiPath(
+inline std::pair<std::vector<std::vector<StateType, StateAllocator>>,
+                 std::map<std::string, double>> RRTPlanMultiPath(
     std::vector<SimpleRRTPlannerState<StateType>>& tree,
     const std::function<SampleType(void)>& sampling_fn,
     const std::function<int64_t(
@@ -603,8 +603,8 @@ std::pair<std::vector<std::vector<StateType, StateAllocator>>,
 /// planning.
 template<typename RNG, typename StateType,
          typename Allocator=std::allocator<StateType>>
-std::pair<std::vector<std::vector<StateType, Allocator>>,
-          std::map<std::string, double>> BidirectionalRRTPlanMultiPath(
+inline std::pair<std::vector<std::vector<StateType, Allocator>>,
+                 std::map<std::string, double>> BidirectionalRRTPlanMultiPath(
     std::vector<SimpleRRTPlannerState<StateType>>& start_tree,
     std::vector<SimpleRRTPlannerState<StateType>>& goal_tree,
     const std::function<StateType(void)>& state_sampling_fn,
@@ -894,8 +894,8 @@ std::pair<std::vector<std::vector<StateType, Allocator>>,
 template<typename StateType,
          typename SampleType=StateType,
          typename StateAllocator=std::allocator<StateType>>
-std::pair<std::vector<StateType, StateAllocator>,
-          std::map<std::string, double>> RRTPlanSinglePath(
+inline std::pair<std::vector<StateType, StateAllocator>,
+                 std::map<std::string, double>> RRTPlanSinglePath(
     std::vector<SimpleRRTPlannerState<StateType>>& tree,
     const std::function<SampleType(void)>& sampling_fn,
     const std::function<int64_t(
@@ -996,8 +996,8 @@ std::pair<std::vector<StateType, StateAllocator>,
 /// planning.
 template<typename RNG, typename StateType,
          typename Allocator=std::allocator<StateType>>
-std::pair<std::vector<StateType, Allocator>,
-          std::map<std::string, double>> BidirectionalRRTPlanSinglePath(
+inline std::pair<std::vector<StateType, Allocator>,
+                 std::map<std::string, double>> BidirectionalRRTPlanSinglePath(
     std::vector<SimpleRRTPlannerState<StateType>>& start_tree,
     std::vector<SimpleRRTPlannerState<StateType>>& goal_tree,
     const std::function<StateType(void)>& state_sampling_fn,
@@ -1067,7 +1067,7 @@ std::pair<std::vector<StateType, Allocator>,
 /// exceeded. The timeout function starts keeping track of elapsed time after
 /// the first call, so you can create this function well before using it.
 /// However, it can only be used once!
-std::function<bool(const int64_t)> MakeRRTTimeoutTerminationFunction(
+inline std::function<bool(const int64_t)> MakeRRTTimeoutTerminationFunction(
     const double planning_timeout)
 {
   class TimeoutTerminationFunction
@@ -1116,7 +1116,7 @@ std::function<bool(const int64_t)> MakeRRTTimeoutTerminationFunction(
 /// exceeded. The timeout function starts keeping track of elapsed time after
 /// the first call, so you can create this function well before using it.
 /// However, it can only be used once!
-std::function<bool(const int64_t, const int64_t)>
+inline std::function<bool(const int64_t, const int64_t)>
 MakeBiRRTTimeoutTerminationFunction(const double planning_timeout)
 {
   class TimeoutTerminationFunction
@@ -1171,7 +1171,7 @@ MakeBiRRTTimeoutTerminationFunction(const double planning_timeout)
 /// the lifetime of @param rng must cover the entire lifetime of the
 /// std::function this returns!
 template<typename SampleType, typename PRNG>
-std::function<SampleType(void)> MakeStateAndGoalSamplingFunction(
+inline std::function<SampleType(void)> MakeStateAndGoalSamplingFunction(
     const std::function<SampleType(void)>& state_sampling_fn,
     const SampleType& goal_state, const double goal_bias,
     PRNG& rng)
@@ -1225,7 +1225,7 @@ std::function<SampleType(void)> MakeStateAndGoalSamplingFunction(
 /// distance function @param distance_fn and flag @param use_parallel which
 /// selects if parallel linear nearest neighbors should be performed.
 template<typename StateType>
-std::function<int64_t(
+inline std::function<int64_t(
     const std::vector<SimpleRRTPlannerState<StateType>>&,
     const StateType&)>
 MakeLinearNearestNeighborsFunction(
@@ -1271,7 +1271,7 @@ MakeLinearNearestNeighborsFunction(
 /// propagation function will take one step (of @param step_size length) towards
 /// it.
 template<typename StateType>
-std::function<std::vector<std::pair<StateType, int64_t>>(
+inline std::function<std::vector<std::pair<StateType, int64_t>>(
     const StateType&, const StateType&)>
 MakeKinematicRRTExtendPropagationFunction(
     const std::function<double(const StateType&,
@@ -1318,7 +1318,7 @@ MakeKinematicRRTExtendPropagationFunction(
 /// propagation function will take a sequence of steps (of @param step_size
 /// length) towards it.
 template<typename StateType>
-std::function<std::vector<std::pair<StateType, int64_t>>(
+inline std::function<std::vector<std::pair<StateType, int64_t>>(
     const StateType&, const StateType&)>
 MakeKinematicRRTConnectPropagationFunction(
     const std::function<double(const StateType&,

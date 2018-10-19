@@ -13,7 +13,7 @@ namespace path_processing
 {
 template<typename Configuration,
          typename ConfigAlloc=std::allocator<Configuration>>
-double ComputePercentCollisionFree(
+inline double ComputePercentCollisionFree(
   const std::vector<Configuration, ConfigAlloc>& path,
   const std::function<bool(const Configuration&,
                            const Configuration&)>& edge_validity_check_fn)
@@ -58,7 +58,7 @@ double ComputePercentCollisionFree(
 
 template<typename Configuration,
          typename ConfigAlloc=std::allocator<Configuration>>
-std::vector<Configuration, ConfigAlloc> AttemptShortcut(
+inline std::vector<Configuration, ConfigAlloc> AttemptShortcut(
     const std::vector<Configuration, ConfigAlloc>& current_path,
     const size_t start_index,
     const size_t end_index,
@@ -189,7 +189,7 @@ std::vector<Configuration, ConfigAlloc> AttemptShortcut(
 
 template<typename PRNG, typename Configuration,
          typename ConfigAlloc=std::allocator<Configuration>>
-std::vector<Configuration, ConfigAlloc> ShortcutSmoothPath(
+inline std::vector<Configuration, ConfigAlloc> ShortcutSmoothPath(
     const std::vector<Configuration, ConfigAlloc>& path,
     const uint32_t max_iterations,
     const uint32_t max_failed_iterations,
@@ -282,7 +282,7 @@ std::vector<Configuration, ConfigAlloc> ShortcutSmoothPath(
 
 template<typename Configuration,
          typename ConfigAlloc=std::allocator<Configuration>>
-std::vector<Configuration, ConfigAlloc> ResamplePath(
+inline std::vector<Configuration, ConfigAlloc> ResamplePath(
     const std::vector<Configuration, ConfigAlloc>& path,
     const double resampled_state_distance,
     const std::function<double(const Configuration&,

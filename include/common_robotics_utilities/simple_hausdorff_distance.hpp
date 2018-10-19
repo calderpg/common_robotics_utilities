@@ -30,7 +30,7 @@ namespace simple_hausdorff_distance
 template<typename FirstDatatype, typename SecondDatatype,
          typename FirstContainer=std::vector<FirstDatatype>,
          typename SecondContainer=std::vector<SecondDatatype>>
-double ComputeDistanceParallel(
+inline double ComputeDistanceParallel(
     const FirstContainer& first_distribution,
     const SecondContainer& second_distribution,
     const std::function<double(const FirstDatatype&,
@@ -93,7 +93,7 @@ double ComputeDistanceParallel(
 template<typename FirstDatatype, typename SecondDatatype,
          typename FirstContainer=std::vector<FirstDatatype>,
          typename SecondContainer=std::vector<SecondDatatype>>
-double ComputeDistanceSerial(
+inline double ComputeDistanceSerial(
     const FirstContainer& first_distribution,
     const SecondContainer& second_distribution,
     const std::function<double(const FirstDatatype&,
@@ -138,7 +138,7 @@ double ComputeDistanceSerial(
 template<typename FirstDatatype, typename SecondDatatype,
          typename FirstContainer=std::vector<FirstDatatype>,
          typename SecondContainer=std::vector<SecondDatatype>>
-double ComputeDistanceParallel(
+inline double ComputeDistanceParallel(
     const FirstContainer& first_distribution,
     const SecondContainer& second_distribution,
     const Eigen::MatrixXd& distance_matrix)
@@ -209,7 +209,7 @@ double ComputeDistanceParallel(
 template<typename FirstDatatype, typename SecondDatatype,
          typename FirstContainer=std::vector<FirstDatatype>,
          typename SecondContainer=std::vector<SecondDatatype>>
-double ComputeDistanceSerial(
+inline double ComputeDistanceSerial(
     const FirstContainer& first_distribution,
     const SecondContainer& second_distribution,
     const Eigen::MatrixXd& distance_matrix)
@@ -261,7 +261,7 @@ double ComputeDistanceSerial(
 template<typename FirstDatatype, typename SecondDatatype,
          typename FirstContainer=std::vector<FirstDatatype>,
          typename SecondContainer=std::vector<SecondDatatype>>
-double ComputeDistance(
+inline double ComputeDistance(
     const FirstContainer& first_distribution,
     const SecondContainer& second_distribution,
     const std::function<double(const FirstDatatype&,
@@ -291,7 +291,7 @@ double ComputeDistance(
 template<typename FirstDatatype, typename SecondDatatype,
          typename FirstContainer=std::vector<FirstDatatype>,
          typename SecondContainer=std::vector<SecondDatatype>>
-double ComputeDistance(
+inline double ComputeDistance(
     const FirstContainer& first_distribution,
     const SecondContainer& second_distribution,
     const Eigen::MatrixXd& distance_matrix,

@@ -17,7 +17,7 @@ namespace simple_knearest_neighbors
 /// @param current in @param items, with distance computed by @param distance_fn
 /// and search performed in parallel.
 template<typename Item, typename Value, typename Container=std::vector<Item>>
-std::vector<std::pair<int64_t, double>> GetKNearestNeighborsParallel(
+inline std::vector<std::pair<int64_t, double>> GetKNearestNeighborsParallel(
     const Container& items, const Value& current,
     const std::function<double(const Item&, const Value&)>& distance_fn,
     const size_t K)
@@ -116,7 +116,7 @@ std::vector<std::pair<int64_t, double>> GetKNearestNeighborsParallel(
 /// @param current in @param items, with distance computed by @param
 /// distance_fn.
 template<typename Item, typename Value, typename Container=std::vector<Item>>
-std::vector<std::pair<int64_t, double>> GetKNearestNeighborsSerial(
+inline std::vector<std::pair<int64_t, double>> GetKNearestNeighborsSerial(
     const Container& items, const Value& current,
     const std::function<double(const Item&, const Value&)>& distance_fn,
     const size_t K)
@@ -170,7 +170,7 @@ std::vector<std::pair<int64_t, double>> GetKNearestNeighborsSerial(
 /// @param current in @param items, with distance computed by @param distance_fn
 /// and @param use_parallel selects if search is performed in parallel.
 template<typename Item, typename Value, typename Container=std::vector<Item>>
-std::vector<std::pair<int64_t, double>> GetKNearestNeighbors(
+inline std::vector<std::pair<int64_t, double>> GetKNearestNeighbors(
     const Container& items, const Value& current,
     const std::function<double(const Item&, const Value&)>& distance_fn,
     const size_t K, const bool use_parallel = false)

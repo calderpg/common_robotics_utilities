@@ -116,7 +116,7 @@ public:
 template<typename FirstDatatype, typename SecondDatatype,
          typename FirstContainer=std::vector<FirstDatatype>,
          typename SecondContainer=std::vector<SecondDatatype>>
-double EvaluateWarpingCost(
+inline double EvaluateWarpingCost(
     const FirstContainer& first_sequence,
     const SecondContainer& second_sequence,
     const std::function<double(const FirstDatatype&,

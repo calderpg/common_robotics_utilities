@@ -46,7 +46,7 @@ enum class NNDistanceDirection {ROADMAP_TO_NEW_STATE, NEW_STATE_TO_ROADMAP};
 /// duplicate node in the roadmap. You can check which happended by querying the
 /// size of the roadmap before and after calling AddNodeToRoadmap.
 template<typename T>
-int64_t AddNodeToRoadmap(
+inline int64_t AddNodeToRoadmap(
     const T& state, const NNDistanceDirection nn_distance_direction,
     simple_graph::Graph<T>& roadmap,
     const std::function<double(const T&, const T&)>& distance_fn,
@@ -211,7 +211,7 @@ int64_t AddNodeToRoadmap(
 /// @return statistics as a map<string, double> of useful statistics collected
 /// while growing the roadmap.
 template<typename T>
-std::map<std::string, double> GrowRoadMap(
+inline std::map<std::string, double> GrowRoadMap(
     simple_graph::Graph<T>& roadmap,
     const std::function<T(void)>& sampling_fn,
     const std::function<double(const T&, const T&)>& distance_fn,
@@ -272,7 +272,7 @@ std::map<std::string, double> GrowRoadMap(
 /// use_parallel is true, this must be thread-safe.
 /// @param use_parallel use parallel operations when possible.
 template<typename T>
-void UpdateRoadMapEdges(
+inline void UpdateRoadMapEdges(
     simple_graph::Graph<T>& roadmap,
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const std::function<double(const T&, const T&)>& distance_fn,
@@ -342,7 +342,7 @@ void UpdateRoadMapEdges(
 /// @param solution_path_indices indices of the solution nodes in the graph, in
 /// order of the solution path.
 template<typename T, typename Allocator=std::allocator<T>>
-std::vector<T, Allocator> ExtractSolutionPath(
+inline std::vector<T, Allocator> ExtractSolutionPath(
     const simple_graph::Graph<T>& roadmap,
     const std::vector<int64_t>& solution_path_indices)
 {
@@ -384,7 +384,7 @@ std::vector<T, Allocator> ExtractSolutionPath(
 /// @return pair<path, length> of the best path from a single start to the goal.
 /// If no solution exists, path is empty and length is infinity.
 template<typename T, typename Allocator=std::allocator<T>>
-std::pair<std::vector<T, Allocator>, double>
+inline std::pair<std::vector<T, Allocator>, double>
 QueryPathAndAddNodesMultiStartSingleGoal(
     const std::vector<T, Allocator>& starts, const T& goal,
     simple_graph::Graph<T>& roadmap,
@@ -485,7 +485,7 @@ QueryPathAndAddNodesMultiStartSingleGoal(
 /// @return pair<path, length> of the best path from a single start to the goal.
 /// If no solution exists, path is empty and length is infinity.
 template<typename T, typename Allocator=std::allocator<T>>
-std::pair<std::vector<T, Allocator>, double>
+inline std::pair<std::vector<T, Allocator>, double>
 QueryPathMultiStartSingleGoal(
     const std::vector<T, Allocator>& starts, const T& goal,
     const simple_graph::Graph<T>& roadmap,
@@ -523,7 +523,7 @@ QueryPathMultiStartSingleGoal(
 /// @return pair<path, length> of the best path from start to goal.
 /// If no solution exists, path is empty and length is infinity.
 template<typename T, typename Allocator=std::allocator<T>>
-std::pair<std::vector<T, Allocator>, double>
+inline std::pair<std::vector<T, Allocator>, double>
 QueryPathAndAddNodesSingleStartSingleGoal(
     const T& start, const T& goal, simple_graph::Graph<T>& roadmap,
     const std::function<double(const T&, const T&)>& distance_fn,
@@ -576,7 +576,7 @@ QueryPathAndAddNodesSingleStartSingleGoal(
 /// @return pair<path, length> of the best path from start to goal.
 /// If no solution exists, path is empty and length is infinity.
 template<typename T, typename Allocator=std::allocator<T>>
-std::pair<std::vector<T, Allocator>, double>
+inline std::pair<std::vector<T, Allocator>, double>
 QueryPathSingleStartSingleGoal(
     const T& start, const T& goal, const simple_graph::Graph<T>& roadmap,
     const std::function<double(const T&, const T&)>& distance_fn,
@@ -621,7 +621,7 @@ QueryPathSingleStartSingleGoal(
 /// @return pair<path, length> of the best path from start to goal.
 /// If no solution exists, path is empty and length is infinity.
 template<typename T, typename Allocator=std::allocator<T>>
-std::pair<std::vector<T, Allocator>, double>
+inline std::pair<std::vector<T, Allocator>, double>
 LazyQueryPathAndAddNodesSingleStartSingleGoal(
     const T& start, const T& goal, simple_graph::Graph<T>& roadmap,
     const std::function<double(const T&, const T&)>& distance_fn,
@@ -680,7 +680,7 @@ LazyQueryPathAndAddNodesSingleStartSingleGoal(
 /// @return pair<path, length> of the best path from start to goal.
 /// If no solution exists, path is empty and length is infinity.
 template<typename T, typename Allocator=std::allocator<T>>
-std::pair<std::vector<T, Allocator>, double>
+inline std::pair<std::vector<T, Allocator>, double>
 LazyQueryPathSingleStartSingleGoal(
     const T& start, const T& goal, const simple_graph::Graph<T>& roadmap,
     const std::function<double(const T&, const T&)>& distance_fn,
@@ -722,7 +722,7 @@ LazyQueryPathSingleStartSingleGoal(
 /// @return pair<path, length> of the best path from a single start to a single
 /// goal. If no solution exists, path is empty and length is infinity.
 template<typename T, typename Allocator=std::allocator<T>>
-std::pair<std::vector<T, Allocator>, double>
+inline std::pair<std::vector<T, Allocator>, double>
 QueryPathMultiStartMultiGoal(
     const std::vector<T, Allocator>& starts,
     const std::vector<T, Allocator>& goals,

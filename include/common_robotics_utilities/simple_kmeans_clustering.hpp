@@ -25,7 +25,7 @@ namespace simple_kmeans_clustering
 /// @param distance_fn. @return labels for all elements.
 /// @param use_parallel selects if clustering should be performed in parallel.
 template<typename DataType, typename Container=std::vector<DataType>>
-std::vector<int32_t> PerformSingleClusteringIteration(
+inline std::vector<int32_t> PerformSingleClusteringIteration(
     const Container& data, const Container& current_cluster_centers,
     const std::function<double(const DataType&, const DataType&)>& distance_fn,
     const bool use_parallel)
@@ -68,7 +68,7 @@ std::vector<int32_t> PerformSingleClusteringIteration(
 /// @param use_parallel selects if cluster centers should be computed in
 /// parallel.
 template<typename DataType, typename Container=std::vector<DataType>>
-Container ComputeClusterCentersWeighted(
+inline Container ComputeClusterCentersWeighted(
     const Container& data,  const std::vector<double>& data_weights,
     const std::vector<int32_t>& cluster_labels,
     const std::function<DataType(
@@ -126,7 +126,7 @@ Container ComputeClusterCentersWeighted(
 
 /// Checks for convergence - i.e. if @param old_labels and @param new_labels are
 /// the same. @returns if the labels are the same.
-bool CheckForConvergence(const std::vector<int32_t>& old_labels,
+inline bool CheckForConvergence(const std::vector<int32_t>& old_labels,
                          const std::vector<int32_t>& new_labels)
 {
   if (old_labels.size() == new_labels.size())
@@ -156,10 +156,11 @@ bool CheckForConvergence(const std::vector<int32_t>& old_labels,
 /// 1/8 of the elements in @param data should be performed first, and
 /// @param use_parallel selects if internal operations should be parallelized.
 template<typename DataType, typename Container=std::vector<DataType>>
-std::vector<int32_t> ClusterWeighted(
+inline std::vector<int32_t> ClusterWeighted(
     const Container& data, const std::vector<double>& data_weights,
     const std::function<double(const DataType&, const DataType&)>& distance_fn,
-    const std::function<DataType(const Container&, const std::vector<double>&)>& weighted_average_fn,
+    const std::function<DataType(const Container&, const std::vector<double>&)>&
+        weighted_average_fn,
     const int32_t num_clusters, const int64_t prng_seed,
     const bool do_preliminary_clustering, const bool use_parallel = false)
 {
@@ -307,7 +308,7 @@ std::vector<int32_t> ClusterWeighted(
 /// should be performed first, and @param use_parallel selects if internal
 /// operations should be parallelized.
 template<typename DataType, typename Container=std::vector<DataType>>
-std::vector<int32_t> Cluster(
+inline std::vector<int32_t> Cluster(
     const Container& data,
     const std::function<double(const DataType&, const DataType&)>& distance_fn,
     const std::function<DataType(const Container&)>& average_fn,

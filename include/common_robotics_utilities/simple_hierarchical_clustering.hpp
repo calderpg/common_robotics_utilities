@@ -114,7 +114,7 @@ public:
 /// element-to-element distances in @param distance_matrix and the strategy
 /// specified by @param strategy. @return closest pair of clusters.
 /// Search is performed in parallel.
-ClosestPair GetClosestClustersParallel(
+inline ClosestPair GetClosestClustersParallel(
     const Eigen::MatrixXd& distance_matrix,
     const std::vector<std::vector<int64_t>>& clusters,
     const ClusterStrategy strategy)
@@ -186,7 +186,7 @@ ClosestPair GetClosestClustersParallel(
 /// Find the closest existing clusters in @param clusters, using the pairwise
 /// element-to-element distances in @param distance_matrix and the strategy
 /// specified by @param strategy. @return closest pair of clusters.
-ClosestPair GetClosestClustersSerial(
+inline ClosestPair GetClosestClustersSerial(
     const Eigen::MatrixXd& distance_matrix,
     const std::vector<std::vector<int64_t>>& clusters,
     const ClusterStrategy strategy)
@@ -242,7 +242,7 @@ ClosestPair GetClosestClustersSerial(
 /// element-to-element distances in @param distance_matrix and the strategy
 /// specified by @param strategy. @return closest pair of clusters.
 /// @param use_parallel selects if the search should be performed in parallel.
-ClosestPair GetClosestClusters(
+inline ClosestPair GetClosestClusters(
     const Eigen::MatrixXd& distance_matrix,
     const std::vector<std::vector<int64_t>>& clusters,
     const ClusterStrategy strategy,
@@ -263,7 +263,7 @@ ClosestPair GetClosestClusters(
 /// provide pairwise value-to-value distances, existing clusters provided by
 /// @param clusters, and strategy specified by @param strategy.
 /// Search is performed in parallel. @return closest pair.
-ClosestPair GetClosestValueToOtherParallel(
+inline ClosestPair GetClosestValueToOtherParallel(
     const std::vector<uint8_t>& datapoint_mask,
     const Eigen::MatrixXd& distance_matrix,
     const std::vector<std::vector<int64_t>>& clusters,
@@ -348,7 +348,7 @@ ClosestPair GetClosestValueToOtherParallel(
 /// provide pairwise value-to-value distances, existing clusters provided by
 /// @param clusters, and strategy specified by @param strategy. @return closest
 /// pair.
-ClosestPair GetClosestValueToOtherSerial(
+inline ClosestPair GetClosestValueToOtherSerial(
     const std::vector<uint8_t>& datapoint_mask,
     const Eigen::MatrixXd& distance_matrix,
     const std::vector<std::vector<int64_t>>& clusters,
@@ -415,7 +415,7 @@ ClosestPair GetClosestValueToOtherSerial(
 /// @param clusters, and strategy specified by @param strategy.
 /// @param use_parallel selects if the search should be performed in parallel.
 /// @return closest pair.
-ClosestPair GetClosestValueToOther(
+inline ClosestPair GetClosestValueToOther(
     const std::vector<uint8_t>& datapoint_mask,
     const Eigen::MatrixXd& distance_matrix,
     const std::vector<std::vector<int64_t>>& clusters,
@@ -440,7 +440,7 @@ ClosestPair GetClosestValueToOther(
 /// clusters provided by @param clusters, and strategy specified by @param
 /// strategy. @param use_parallel selects if the search should be performed in
 /// parallel. @return closest pair.
-ClosestPair GetClosestPair(
+inline ClosestPair GetClosestPair(
     const std::vector<uint8_t>& datapoint_mask,
     const Eigen::MatrixXd& distance_matrix,
     const std::vector<std::vector<int64_t>>& clusters,
@@ -483,7 +483,7 @@ ClosestPair GetClosestPair(
 /// specified by @param strategy, and @param use_parallel selects if parallel
 /// search should be used internally.
 template<typename DataType, typename Container=std::vector<DataType>>
-std::pair<std::vector<Container>, double> Cluster(
+inline std::pair<std::vector<Container>, double> Cluster(
     const Container& data,
     const std::function<double(const DataType&, const DataType&)>& distance_fn,
     const double max_cluster_distance, const ClusterStrategy strategy,
@@ -501,7 +501,7 @@ std::pair<std::vector<Container>, double> Cluster(
 /// specified by @param strategy, and @param use_parallel selects if parallel
 /// search should be used internally.
 template<typename DataType, typename Container=std::vector<DataType>>
-std::pair<std::vector<Container>, double> ClusterWithDistanceMatrix(
+inline std::pair<std::vector<Container>, double> ClusterWithDistanceMatrix(
     const Container& data, const Eigen::MatrixXd& distance_matrix,
     const double max_cluster_distance, const ClusterStrategy strategy,
     const bool use_parallel = false)

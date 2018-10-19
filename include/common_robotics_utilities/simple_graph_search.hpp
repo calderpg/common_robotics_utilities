@@ -121,7 +121,7 @@ public:
 };
 
 template<typename NodeValueType>
-DijkstrasResult PerformDijkstrasAlgorithm(
+inline DijkstrasResult PerformDijkstrasAlgorithm(
     const simple_graph::Graph<NodeValueType>& graph, const int64_t start_index)
 {
   if (!graph.IndexInRange(start_index))
@@ -196,7 +196,7 @@ DijkstrasResult PerformDijkstrasAlgorithm(
 }
 
 template<typename NodeValueType>
-simple_astar_search::AstarResult PerformLazyAstarSearch(
+inline simple_astar_search::AstarResult PerformLazyAstarSearch(
     const simple_graph::Graph<NodeValueType>& graph, const int64_t start_index,
     const int64_t goal_index,
     const std::function<bool(
@@ -337,7 +337,7 @@ simple_astar_search::AstarResult PerformLazyAstarSearch(
 }
 
 template<typename NodeValueType>
-simple_astar_search::AstarResult PerformLazyAstarSearch(
+inline simple_astar_search::AstarResult PerformLazyAstarSearch(
     const simple_graph::Graph<NodeValueType>& graph, const int64_t start_index,
     const int64_t goal_index,
     const std::function<bool(const NodeValueType&,
@@ -379,7 +379,7 @@ simple_astar_search::AstarResult PerformLazyAstarSearch(
 }
 
 template<typename NodeValueType>
-simple_astar_search::AstarResult PerformAstarSearch(
+inline simple_astar_search::AstarResult PerformAstarSearch(
     const simple_graph::Graph<NodeValueType>& graph, const int64_t start_index,
     const int64_t goal_index,
     const std::function<double(const NodeValueType&,

@@ -20,6 +20,7 @@
 #include <common_robotics_utilities/simple_knearest_neighbors.hpp>
 #include <common_robotics_utilities/simple_prm_planner.hpp>
 #include <common_robotics_utilities/simple_rrt_planner.hpp>
+#include <common_robotics_utilities/zlib_helpers.hpp>
 
 namespace common_robotics_utilities
 {
@@ -289,6 +290,74 @@ void DoTest()
       roadmap, check_edge_validity_fn, WaypointDistance, false);
   std::cout << "Roadmap" << std::endl;
   DrawRoadmap(test_env, roadmap);
+  // Serialize & load & check the roadmap
+  std::function<int64_t(const Waypoint&, std::vector<uint8_t>&)>
+      serialize_waypoint_fn
+          = [] (const Waypoint& wp, std::vector<uint8_t>& serialization_buffer)
+  {
+    return serialization::SerializePair<ssize_t, ssize_t>(
+        wp, serialization_buffer, serialization::SerializeMemcpyable<ssize_t>,
+        serialization::SerializeMemcpyable<ssize_t>);
+  };
+  std::function<std::pair<Waypoint, uint64_t>(
+      const std::vector<uint8_t>&, const uint64_t)>
+          deserialize_waypoint_fn
+              = [] (const std::vector<uint8_t>& deserialization_buffer,
+                    const uint64_t starting_offset)
+  {
+    return serialization::DeserializePair<ssize_t, ssize_t>(
+        deserialization_buffer, starting_offset,
+        serialization::DeserializeMemcpyable<ssize_t>,
+        serialization::DeserializeMemcpyable<ssize_t>);
+  };
+  std::vector<uint8_t> buffer;
+  simple_graph::Graph<Waypoint>::Serialize(
+      roadmap, buffer, serialize_waypoint_fn);
+  const std::string temp_file = "/tmp/temp_planning_test_roadmap.rmp";
+  zlib_helpers::CompressAndWriteToFile(buffer, temp_file);
+  const std::vector<uint8_t> load_buffer
+      = zlib_helpers::LoadFromFileAndDecompress(temp_file);
+  assert(buffer.size() == load_buffer.size());
+  const auto loaded = simple_graph::Graph<Waypoint>::Deserialize(
+                        load_buffer, 0, deserialize_waypoint_fn);
+  const simple_graph::Graph<Waypoint>& loaded_roadmap = loaded.first;
+  assert(roadmap.Size() == loaded_roadmap.Size());
+  std::cout << "Old roadmap nodes: " << roadmap.Size() << "\n"
+            << "Old roadmap binary size: " << buffer.size() << "\n"
+            << "New roadmap nodes: " << loaded_roadmap.Size() << "\n"
+            << "New roadmap binary size: " << load_buffer.size() << std::endl;
+  for (size_t idx = 0; idx < loaded_roadmap.Size(); idx++)
+  {
+    const auto& old_node = roadmap.GetNodeImmutable(static_cast<int64_t>(idx));
+    const auto& new_node
+        = loaded_roadmap.GetNodeImmutable(static_cast<int64_t>(idx));
+    const Waypoint& old_waypoint = old_node.GetValueImmutable();
+    const Waypoint& new_waypoint = new_node.GetValueImmutable();
+    assert(old_waypoint.first == new_waypoint.first);
+    assert(old_waypoint.second == new_waypoint.second);
+    const auto& old_in_edges = old_node.GetInEdgesImmutable();
+    const auto& new_in_edges = new_node.GetInEdgesImmutable();
+    assert(old_in_edges.size() == new_in_edges.size());
+    for (size_t edx = 0; edx < new_in_edges.size(); edx++)
+    {
+      const auto& old_edge = old_in_edges.at(edx);
+      const auto& new_edge = new_in_edges.at(edx);
+      assert(old_edge.GetFromIndex() == new_edge.GetFromIndex());
+      assert(old_edge.GetToIndex() == new_edge.GetToIndex());
+    }
+    const auto& old_out_edges = old_node.GetOutEdgesImmutable();
+    const auto& new_out_edges = new_node.GetOutEdgesImmutable();
+    assert(old_out_edges.size() == new_out_edges.size());
+    for (size_t edx = 0; edx < new_out_edges.size(); edx++)
+    {
+      const auto& old_edge = old_out_edges.at(edx);
+      const auto& new_edge = new_out_edges.at(edx);
+      assert(old_edge.GetFromIndex() == new_edge.GetFromIndex());
+      assert(old_edge.GetToIndex() == new_edge.GetToIndex());
+    }
+  }
+  std::cout << "Loaded Roadmap" << std::endl;
+  DrawRoadmap(test_env, loaded_roadmap);
   // Run planning tests
   for (size_t sdx = 0; sdx < keypoints.size(); sdx++)
   {
@@ -304,16 +373,16 @@ void DoTest()
                   << print::Print(goal) << ")" << std::endl;
         const auto path
             = simple_prm_planner::QueryPathSingleStartSingleGoal<Waypoint>(
-                start, goal, roadmap, WaypointDistance, check_edge_validity_fn,
-                K, false, true, false, true).first;
+                start, goal, loaded_roadmap, WaypointDistance,
+                check_edge_validity_fn, K, false, true, false, true).first;
         DrawPath(test_env, {start}, {goal}, ResampleWaypoints(path));
         // Plan with Lazy-PRM
         std::cout << "Lazy-PRM Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
         const auto lazy_path
             = simple_prm_planner::LazyQueryPathSingleStartSingleGoal<Waypoint>(
-                start, goal, roadmap, WaypointDistance, check_edge_validity_fn,
-                K, false, true, false, true).first;
+                start, goal, loaded_roadmap, WaypointDistance,
+                check_edge_validity_fn, K, false, true, false, true).first;
         DrawPath(test_env, {start}, {goal}, ResampleWaypoints(lazy_path));
         // Plan with A*
         std::cout << "A* Path (" << print::Print(start) << " to "
@@ -420,8 +489,8 @@ void DoTest()
             << print::Print(goals) << ")" << std::endl;
   const auto path
       = simple_prm_planner::QueryPathMultiStartMultiGoal<Waypoint>(
-          starts, goals, roadmap, WaypointDistance, check_edge_validity_fn, K,
-          false, true, false).first;
+          starts, goals, loaded_roadmap, WaypointDistance,
+          check_edge_validity_fn, K, false, true, false).first;
   DrawPath(test_env, starts, goals, ResampleWaypoints(path));
 }
 }  // namespace planning_test

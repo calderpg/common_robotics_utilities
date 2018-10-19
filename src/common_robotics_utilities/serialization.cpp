@@ -35,32 +35,10 @@ constexpr uint64_t SerializedSizeIsometry3d()
   return (uint64_t)(sizeof(double) * 16);
 }
 
-uint64_t SerializedDataSizeVectorXd(const Eigen::VectorXd& vec)
-{
-  return (uint64_t)(sizeof(double) * (size_t)vec.size());
-}
-
-uint64_t SerializedSizeVectorXd(const Eigen::VectorXd& vec)
-{
-  return (uint64_t)(sizeof(uint64_t) * (sizeof(double) * (size_t)vec.size()));
-}
-
 uint64_t SerializeVectorXd(const Eigen::VectorXd& value,
                            std::vector<uint8_t>& buffer)
 {
-  // Takes a state to serialize and a buffer to serialize into
-  // Return number of bytes written to buffer
-  const uint64_t serialized_size = SerializedSizeVectorXd(value);
-  std::vector<uint8_t> temp_buffer(serialized_size, 0x00);
-  // Make the header
-  const uint64_t size_header = (uint64_t)value.size();
-  SerializeMemcpyable(size_header, temp_buffer);
-  // Copy the data
-  memcpy(&(temp_buffer[sizeof(size_header)]),
-         value.data(),
-         SerializedDataSizeVectorXd(value));
-  buffer.insert(buffer.end(), temp_buffer.begin(), temp_buffer.end());
-  return serialized_size;
+  return SerializeMemcpyableVectorLike<double, Eigen::VectorXd>(value, buffer);
 }
 
 uint64_t SerializeVector2d(const Eigen::Vector2d& value,
@@ -125,24 +103,8 @@ uint64_t SerializeIsometry3d(const Eigen::Isometry3d& value,
 std::pair<Eigen::VectorXd, uint64_t> DeserializeVectorXd(
     const std::vector<uint8_t>& buffer, const uint64_t current)
 {
-  uint64_t current_position = current;
-  // Load the size header
-  const std::pair<uint64_t, uint64_t> deserialized_size_header
-      = DeserializeMemcpyable<uint64_t>(buffer, current_position);
-  const uint64_t vector_length = deserialized_size_header.first;
-  current_position += deserialized_size_header.second;
-  // Check buffer size
-  Eigen::VectorXd temp_value = Eigen::VectorXd::Zero((ssize_t)vector_length);
-  const uint64_t data_size = SerializedDataSizeVectorXd(temp_value);
-  if ((current + data_size) > buffer.size())
-  {
-    throw std::invalid_argument("Not enough room in the provided buffer");
-  }
-  // Load from the buffer
-  memcpy(temp_value.data(), &buffer[current_position], data_size);
-  current_position += data_size;
-  const uint64_t bytes_read = current_position - current;
-  return std::make_pair(temp_value, bytes_read);
+  return DeserializeMemcpyableVectorLike<double, Eigen::VectorXd>(
+      buffer, current);
 }
 
 std::pair<Eigen::Vector2d, uint64_t> DeserializeVector2d(

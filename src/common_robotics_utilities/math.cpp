@@ -109,14 +109,21 @@ double EnforceContinuousRevoluteBounds(const double value)
 
 Eigen::VectorXd SafeNormal(const Eigen::VectorXd& vec)
 {
-  const double norm = vec.norm();
-  if (norm > std::numeric_limits<double>::epsilon())
+  if (vec.size() > 0)
   {
-    return vec / norm;
+    const double norm = vec.norm();
+    if (norm > std::numeric_limits<double>::epsilon())
+    {
+      return vec / norm;
+    }
+    else
+    {
+      return Eigen::VectorXd::Zero(vec.size());
+    }
   }
   else
   {
-    return vec;
+    return Eigen::VectorXd::Zero(vec.size());
   }
 }
 

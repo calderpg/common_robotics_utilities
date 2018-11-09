@@ -793,6 +793,8 @@ public:
     initialized_ = false;
   }
 
+  virtual ~DynamicSpatialHashedVoxelGridBase() {}
+
   DynamicSpatialHashedVoxelGridBase<T, BackingStore>* Clone() const
   {
     return DoClone();

@@ -43,6 +43,21 @@ Eigen::Isometry3d TransformFromRPY(const Eigen::Vector3d& translation,
 
 Eigen::Isometry3d TransformFromRPY(const Eigen::VectorXd& components);
 
+// URDF RPY IS ACTUALLY APPLIED Y*P*R
+Eigen::Isometry3d TransformFromUrdfXYZRPY(const double x,
+                                          const double y,
+                                          const double z,
+                                          const double roll,
+                                          const double pitch,
+                                          const double yaw);
+
+// URDF RPY IS ACTUALLY APPLIED Y*P*R
+Eigen::Isometry3d TransformFromUrdfRPY(const Eigen::Vector3d& translation,
+                                       const Eigen::Vector3d& rotation);
+
+// URDF RPY IS ACTUALLY APPLIED Y*P*R
+Eigen::Isometry3d TransformFromUrdfRPY(const Eigen::VectorXd& components);
+
 Eigen::VectorXd TransformToRPY(const Eigen::Isometry3d& transform);
 
 Eigen::Vector3d StdVectorDoubleToEigenVector3d(
@@ -114,7 +129,8 @@ geometry_msgs::Transform EigenIsometry3dToGeometryTransform(
     const Eigen::Isometry3d& transform);
 
 geometry_msgs::TransformStamped EigenIsometry3dToGeometryTransformStamped(
-    const Eigen::Isometry3d& transform, const std::string& frame_id);
+    const Eigen::Isometry3d& transform, const std::string& frame_id,
+    const std::string& child_frame_id);
 
 Eigen::Matrix3Xd VectorGeometryPointToEigenMatrix3Xd(
     const std::vector<geometry_msgs::Point>& vector_geom);

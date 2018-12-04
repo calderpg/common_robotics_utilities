@@ -65,7 +65,7 @@ Eigen::Isometry3d TransformFromXYZRPY(const double x,
 }
 
 Eigen::Isometry3d TransformFromRPY(const Eigen::Vector3d& translation,
-                                          const Eigen::Vector3d& rotation)
+                                   const Eigen::Vector3d& rotation)
 {
   const Eigen::Isometry3d transform = (Eigen::Translation3d)translation
                                       * QuaternionFromRPY(rotation.x(),
@@ -84,6 +84,49 @@ Eigen::Isometry3d TransformFromRPY(const Eigen::VectorXd& components)
            * QuaternionFromRPY(components(3),
                                components(4),
                                components(5));
+  }
+  else
+  {
+    throw std::invalid_argument(
+          "VectorXd source vector is not 6 elements in size");
+  }
+}
+
+// URDF RPY IS ACTUALLY APPLIED Y*P*R
+Eigen::Isometry3d TransformFromUrdfXYZRPY(const double x,
+                                          const double y,
+                                          const double z,
+                                          const double roll,
+                                          const double pitch,
+                                          const double yaw)
+{
+  const Eigen::Isometry3d transform = Eigen::Translation3d(x, y, z)
+                                      * QuaternionFromUrdfRPY(roll, pitch, yaw);
+  return transform;
+}
+
+// URDF RPY IS ACTUALLY APPLIED Y*P*R
+Eigen::Isometry3d TransformFromUrdfRPY(const Eigen::Vector3d& translation,
+                                       const Eigen::Vector3d& rotation)
+{
+  const Eigen::Isometry3d transform = (Eigen::Translation3d)translation
+                                      * QuaternionFromUrdfRPY(rotation.x(),
+                                                              rotation.y(),
+                                                              rotation.z());
+  return transform;
+}
+
+// URDF RPY IS ACTUALLY APPLIED Y*P*R
+Eigen::Isometry3d TransformFromUrdfRPY(const Eigen::VectorXd& components)
+{
+  if (components.size() == 6)
+  {
+    return Eigen::Translation3d(components(0),
+                                components(1),
+                                components(2))
+           * QuaternionFromUrdfRPY(components(3),
+                                   components(4),
+                                   components(5));
   }
   else
   {
@@ -333,10 +376,12 @@ geometry_msgs::Transform EigenIsometry3dToGeometryTransform(
 }
 
 geometry_msgs::TransformStamped EigenIsometry3dToGeometryTransformStamped(
-    const Eigen::Isometry3d& transform, const std::string& frame_id)
+    const Eigen::Isometry3d& transform, const std::string& frame_id,
+    const std::string& child_frame_id)
 {
   geometry_msgs::TransformStamped transform_stamped;
   transform_stamped.header.frame_id = frame_id;
+  transform_stamped.child_frame_id = child_frame_id;
   transform_stamped.transform = EigenIsometry3dToGeometryTransform(transform);
   return transform_stamped;
 }

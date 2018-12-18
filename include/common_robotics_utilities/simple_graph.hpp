@@ -19,6 +19,7 @@ private:
   int64_t from_index_ = -1;
   int64_t to_index_ = -1;
   double weight_ = 0.0;
+  uint64_t scratchpad_ = 0;
 
 public:
 
@@ -37,11 +38,19 @@ public:
   }
 
   GraphEdge(
-      const int64_t from_index, const int64_t to_index, const double weight)
-      : from_index_(from_index), to_index_(to_index), weight_(weight)
+      const int64_t from_index, const int64_t to_index, const double weight,
+      const uint64_t scratchpad)
+      : from_index_(from_index), to_index_(to_index), weight_(weight),
+        scratchpad_(scratchpad)
   {}
 
-  GraphEdge() : from_index_(-1), to_index_(-1), weight_(0.0) {}
+  GraphEdge(
+      const int64_t from_index, const int64_t to_index, const double weight)
+      : from_index_(from_index), to_index_(to_index), weight_(weight),
+        scratchpad_(0)
+  {}
+
+  GraphEdge() : from_index_(-1), to_index_(-1), weight_(0.0), scratchpad_(0) {}
 
   uint64_t SerializeSelf(std::vector<uint8_t>& buffer) const
   {
@@ -49,6 +58,7 @@ public:
     serialization::SerializeMemcpyable<int64_t>(from_index_, buffer);
     serialization::SerializeMemcpyable<int64_t>(to_index_, buffer);
     serialization::SerializeMemcpyable<double>(weight_, buffer);
+    serialization::SerializeMemcpyable<uint64_t>(scratchpad_, buffer);
     // Figure out how many bytes were written
     const uint64_t end_buffer_size = buffer.size();
     const uint64_t bytes_written = end_buffer_size - start_buffer_size;
@@ -74,6 +84,11 @@ public:
                                                        current_position);
     weight_ = deserialized_weight.first;
     current_position += deserialized_weight.second;
+    const std::pair<uint64_t, uint64_t> deserialized_scratchpad
+        = serialization::DeserializeMemcpyable<uint64_t>(buffer,
+                                                         current_position);
+    scratchpad_ = deserialized_scratchpad.first;
+    current_position += deserialized_scratchpad.second;
     // Figure out how many bytes were read
     const uint64_t bytes_read = current_position - starting_offset;
     return bytes_read;
@@ -83,13 +98,15 @@ public:
   {
     return (from_index_ == other.GetFromIndex()
             && to_index_ == other.GetToIndex()
-            && weight_ == other.GetWeight());
+            && weight_ == other.GetWeight()
+            && scratchpad_ == other.GetScratchpad());
   }
 
   std::string Print() const
   {
     return "(" + std::to_string(from_index_) + "->" + std::to_string(to_index_)
-           + ") : " + std::to_string(weight_);
+           + ") : " + std::to_string(weight_) + " ["
+           + std::to_string(scratchpad_) + "]";
   }
 
   int64_t GetFromIndex() const { return from_index_; }
@@ -97,6 +114,8 @@ public:
   int64_t GetToIndex() const { return to_index_; }
 
   double GetWeight() const { return weight_; }
+
+  uint64_t GetScratchpad() const { return scratchpad_; }
 
   void SetFromIndex(const int64_t new_from_index)
   {
@@ -106,6 +125,11 @@ public:
   void SetToIndex(const int64_t new_to_index) { to_index_ = new_to_index; }
 
   void SetWeight(const double new_weight) { weight_ = new_weight; }
+
+  void SetScratchpad(const uint64_t new_scratchpad)
+  {
+    scratchpad_ = new_scratchpad;
+  }
 };
 
 /// Node in a graph, which stores directed in and out edges as well as value.

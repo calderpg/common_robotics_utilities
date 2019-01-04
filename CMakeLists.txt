@@ -99,16 +99,17 @@ add_library(${PROJECT_NAME}
 add_dependencies(${PROJECT_NAME} ${catkin_EXPORTED_TARGETS})
 target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} z)
 
-# Tests/examples
-add_executable(clustering_test test/clustering_test.cpp)
-add_dependencies(clustering_test ${PROJECT_NAME})
-target_link_libraries(clustering_test ${PROJECT_NAME})
+# Examples
+add_executable(clustering_example example/clustering_example.cpp)
+add_dependencies(clustering_example ${PROJECT_NAME})
+target_link_libraries(clustering_example ${PROJECT_NAME})
 
-add_executable(planning_test test/planning_test.cpp)
+# Tests
+catkin_add_gtest(planning_test test/planning_test.cpp)
 add_dependencies(planning_test ${PROJECT_NAME})
 target_link_libraries(planning_test ${PROJECT_NAME})
 
-add_executable(voxel_grid_test test/voxel_grid_test.cpp)
+catkin_add_gtest(voxel_grid_test test/voxel_grid_test.cpp)
 add_dependencies(voxel_grid_test ${PROJECT_NAME})
 target_link_libraries(voxel_grid_test ${PROJECT_NAME})
 

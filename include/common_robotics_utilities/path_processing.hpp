@@ -110,7 +110,8 @@ inline std::vector<Configuration, ConfigAlloc> AttemptShortcut(
       return shortcut;
     }
     // Check if this was a marginal path that could clip obstacles
-    else if (ComputePercentCollisionFree(shortcut, edge_validity_check_fn)
+    else if (ComputePercentCollisionFree<Configuration, ConfigAlloc>(
+                 shortcut, edge_validity_check_fn)
              == 1.0)
     {
       return shortcut;
@@ -128,19 +129,17 @@ inline std::vector<Configuration, ConfigAlloc> AttemptShortcut(
       const uint32_t available_backtracking_steps
           = remaining_backtracking_steps - 1;
       const auto first_half_shortcut
-          = AttemptShortcut(current_path, start_index, middle_index,
-                            available_backtracking_steps,
-                            resample_shortcuts_interval,
-                            check_for_marginal_shortcuts,
-                            edge_validity_check_fn, state_distance_fn,
-                            state_interpolation_fn);
+          = AttemptShortcut<Configuration, ConfigAlloc>(
+              current_path, start_index, middle_index,
+              available_backtracking_steps, resample_shortcuts_interval,
+              check_for_marginal_shortcuts, edge_validity_check_fn,
+              state_distance_fn, state_interpolation_fn);
       const auto second_half_shortcut
-          = AttemptShortcut(current_path, middle_index, end_index,
-                            available_backtracking_steps,
-                            resample_shortcuts_interval,
-                            check_for_marginal_shortcuts,
-                            edge_validity_check_fn, state_distance_fn,
-                            state_interpolation_fn);
+          = AttemptShortcut<Configuration, ConfigAlloc>(
+              current_path, middle_index, end_index,
+              available_backtracking_steps, resample_shortcuts_interval,
+              check_for_marginal_shortcuts, edge_validity_check_fn,
+              state_distance_fn, state_interpolation_fn);
       std::vector<Configuration, ConfigAlloc> shortcut;
       if (first_half_shortcut.size() > 0 && second_half_shortcut.size() > 0)
       {
@@ -239,13 +238,10 @@ inline std::vector<Configuration, ConfigAlloc> ShortcutSmoothPath(
     {
       continue;
     }
-    const auto shortcut = AttemptShortcut(current_path, start_index, end_index,
-                                          max_backtracking_steps,
-                                          resample_shortcuts_interval,
-                                          check_for_marginal_shortcuts,
-                                          edge_validity_check_fn,
-                                          state_distance_fn,
-                                          state_interpolation_fn);
+    const auto shortcut = AttemptShortcut<Configuration, ConfigAlloc>(
+        current_path, start_index, end_index, max_backtracking_steps,
+        resample_shortcuts_interval, check_for_marginal_shortcuts,
+        edge_validity_check_fn, state_distance_fn, state_interpolation_fn);
     // An empty shortcut means it failed, since the shortcut must include the
     // start and end configurations
     if (shortcut.size() > 0)

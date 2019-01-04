@@ -5,11 +5,13 @@
 #include <common_robotics_utilities/serialization.hpp>
 #include <common_robotics_utilities/voxel_grid.hpp>
 
+#include <gtest/gtest.h>
+
 namespace common_robotics_utilities
 {
 namespace voxel_grid_test
 {
-void TestVoxelGridIndexLookup()
+TEST(VoxelGridTest, indexLookup)
 {
   const voxel_grid::GridSizes grid_sizes(1.0, 20.0, 20.0, 20.0);
   voxel_grid::VoxelGrid<int32_t> test_grid(grid_sizes, 0);
@@ -36,7 +38,6 @@ void TestVoxelGridIndexLookup()
           buffer, 0, serialization::DeserializeMemcpyable<int32_t>).first;
   // Check the values
   int32_t check_index = 0;
-  bool pass = true;
   for (int64_t x_index = 0; x_index < read_grid.GetNumXCells(); x_index++)
   {
     for (int64_t y_index = 0; y_index < read_grid.GetNumYCells(); y_index++)
@@ -49,25 +50,15 @@ void TestVoxelGridIndexLookup()
         const int32_t index_ref_val
             = read_grid.GetImmutable(
                 voxel_grid::GridIndex(x_index, y_index, z_index)).Value();
-        if (ref_val != check_val || index_ref_val != check_val)
-        {
-          pass = false;
-        }
+        ASSERT_EQ(ref_val, check_val);
+        ASSERT_EQ(index_ref_val, check_val);
         check_index++;
       }
     }
   }
-  if (pass)
-  {
-    std::cout << "VG-I-Lookup - All checks pass" << std::endl;
-  }
-  else
-  {
-    std::cout << "*** VG-I-Lookup - Checks failed ***" << std::endl;
-  }
 }
 
-void TestVoxelGridLocationLookup()
+TEST(VoxelGridTest, locationLookup)
 {
   const voxel_grid::GridSizes grid_sizes(1.0, 20.0, 20.0, 20.0);
   voxel_grid::VoxelGrid<int32_t> test_grid(grid_sizes, 0);
@@ -94,7 +85,6 @@ void TestVoxelGridLocationLookup()
           buffer, 0, serialization::DeserializeMemcpyable<int32_t>).first;
   // Check the values
   int32_t check_index = 0;
-  bool pass = true;
   for (double x_pos = -9.5; x_pos <= 9.5; x_pos += 1.0)
   {
     for (double y_pos = -9.5; y_pos <= 9.5; y_pos += 1.0)
@@ -110,12 +100,9 @@ void TestVoxelGridLocationLookup()
         const int32_t ref_val_4d
             = read_grid.GetImmutable4d(
                 Eigen::Vector4d(x_pos, y_pos, z_pos, 1.0)).Value();
-        if (ref_val != check_val || ref_val_3d != check_val
-            || ref_val_4d != check_val)
-        {
-          pass = false;
-        }
-        check_index++;
+        ASSERT_EQ(ref_val, check_val);
+        ASSERT_EQ(ref_val_3d, check_val);
+        ASSERT_EQ(ref_val_4d, check_val);
         const voxel_grid::GridIndex query_index
             = read_grid.LocationToGridIndex(x_pos, y_pos, z_pos);
         const voxel_grid::GridIndex query_index_3d
@@ -124,37 +111,24 @@ void TestVoxelGridLocationLookup()
         const voxel_grid::GridIndex query_index_4d
             = read_grid.LocationToGridIndex4d(
                 Eigen::Vector4d(x_pos, y_pos, z_pos, 1.0));
-        if (query_index != query_index_3d || query_index != query_index_4d)
-        {
-          pass = false;
-        }
+        ASSERT_EQ(query_index, query_index_3d);
+        ASSERT_EQ(query_index, query_index_4d);
         const Eigen::Vector4d query_location
             = read_grid.GridIndexToLocation(query_index);
-        if (x_pos != query_location(0) || y_pos != query_location(1)
-            || z_pos != query_location(2) || 1.0 != query_location(3))
-        {
-          pass = false;
-        }
+        ASSERT_EQ(x_pos, query_location(0));
+        ASSERT_EQ(y_pos, query_location(1));
+        ASSERT_EQ(z_pos, query_location(2));
+        ASSERT_EQ(1.0, query_location(3));
         const voxel_grid::GridIndex found_query_index
             = read_grid.LocationToGridIndex4d(query_location);
-        if (found_query_index != query_index)
-        {
-            pass = false;
-        }
+        ASSERT_EQ(found_query_index, query_index);
+        check_index++;
       }
     }
   }
-  if (pass)
-  {
-    std::cout << "VG-L-Lookup - All checks pass" << std::endl;
-  }
-  else
-  {
-    std::cout << "*** VG-L-Lookup - Checks failed ***" << std::endl;
-  }
 }
 
-void TestDSHVoxelGridLocationLookup()
+TEST(VoxelGridTest, dshvgLookup)
 {
   const voxel_grid::GridSizes chunk_sizes(1.0, 4.0, 4.0, 4.0);
   voxel_grid::DynamicSpatialHashedVoxelGrid<int32_t> test_grid(chunk_sizes, 0);
@@ -182,7 +156,6 @@ void TestDSHVoxelGridLocationLookup()
           buffer, 0, serialization::DeserializeMemcpyable<int32_t>).first;
   // Check the values
   int32_t check_index = 0;
-  bool pass = true;
   for (double x_pos = -9.5; x_pos <= 9.5; x_pos += 1.0)
   {
     for (double y_pos = -9.5; y_pos <= 9.5; y_pos += 1.0)
@@ -192,39 +165,19 @@ void TestDSHVoxelGridLocationLookup()
         const int32_t check_val = check_vals.at(check_index);
         const auto lookup = read_grid.GetImmutable(x_pos, y_pos, z_pos);
         const int32_t ref_val = lookup.Value();
-        if (ref_val != check_val)
-        {
-          pass = false;
-        }
-        if (lookup.FoundStatus() != voxel_grid::DSHVGFoundStatus::FOUND_IN_CELL)
-        {
-          pass = false;
-        }
+        ASSERT_EQ(ref_val, check_val);
+        ASSERT_EQ(lookup.FoundStatus(),
+                  voxel_grid::DSHVGFoundStatus::FOUND_IN_CELL);
         check_index++;
       }
     }
   }
-  if (pass)
-  {
-    std::cout << "DSHVG - All checks pass" << std::endl;
-  }
-  else
-  {
-    std::cout << "*** DSHVG - Checks failed ***" << std::endl;
-  }
-}
-
-void DoTest()
-{
-  TestVoxelGridIndexLookup();
-  TestVoxelGridLocationLookup();
-  TestDSHVoxelGridLocationLookup();
 }
 }  // namespace voxel_grid_test
 }  // namespace common_robotics_utilities
 
-int main(int, char**)
+int main(int argc, char** argv)
 {
-  common_robotics_utilities::voxel_grid_test::DoTest();
-  return EXIT_SUCCESS;
+  testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }

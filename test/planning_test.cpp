@@ -22,6 +22,8 @@
 #include <common_robotics_utilities/simple_rrt_planner.hpp>
 #include <common_robotics_utilities/zlib_helpers.hpp>
 
+#include <gtest/gtest.h>
+
 namespace common_robotics_utilities
 {
 namespace planning_test
@@ -152,6 +154,26 @@ bool CheckEdgeCollisionFree(
   return true;
 }
 
+template<typename PRNG>
+std::vector<Waypoint> SmoothWaypoints(
+    const std::vector<Waypoint>& waypoints,
+    const std::function<bool(const Waypoint&, const Waypoint&)>& check_edge_fn,
+    PRNG& prng)
+{
+  // Parameters for shortcut smoothing
+  const uint32_t max_iterations = 100;
+  const uint32_t max_failed_iterations = 100;
+  const uint32_t max_backtracking_steps = 1;
+  const double max_shortcut_fraction = 0.5;
+  const double resample_shortcuts_interval = 0.5;
+  const bool check_for_marginal_shortcuts = false;
+  return path_processing::ShortcutSmoothPath<PRNG, Waypoint>(
+      waypoints, max_iterations, max_failed_iterations, max_backtracking_steps,
+      max_shortcut_fraction, resample_shortcuts_interval,
+      check_for_marginal_shortcuts, check_edge_fn, WaypointDistance,
+      InterpolateWaypoint, prng);
+}
+
 std::vector<Waypoint> ResampleWaypoints(const std::vector<Waypoint>& waypoints)
 {
   return path_processing::ResamplePath<Waypoint>(
@@ -212,7 +234,7 @@ Waypoint SampleWaypoint(const TestMap& map, PRNG& rng)
   return Waypoint(row_dist(rng), col_dist(rng));
 }
 
-void DoTest()
+TEST(PlanningTest, allPlannersTest)
 {
   const std::string test_env_raw = "####################"
                                    "#                  #"
@@ -250,11 +272,49 @@ void DoTest()
   const std::function<bool(const Waypoint&, const Waypoint&)>
       check_edge_validity_fn = [&] (const Waypoint& start, const Waypoint& end)
   {
-    return CheckEdgeCollisionFree(test_env, start, end, 0.5);
+    // We check both forward and backward because rounding in the waypoint
+    // interpolation can create edges that are valid in only one direction.
+    return (CheckEdgeCollisionFree(test_env, start, end, 0.5) &&
+            CheckEdgeCollisionFree(test_env, end, start, 0.5));
   };
   const std::function<Waypoint(void)> state_sampling_fn = [&] (void)
   {
     return SampleWaypoint(test_env, prng);
+  };
+  // Functions to check planning results
+  const std::function<void(const std::vector<Waypoint>&)> check_path =
+      [&] (const std::vector<Waypoint>& path)
+  {
+    ASSERT_GE(static_cast<int32_t>(path.size()), 2);
+    for (size_t idx = 1; idx < path.size(); idx++)
+    {
+      // We check both forward and backward because rounding in the waypoint
+      // interpolation can create edges that are valid in only one direction.
+      const bool forward_valid =
+          check_edge_validity_fn(path.at(idx - 1), path.at(idx));
+      const bool backward_valid =
+          check_edge_validity_fn(path.at(idx), path.at(idx - 1));
+      const bool edge_valid = forward_valid && backward_valid;
+      ASSERT_TRUE(edge_valid);
+    }
+  };
+  const std::function<void(
+      const TestMap&, const std::vector<Waypoint>&,
+      const std::vector<Waypoint>&, const std::vector<Waypoint>&)> check_plan =
+      [&] (const TestMap& environment, const std::vector<Waypoint>& starts,
+           const std::vector<Waypoint>& goals,
+           const std::vector<Waypoint>& path)
+  {
+    DrawPath(environment, starts, goals, path);
+    std::cout << "Checking raw path" << std::endl;
+    check_path(path);
+    const auto smoothed_path =
+        SmoothWaypoints(path, check_edge_validity_fn, prng);
+    std::cout << "Checking smoothed path" << std::endl;
+    check_path(smoothed_path);
+    const auto resampled_path = ResampleWaypoints(smoothed_path);
+    std::cout << "Checking resampled path" << std::endl;
+    check_path(resampled_path);
   };
   // RRT and BiRRT parameters
   const double rrt_step_size = 3.0;
@@ -317,11 +377,11 @@ void DoTest()
   zlib_helpers::CompressAndWriteToFile(buffer, temp_file);
   const std::vector<uint8_t> load_buffer
       = zlib_helpers::LoadFromFileAndDecompress(temp_file);
-  assert(buffer.size() == load_buffer.size());
+  ASSERT_EQ(buffer.size(), load_buffer.size());
   const auto loaded = simple_graph::Graph<Waypoint>::Deserialize(
                         load_buffer, 0, deserialize_waypoint_fn);
   const simple_graph::Graph<Waypoint>& loaded_roadmap = loaded.first;
-  assert(roadmap.Size() == loaded_roadmap.Size());
+  ASSERT_EQ(roadmap.Size(), loaded_roadmap.Size());
   std::cout << "Old roadmap nodes: " << roadmap.Size() << "\n"
             << "Old roadmap binary size: " << buffer.size() << "\n"
             << "New roadmap nodes: " << loaded_roadmap.Size() << "\n"
@@ -333,27 +393,27 @@ void DoTest()
         = loaded_roadmap.GetNodeImmutable(static_cast<int64_t>(idx));
     const Waypoint& old_waypoint = old_node.GetValueImmutable();
     const Waypoint& new_waypoint = new_node.GetValueImmutable();
-    assert(old_waypoint.first == new_waypoint.first);
-    assert(old_waypoint.second == new_waypoint.second);
+    ASSERT_EQ(old_waypoint.first, new_waypoint.first);
+    ASSERT_EQ(old_waypoint.second, new_waypoint.second);
     const auto& old_in_edges = old_node.GetInEdgesImmutable();
     const auto& new_in_edges = new_node.GetInEdgesImmutable();
-    assert(old_in_edges.size() == new_in_edges.size());
+    ASSERT_EQ(old_in_edges.size(), new_in_edges.size());
     for (size_t edx = 0; edx < new_in_edges.size(); edx++)
     {
       const auto& old_edge = old_in_edges.at(edx);
       const auto& new_edge = new_in_edges.at(edx);
-      assert(old_edge.GetFromIndex() == new_edge.GetFromIndex());
-      assert(old_edge.GetToIndex() == new_edge.GetToIndex());
+      ASSERT_EQ(old_edge.GetFromIndex(), new_edge.GetFromIndex());
+      ASSERT_EQ(old_edge.GetToIndex(), new_edge.GetToIndex());
     }
     const auto& old_out_edges = old_node.GetOutEdgesImmutable();
     const auto& new_out_edges = new_node.GetOutEdgesImmutable();
-    assert(old_out_edges.size() == new_out_edges.size());
+    ASSERT_EQ(old_out_edges.size(), new_out_edges.size());
     for (size_t edx = 0; edx < new_out_edges.size(); edx++)
     {
       const auto& old_edge = old_out_edges.at(edx);
       const auto& new_edge = new_out_edges.at(edx);
-      assert(old_edge.GetFromIndex() == new_edge.GetFromIndex());
-      assert(old_edge.GetToIndex() == new_edge.GetToIndex());
+      ASSERT_EQ(old_edge.GetFromIndex(), new_edge.GetFromIndex());
+      ASSERT_EQ(old_edge.GetToIndex(), new_edge.GetToIndex());
     }
   }
   std::cout << "Loaded Roadmap" << std::endl;
@@ -375,7 +435,7 @@ void DoTest()
             = simple_prm_planner::QueryPathSingleStartSingleGoal<Waypoint>(
                 start, goal, loaded_roadmap, WaypointDistance,
                 check_edge_validity_fn, K, false, true, false, true).first;
-        DrawPath(test_env, {start}, {goal}, ResampleWaypoints(path));
+        check_plan(test_env, {start}, {goal}, path);
         // Plan with Lazy-PRM
         std::cout << "Lazy-PRM Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
@@ -383,7 +443,7 @@ void DoTest()
             = simple_prm_planner::LazyQueryPathSingleStartSingleGoal<Waypoint>(
                 start, goal, loaded_roadmap, WaypointDistance,
                 check_edge_validity_fn, K, false, true, false, true).first;
-        DrawPath(test_env, {start}, {goal}, ResampleWaypoints(lazy_path));
+        check_plan(test_env, {start}, {goal}, lazy_path);
         // Plan with A*
         std::cout << "A* Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
@@ -393,7 +453,7 @@ void DoTest()
                     start, goal, GenerateAllPossible8ConnectedChildren,
                     check_edge_validity_fn, WaypointDistance, WaypointDistance,
                     HashWaypoint, true).first;
-        DrawPath(test_env, {start}, {goal}, astar_path);
+        check_plan(test_env, {start}, {goal}, astar_path);
         // Plan with RRT-Extend
         std::cout << "RRT-Extend Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
@@ -416,7 +476,7 @@ void DoTest()
                     rrt_extend_fn, {}, rrt_goal_reached_fn, {},
                     simple_rrt_planner
                         ::MakeRRTTimeoutTerminationFunction(rrt_timeout)).first;
-        DrawPath(test_env, {start}, {goal}, ResampleWaypoints(rrt_extend_path));
+        check_plan(test_env, {start}, {goal}, rrt_extend_path);
         // Plan with RRT-Connect
         std::cout << "RRT-Connect Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
@@ -431,8 +491,7 @@ void DoTest()
                     rrt_connect_fn, {}, rrt_goal_reached_fn, {},
                     simple_rrt_planner
                         ::MakeRRTTimeoutTerminationFunction(rrt_timeout)).first;
-        DrawPath(test_env, {start}, {goal},
-                 ResampleWaypoints(rrt_connect_path));
+        check_plan(test_env, {start}, {goal}, rrt_connect_path);
         // Plan with BiRRT-Extend
         std::cout << "BiRRT-Extend Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
@@ -454,8 +513,7 @@ void DoTest()
                     simple_rrt_planner
                         ::MakeBiRRTTimeoutTerminationFunction(rrt_timeout),
                     prng).first;
-        DrawPath(test_env, {start}, {goal},
-                 ResampleWaypoints(birrt_extent_path));
+        check_plan(test_env, {start}, {goal}, birrt_extent_path);
         // Plan with BiRRT-Connect
         std::cout << "BiRRT-Connect Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
@@ -477,8 +535,7 @@ void DoTest()
                     simple_rrt_planner
                         ::MakeBiRRTTimeoutTerminationFunction(rrt_timeout),
                     prng).first;
-        DrawPath(test_env, {start}, {goal},
-                 ResampleWaypoints(birrt_connect_path));
+        check_plan(test_env, {start}, {goal}, birrt_connect_path);
       }
     }
   }
@@ -491,13 +548,13 @@ void DoTest()
       = simple_prm_planner::QueryPathMultiStartMultiGoal<Waypoint>(
           starts, goals, loaded_roadmap, WaypointDistance,
           check_edge_validity_fn, K, false, true, false).first;
-  DrawPath(test_env, starts, goals, ResampleWaypoints(path));
+  check_plan(test_env, starts, goals, path);
 }
 }  // namespace planning_test
 }  // namespace common_robotics_utilities
 
-int main(int, char**)
+int main(int argc, char** argv)
 {
-  common_robotics_utilities::planning_test::DoTest();
-  return EXIT_SUCCESS;
+  testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }

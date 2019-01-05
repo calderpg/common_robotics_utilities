@@ -2,8 +2,16 @@
 
 #include <stdexcept>
 
+#include <Eigen/Geometry>
+
 namespace common_robotics_utilities
 {
+/// An implementation of the Maybe/Optional pattern, in which an OwningMaybe<T>
+/// wraps an instance of T or no value. This is equivalent to std::optional<T>
+/// in C++17, in which OwningMaybe<T> owns the contained instance of T. If the
+/// instance of T is expensive or difficult to copy, and is guaranteed to live
+/// beyond the lifetime of the Maybe, consider using a ReferencingMaybe<T>
+/// instead.
 template<typename T>
 class OwningMaybe
 {
@@ -12,6 +20,8 @@ private:
   bool has_value_ = false;
 
 public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
   explicit OwningMaybe(const T& value)
       : value_(value), has_value_(true) {}
 
@@ -49,9 +59,11 @@ public:
   explicit operator bool() const { return HasValue(); }
 };
 
-// While this looks like a std::optional<T>, it *does not own* the item of T,
-// unlike std::optional<T>, since it contains a reference to the object. The
-// referenced object *must* outlive the ReferencingMaybe!
+/// An implementation of the Maybe/Optional pattern, in which a
+/// ReferencingMaybe<T> wraps a reference to an instance of T or no value. This
+/// is similar to std::optional<T> in C++17; however, it *does not own* the item
+/// T, unlike std::optional<T>, since it contains a reference to the object. The
+/// referenced object *must* outlive the ReferencingMaybe!
 template<typename T>
 class ReferencingMaybe
 {

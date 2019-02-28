@@ -375,6 +375,15 @@ public:
     return (index.X() * Stride1()) + (index.Y() * Stride2()) + index.Z();
   }
 
+  GridIndex GetGridIndexFromDataIndex(const int64_t data_index) const
+  {
+    const int64_t x_idx = data_index / Stride1();
+    const int64_t remainder = data_index % Stride1();
+    const int64_t y_idx = remainder / Stride2();
+    const int64_t z_idx = remainder % Stride2();
+    return GridIndex(x_idx, y_idx, z_idx);
+  }
+
   Eigen::Vector4d IndexToLocationInGridFrame(const GridIndex& index) const
   {
     return IndexToLocationInGridFrame(index.X(), index.Y(), index.Z());
@@ -1048,6 +1057,23 @@ public:
         * GridIndexToLocationInGridFrame(x_index, y_index, z_index);
   }
 
+  int64_t GridIndexToDataIndex(const int64_t x_index,
+                               const int64_t y_index,
+                               const int64_t z_index) const
+  {
+    return sizes_.GetDataIndex(x_index, y_index, z_index);
+  }
+
+  int64_t GridIndexToDataIndex(const GridIndex& index) const
+  {
+    return sizes_.GetDataIndex(index);
+  }
+
+  GridIndex DataIndexToGridIndex(const int64_t data_index) const
+  {
+    return sizes_.GetGridIndexFromDataIndex(data_index);
+  }
+
   BackingStore& GetMutableRawData() { return data_; }
 
   const BackingStore& GetImmutableRawData() const { return data_; }
@@ -1073,12 +1099,12 @@ public:
                          const int64_t z_index) const
   {
     return static_cast<uint64_t>(
-        sizes_.GetDataIndex(x_index, y_index, z_index));
+        GridIndexToDataIndex(x_index, y_index, z_index));
   }
 
   uint64_t HashDataIndex(const GridIndex& index) const
   {
-    return static_cast<uint64_t>(sizes_.GetDataIndex(index));
+    return static_cast<uint64_t>(GridIndexToDataIndex(index));
   }
 };
 

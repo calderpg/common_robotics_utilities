@@ -44,14 +44,17 @@ TEST(VoxelGridTest, indexLookup)
     {
       for (int64_t z_index = 0; z_index < read_grid.GetNumZCells(); z_index++)
       {
+        const voxel_grid::GridIndex current(x_index, y_index, z_index);
         const int32_t check_val = check_vals.at(check_index);
         const int32_t ref_val
             = read_grid.GetImmutable(x_index, y_index, z_index).Value();
-        const int32_t index_ref_val
-            = read_grid.GetImmutable(
-                voxel_grid::GridIndex(x_index, y_index, z_index)).Value();
+        const int32_t index_ref_val = read_grid.GetImmutable(current).Value();
         ASSERT_EQ(ref_val, check_val);
         ASSERT_EQ(index_ref_val, check_val);
+        const int64_t data_index = test_grid.GridIndexToDataIndex(current);
+        const voxel_grid::GridIndex check_grid_index =
+            test_grid.DataIndexToGridIndex(data_index);
+        ASSERT_EQ(current, check_grid_index);
         check_index++;
       }
     }

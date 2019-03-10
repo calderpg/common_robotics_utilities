@@ -134,7 +134,8 @@ TEST(VoxelGridTest, locationLookup)
 TEST(VoxelGridTest, dshvgLookup)
 {
   const voxel_grid::GridSizes chunk_sizes(1.0, 4.0, 4.0, 4.0);
-  voxel_grid::DynamicSpatialHashedVoxelGrid<int32_t> test_grid(chunk_sizes, 0);
+  voxel_grid::DynamicSpatialHashedVoxelGrid<int32_t> test_grid(
+      chunk_sizes, 0, 10);
   // Load with special values
   int32_t fill_val = 1;
   std::vector<int32_t> check_vals;

@@ -728,9 +728,15 @@ private:
   void AllocateChunkAt(
       const ChunkRegion& chunk_region, const DSHVGFillType fill_type)
   {
-    chunks_[chunk_region]
-        = DynamicSpatialHashedVoxelGridChunk<T, BackingStore>(
-            chunk_region, chunk_sizes_, fill_type, default_value_);
+    const auto result = chunks_.emplace(
+        chunk_region,
+        DynamicSpatialHashedVoxelGridChunk<T, BackingStore>(
+            chunk_region, chunk_sizes_, fill_type, default_value_));
+    if (result.second != true)
+    {
+      throw std::runtime_error(
+          "Attempted to allocate new chunk over existing chunk");
+    }
   }
 
 protected:
@@ -764,13 +770,16 @@ public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
   DynamicSpatialHashedVoxelGridBase(const GridSizes& chunk_sizes,
-                                    const T& default_value)
+                                    const T& default_value,
+                                    const size_t expected_chunks)
       : DynamicSpatialHashedVoxelGridBase<T, BackingStore>(
-          Eigen::Isometry3d::Identity(), chunk_sizes, default_value) {}
+          Eigen::Isometry3d::Identity(), chunk_sizes, default_value,
+          expected_chunks) {}
 
   DynamicSpatialHashedVoxelGridBase(const Eigen::Isometry3d& origin_transform,
                                     const GridSizes& chunk_sizes,
-                                    const T& default_value)
+                                    const T& default_value,
+                                    const size_t expected_chunks)
   {
     if (chunk_sizes.Valid())
     {
@@ -778,6 +787,7 @@ public:
       inverse_origin_transform_ = origin_transform_.inverse();
       chunk_sizes_ = chunk_sizes;
       default_value_ = default_value;
+      chunks_.reserve(expected_chunks);
       initialized_ = true;
     }
     else
@@ -1107,15 +1117,18 @@ public:
   }
 
   DynamicSpatialHashedVoxelGrid(const GridSizes& chunk_sizes,
-                                const T& default_value)
+                                const T& default_value,
+                                const size_t expected_chunks)
       : DynamicSpatialHashedVoxelGridBase<T, BackingStore>(
-          Eigen::Isometry3d::Identity(), chunk_sizes, default_value) {}
+          Eigen::Isometry3d::Identity(), chunk_sizes, default_value,
+          expected_chunks) {}
 
   DynamicSpatialHashedVoxelGrid(const Eigen::Isometry3d& origin_transform,
                                 const GridSizes& chunk_sizes,
-                                const T& default_value)
+                                const T& default_value,
+                                const size_t expected_chunks)
       : DynamicSpatialHashedVoxelGridBase<T, BackingStore>(
-          origin_transform, chunk_sizes, default_value) {}
+          origin_transform, chunk_sizes, default_value, expected_chunks) {}
 
   DynamicSpatialHashedVoxelGrid()
       : DynamicSpatialHashedVoxelGridBase<T, BackingStore>() {}

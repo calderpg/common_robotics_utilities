@@ -13,6 +13,7 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/maybe.hpp>
 #include <common_robotics_utilities/serialization.hpp>
 #include <common_robotics_utilities/simple_knearest_neighbors.hpp>
 #include <common_robotics_utilities/utility.hpp>
@@ -1062,6 +1063,63 @@ inline std::pair<std::vector<StateType, Allocator>,
   }
 }
 
+class TimeoutCheckHelper
+{
+private:
+  std::chrono::duration<double> timeout_;
+  OwningMaybe<std::chrono::time_point<std::chrono::steady_clock>> start_time_;
+
+public:
+  TimeoutCheckHelper(const double timeout)
+  {
+    if (timeout <= 0.0)
+    {
+      throw std::runtime_error("timeout <= 0.0");
+    }
+    timeout_ = std::chrono::duration<double>(timeout);
+  }
+
+  bool Check()
+  {
+    if (start_time_.HasValue())
+    {
+      return ((std::chrono::steady_clock::now() - start_time_.Value())
+              > timeout_);
+    }
+    else
+    {
+      throw std::runtime_error(
+          "Check() called on TimeoutCheckHelper that has not been started");
+    }
+  }
+
+  bool CheckOrStart()
+  {
+    if (start_time_.HasValue())
+    {
+      return Check();
+    }
+    else
+    {
+      Start();
+      return false;
+    }
+  }
+
+  void Start()
+  {
+    start_time_ =
+        OwningMaybe<std::chrono::time_point<std::chrono::steady_clock>>(
+            std::chrono::steady_clock::now());
+  }
+
+  void Reset()
+  {
+    start_time_ =
+        OwningMaybe<std::chrono::time_point<std::chrono::steady_clock>>();
+  }
+};
+
 /// Helper function to build a termination check function for the
 /// single-direction RRT planner that checks if the provided timeout has been
 /// exceeded. The timeout function starts keeping track of elapsed time after
@@ -1070,43 +1128,11 @@ inline std::pair<std::vector<StateType, Allocator>,
 inline std::function<bool(const int64_t)> MakeRRTTimeoutTerminationFunction(
     const double planning_timeout)
 {
-  class TimeoutTerminationFunction
-  {
-  private:
-    std::chrono::duration<double> timeout_;
-    std::chrono::time_point<std::chrono::steady_clock> first_called_time_;
-    bool already_called_ = false;
-
-  public:
-    TimeoutTerminationFunction(const double timeout)
-    {
-      if (timeout <= 0.0)
-      {
-        throw std::runtime_error("timeout <= 0.0");
-      }
-      timeout_ = std::chrono::duration<double>(timeout);
-      already_called_ = false;
-    }
-
-    bool Check()
-    {
-      if (already_called_)
-      {
-        return ((std::chrono::steady_clock::now() - first_called_time_)
-                > timeout_);
-      }
-      else
-      {
-        first_called_time_ = std::chrono::steady_clock::now();
-        return false;
-      }
-    }
-  };
-  TimeoutTerminationFunction termination_fn_helper(planning_timeout);
+  TimeoutCheckHelper termination_fn_helper(planning_timeout);
   std::function<bool(const int64_t)> termination_function
       = [termination_fn_helper] (const int64_t) mutable
   {
-    return termination_fn_helper.Check();
+    return termination_fn_helper.CheckOrStart();
   };
   return termination_function;
 }
@@ -1119,43 +1145,11 @@ inline std::function<bool(const int64_t)> MakeRRTTimeoutTerminationFunction(
 inline std::function<bool(const int64_t, const int64_t)>
 MakeBiRRTTimeoutTerminationFunction(const double planning_timeout)
 {
-  class TimeoutTerminationFunction
-  {
-  private:
-    std::chrono::duration<double> timeout_;
-    std::chrono::time_point<std::chrono::steady_clock> first_called_time_;
-    bool already_called_ = false;
-
-  public:
-    TimeoutTerminationFunction(const double timeout)
-    {
-      if (timeout <= 0.0)
-      {
-        throw std::runtime_error("timeout <= 0.0");
-      }
-      timeout_ = std::chrono::duration<double>(timeout);
-      already_called_ = false;
-    }
-
-    bool Check()
-    {
-      if (already_called_)
-      {
-        return ((std::chrono::steady_clock::now() - first_called_time_)
-                > timeout_);
-      }
-      else
-      {
-        first_called_time_ = std::chrono::steady_clock::now();
-        return false;
-      }
-    }
-  };
-  TimeoutTerminationFunction termination_fn_helper(planning_timeout);
+  TimeoutCheckHelper termination_fn_helper(planning_timeout);
   std::function<bool(const int64_t, const int64_t)> termination_function
       = [termination_fn_helper] (const int64_t, const int64_t) mutable
   {
-    return termination_fn_helper.Check();
+    return termination_fn_helper.CheckOrStart();
   };
   return termination_function;
 }
@@ -1250,10 +1244,13 @@ MakeLinearNearestNeighborsFunction(
     const std::vector<std::pair<int64_t, double>> neighbors =
         simple_knearest_neighbors::GetKNearestNeighbors(
             tree, sampled, real_distance_fn, 1, use_parallel);
-    if (neighbors.size() > 0) {
+    if (neighbors.size() > 0)
+    {
       const std::pair<int64_t, double>& nearest_neighbor = neighbors.front();
       return nearest_neighbor.first;
-    } else {
+    }
+    else
+    {
       throw std::runtime_error("NN check produced no neighbors");
     }
   };
@@ -1296,11 +1293,14 @@ MakeKinematicRRTExtendPropagationFunction(
     const StateType extend_state =
         (ratio < 1.0) ? state_interpolation_fn(nearest, sampled, ratio)
                       : sampled;
-    if (edge_validity_check_fn(nearest, extend_state)) {
+    if (edge_validity_check_fn(nearest, extend_state))
+    {
       // -1 is the parent offset used in adding the new node to the tree.
       return std::vector<std::pair<StateType, int64_t>>{
           std::make_pair(extend_state, -1)};
-    } else {
+    }
+    else
+    {
       return std::vector<std::pair<StateType, int64_t>>();
     }
   };
@@ -1348,32 +1348,41 @@ MakeKinematicRRTConnectPropagationFunction(
     StateType current = nearest;
     int32_t steps = 0;
     bool completed = false;
-    while (!completed && (steps < total_steps)) {
+    while (!completed && (steps < total_steps))
+    {
       // Compute the next intermediate target state
       StateType current_target = sampled;
       const double target_distance = distance_fn(current, current_target);
-      if (target_distance > step_size) {
+      if (target_distance > step_size)
+      {
         const double step_fraction = step_size / target_distance;
         const StateType interpolated_target =
             state_interpolation_fn(current, sampled, step_fraction);
         current_target = interpolated_target;
-      } else if (std::abs(target_distance) <=
-                 std::numeric_limits<double>::epsilon()) {
+      }
+      else if (std::abs(target_distance) <=
+                 std::numeric_limits<double>::epsilon())
+      {
         // If we've reached the target state, stop
         completed = true;
         break;
-      } else {
+      }
+      else
+      {
         // If we're less than step size away, this is our last step
         completed = true;
       }
       // If the current edge is valid, we keep going
-      if (edge_validity_check_fn(current, current_target)) {
+      if (edge_validity_check_fn(current, current_target))
+      {
         propagated_states.emplace_back(
             std::make_pair(current_target, parent_offset));
         current = current_target;
         parent_offset++;
         steps++;
-      } else {
+      }
+      else
+      {
         completed = true;
       }
     }

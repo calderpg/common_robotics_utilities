@@ -104,14 +104,16 @@ add_executable(clustering_example example/clustering_example.cpp)
 add_dependencies(clustering_example ${PROJECT_NAME})
 target_link_libraries(clustering_example ${PROJECT_NAME})
 
-# Tests
-catkin_add_gtest(planning_test test/planning_test.cpp)
-add_dependencies(planning_test ${PROJECT_NAME})
-target_link_libraries(planning_test ${PROJECT_NAME})
+if(CATKIN_ENABLE_TESTING)
+  # Tests
+  catkin_add_gtest(planning_test test/planning_test.cpp)
+  add_dependencies(planning_test ${PROJECT_NAME})
+  target_link_libraries(planning_test ${PROJECT_NAME})
 
-catkin_add_gtest(voxel_grid_test test/voxel_grid_test.cpp)
-add_dependencies(voxel_grid_test ${PROJECT_NAME})
-target_link_libraries(voxel_grid_test ${PROJECT_NAME})
+  catkin_add_gtest(voxel_grid_test test/voxel_grid_test.cpp)
+  add_dependencies(voxel_grid_test ${PROJECT_NAME})
+  target_link_libraries(voxel_grid_test ${PROJECT_NAME})
+endif()
 
 #############
 ## Install ##

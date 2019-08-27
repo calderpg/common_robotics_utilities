@@ -602,5 +602,83 @@ Eigen::MatrixXd BuildPairwiseDistanceMatrix(
     return BuildPairwiseDistanceMatrixSerial(data1, data2, distance_fn);
   }
 }
+
+class Hyperplane
+{
+private:
+  Eigen::VectorXd plane_origin_;
+  Eigen::VectorXd plane_normal_;
+
+public:
+
+  Hyperplane(const Eigen::VectorXd& origin, const Eigen::VectorXd& normal)
+      : plane_origin_(origin), plane_normal_(normal)
+  {
+    if (plane_origin_.size() != plane_normal_.size())
+    {
+      throw std::invalid_argument("origin.size() != normal.size()");
+    }
+  }
+
+  Hyperplane() {}
+
+  size_t GetDimensionality() const
+  {
+    return static_cast<size_t>(plane_origin_.size());
+  }
+
+  const Eigen::VectorXd& GetOrigin() const { return plane_origin_; }
+
+  const Eigen::VectorXd& GetNormal() const { return plane_normal_; }
+
+  double GetNormedDotProduct(const Eigen::VectorXd& point) const
+  {
+    const Eigen::VectorXd check_vector = point - GetOrigin();
+    const Eigen::VectorXd check_vector_normed = SafeNormal(check_vector);
+    const double dot_product = check_vector_normed.dot(GetNormal());
+    return dot_product;
+  }
+
+  double GetRawDotProduct(const Eigen::VectorXd& point) const
+  {
+    const Eigen::VectorXd check_vector = point - GetOrigin();
+    const double dot_product = check_vector.dot(GetNormal());
+    return dot_product;
+  }
+
+  Eigen::VectorXd RejectVectorOntoPlane(const Eigen::VectorXd& vector) const
+  {
+    return VectorProjection(GetNormal(), vector);
+  }
+
+  double GetSquaredDistanceToPlane(const Eigen::VectorXd& point) const
+  {
+    const Eigen::VectorXd origin_to_point_vector = point - GetOrigin();
+    return VectorProjection(GetNormal(), origin_to_point_vector).squaredNorm();
+  }
+
+  double GetDistanceToPlane(const Eigen::VectorXd& point) const
+  {
+    const Eigen::VectorXd origin_to_point_vector = point - GetOrigin();
+    return VectorProjection(GetNormal(), origin_to_point_vector).norm();
+  }
+
+  Eigen::VectorXd ProjectVectorOntoPlane(const Eigen::VectorXd& vector) const
+  {
+    return VectorRejection(GetNormal(), vector);
+  }
+
+  Eigen::VectorXd ProjectPointOntoPlane(const Eigen::VectorXd& point) const
+  {
+    const Eigen::VectorXd origin_to_point_vector = point - GetOrigin();
+    const Eigen::VectorXd projected_to_point_vector =
+        VectorRejection(GetNormal(), origin_to_point_vector);
+    const Eigen::VectorXd projected_point =
+        GetOrigin() + projected_to_point_vector;
+    return projected_point;
+  }
+};
+
+Hyperplane FitPlaneToPoints(const std::vector<Eigen::VectorXd>& points);
 }  // namespace math
 }  // namespace common_robotics_utilities

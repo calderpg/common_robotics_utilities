@@ -44,6 +44,34 @@ int64_t HashWaypoint(const Waypoint& waypoint)
   return static_cast<int64_t>(hash_val);
 }
 
+double WaypointDistance(const Waypoint& start, const Waypoint& end)
+{
+  const double delta_rows = static_cast<double>(end.first - start.first);
+  const double delta_cols = static_cast<double>(end.second - start.second);
+  return std::sqrt((delta_rows * delta_rows) + (delta_cols * delta_cols));
+}
+
+Waypoint InterpolateWaypoint(
+    const Waypoint& start, const Waypoint& end, const double ratio)
+{
+  const double real_ratio = utility::ClampValueAndWarn(ratio, 0.0, 1.0);
+  const double delta_rows = static_cast<double>(end.first - start.first);
+  const double delta_cols = static_cast<double>(end.second - start.second);
+  const double raw_interp_rows = delta_rows * real_ratio;
+  const double raw_interp_cols = delta_cols * real_ratio;
+  const ssize_t interp_row
+      = start.first + static_cast<ssize_t>(std::round(raw_interp_rows));
+  const ssize_t interp_col
+      = start.second + static_cast<ssize_t>(std::round(raw_interp_cols));
+  return Waypoint(interp_row, interp_col);
+}
+
+std::vector<Waypoint> ResampleWaypoints(const std::vector<Waypoint>& waypoints)
+{
+  return path_processing::ResamplePath<Waypoint>(
+      waypoints, 0.5, WaypointDistance, InterpolateWaypoint);
+}
+
 void DrawEnvironment(const TestMap& environment)
 {
   std::cout << environment << std::endl;
@@ -66,9 +94,24 @@ void DrawPaths(
   TestMap working_copy = environment;
   for (const auto& path : paths)
   {
-    for (const auto& waypoint : path)
+    if (path.size() > 0)
     {
-      SetCell(working_copy, waypoint.first, waypoint.second, '+');
+      SetCell(working_copy, path.at(0).first, path.at(0).second, '+');
+      for (size_t idx = 1; idx < path.size(); idx++)
+      {
+        const Waypoint& previous = path.at(idx - 1);
+        const Waypoint& current = path.at(idx);
+        const auto edge_path = ResampleWaypoints({previous, current});
+        for (const auto& state : edge_path)
+        {
+          const char current_val = working_copy(state.first, state.second);
+          if (current_val != '+')
+          {
+            SetCell(working_copy, state.first, state.second, '-');
+          }
+        }
+        SetCell(working_copy, current.first, current.second, '+');
+      }
     }
   }
   for (const auto& start : starts)
@@ -108,28 +151,6 @@ TestMap MakeTestMap(
 bool CheckWaypointCollisionFree(const TestMap& map, const Waypoint& waypoint)
 {
   return (map(waypoint.first, waypoint.second) != '#');
-}
-
-double WaypointDistance(const Waypoint& start, const Waypoint& end)
-{
-  const double delta_rows = static_cast<double>(end.first - start.first);
-  const double delta_cols = static_cast<double>(end.second - start.second);
-  return std::sqrt((delta_rows * delta_rows) + (delta_cols * delta_cols));
-}
-
-Waypoint InterpolateWaypoint(
-    const Waypoint& start, const Waypoint& end, const double ratio)
-{
-  const double real_ratio = utility::ClampValueAndWarn(ratio, 0.0, 1.0);
-  const double delta_rows = static_cast<double>(end.first - start.first);
-  const double delta_cols = static_cast<double>(end.second - start.second);
-  const double raw_interp_rows = delta_rows * real_ratio;
-  const double raw_interp_cols = delta_cols * real_ratio;
-  const ssize_t interp_row
-      = start.first + static_cast<ssize_t>(std::round(raw_interp_rows));
-  const ssize_t interp_col
-      = start.second + static_cast<ssize_t>(std::round(raw_interp_cols));
-  return Waypoint(interp_row, interp_col);
 }
 
 bool CheckEdgeCollisionFree(
@@ -172,12 +193,6 @@ std::vector<Waypoint> SmoothWaypoints(
       max_shortcut_fraction, resample_shortcuts_interval,
       check_for_marginal_shortcuts, check_edge_fn, WaypointDistance,
       InterpolateWaypoint, prng);
-}
-
-std::vector<Waypoint> ResampleWaypoints(const std::vector<Waypoint>& waypoints)
-{
-  return path_processing::ResamplePath<Waypoint>(
-      waypoints, 0.5, WaypointDistance, InterpolateWaypoint);
 }
 
 void DrawRoadmap(
@@ -324,8 +339,9 @@ TEST(PlanningTest, allPlannersTest)
   const double birrt_p_switch_trees = 0.25;
   // Make RRT helpers
   auto nearest_neighbors_fn
-      = simple_rrt_planner::MakeLinearNearestNeighborsFunction<Waypoint>(
-          WaypointDistance, false);
+      = simple_rrt_planner
+          ::MakeKinematicLinearNearestNeighborsFunction<Waypoint>(
+              WaypointDistance, false);
   auto rrt_extend_fn
       = simple_rrt_planner::MakeKinematicRRTExtendPropagationFunction<Waypoint>(
           WaypointDistance, InterpolateWaypoint, check_edge_validity_fn,

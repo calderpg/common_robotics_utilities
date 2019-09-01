@@ -24,11 +24,11 @@ namespace simple_rrt_planner
 {
 /// Basic templated tree node for use in RRT planners. Node stores a templated
 /// value, parent index, and child indices.
-template<typename T>
+template<typename StateType>
 class SimpleRRTPlannerState
 {
 private:
-  T value_;
+  StateType value_;
   std::vector<int64_t> child_indices_;
   int64_t parent_index_ = -1;
   bool initialized_ = false;
@@ -37,20 +37,20 @@ public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
   static uint64_t Serialize(
-      const SimpleRRTPlannerState<T>& state,
+      const SimpleRRTPlannerState<StateType>& state,
       std::vector<uint8_t>& buffer,
       const std::function<uint64_t(
-          const T&, std::vector<uint8_t>&)>& value_serializer)
+          const StateType&, std::vector<uint8_t>&)>& value_serializer)
   {
     return state.SerializeSelf(buffer, value_serializer);
   }
 
-  static std::pair<SimpleRRTPlannerState<T>, uint64_t> Deserialize(
+  static std::pair<SimpleRRTPlannerState<StateType>, uint64_t> Deserialize(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const std::function<std::pair<T, uint64_t>(
+      const std::function<std::pair<StateType, uint64_t>(
           const std::vector<uint8_t>&, const uint64_t)>& value_deserializer)
   {
-    SimpleRRTPlannerState<T> temp_state;
+    SimpleRRTPlannerState<StateType> temp_state;
     const uint64_t bytes_read
         = temp_state.DeserializeSelf(buffer, starting_offset,
                                      value_deserializer);
@@ -59,34 +59,22 @@ public:
 
   SimpleRRTPlannerState() : parent_index_(-1), initialized_(false) {}
 
-  SimpleRRTPlannerState(const T& value,
+  SimpleRRTPlannerState(const StateType& value,
                         const int64_t parent_index,
                         const std::vector<int64_t>& child_indices)
-  {
-    value_ = value;
-    child_indices_ = child_indices;
-    parent_index_ = parent_index;
-    initialized_ = true;
-  }
+      : value_(value), child_indices_(child_indices),
+        parent_index_(parent_index), initialized_(true) {}
 
-  SimpleRRTPlannerState(const T& value, const int64_t parent_index)
-  {
-    value_ = value;
-    parent_index_ = parent_index;
-    initialized_ = true;
-  }
+  SimpleRRTPlannerState(const StateType& value, const int64_t parent_index)
+      : value_(value), parent_index_(parent_index), initialized_(true) {}
 
-  explicit SimpleRRTPlannerState(const T& value)
-  {
-    value_ = value;
-    parent_index_ = -1;
-    initialized_ = true;
-  }
+  explicit SimpleRRTPlannerState(const StateType& value)
+      : value_(value), parent_index_(-1), initialized_(true) {}
 
   uint64_t SerializeSelf(
       std::vector<uint8_t>& buffer,
       const std::function<uint64_t(
-          const T&, std::vector<uint8_t>&)>& value_serializer) const
+          const StateType&, std::vector<uint8_t>&)>& value_serializer) const
   {
     const uint64_t start_buffer_size = buffer.size();
     // Serialize the value
@@ -107,12 +95,12 @@ public:
 
   uint64_t DeserializeSelf(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const std::function<std::pair<T, uint64_t>(
+      const std::function<std::pair<StateType, uint64_t>(
           const std::vector<uint8_t>&, const uint64_t)>& value_deserializer)
   {
     uint64_t current_position = starting_offset;
     // Deserialize the value
-    const std::pair<T, uint64_t> value_deserialized
+    const std::pair<StateType, uint64_t> value_deserialized
         = value_deserializer(buffer, current_position);
     value_ = value_deserialized.first;
     current_position += value_deserialized.second;
@@ -141,9 +129,9 @@ public:
 
   bool IsInitialized() const { return initialized_; }
 
-  const T& GetValueImmutable() const { return value_; }
+  const StateType& GetValueImmutable() const { return value_; }
 
-  T& GetValueMutable() { return value_; }
+  StateType& GetValueMutable() { return value_; }
 
   int64_t GetParentIndex() const { return parent_index_; }
 
@@ -163,7 +151,7 @@ public:
   {
     for (size_t idx = 0; idx < child_indices_.size(); idx++)
     {
-      if (child_indices_[idx] == child_index)
+      if (child_indices_.at(idx) == child_index)
       {
         return;
       }
@@ -176,14 +164,77 @@ public:
     std::vector<int64_t> new_child_indices;
     for (size_t idx = 0; idx < child_indices_.size(); idx++)
     {
-      if (child_indices_[idx] != child_index)
+      if (child_indices_.at(idx) != child_index)
       {
-        new_child_indices.push_back(child_indices_[idx]);
+        new_child_indices.push_back(child_indices_.at(idx));
       }
     }
     child_indices_ = new_child_indices;
   }
 };
+
+/// Helper function type definitions
+
+template<typename StateType>
+using PlanningTree = std::vector<SimpleRRTPlannerState<StateType>>;
+
+template<typename SampleType>
+using SamplingFunction = std::function<SampleType(void)>;
+
+template<typename StateType, typename SampleType=StateType>
+using NearestNeighborFunction =
+    std::function<int64_t(const PlanningTree<StateType>&, const SampleType&)>;
+
+template<typename StateType>
+using ForwardPropagation = std::vector<std::pair<StateType, int64_t>>;
+
+template<typename StateType, typename SampleType=StateType>
+using ForwardPropagationFunction =
+    std::function<ForwardPropagation<StateType>(
+        const StateType&, const SampleType&)>;
+
+template<typename StateType>
+using StateAddedCallbackFunction =
+    std::function<void(PlanningTree<StateType>&, const int64_t)>;
+
+template<typename StateType>
+using CheckGoalReachedFunction = std::function<bool(const StateType&)>;
+
+template<typename StateType>
+using GoalReachedCallbackFunction =
+    std::function<void(PlanningTree<StateType>&, const int64_t)>;
+
+using SingleTreeTerminationCheckFunction = std::function<bool(const int64_t)>;
+
+template<typename StateType, typename StateAllocator=std::allocator<StateType>>
+using PlannedPath = std::vector<StateType, StateAllocator>;
+
+template<typename StateType, typename StateAllocator=std::allocator<StateType>>
+using PlannedPaths = std::vector<PlannedPath<StateType, StateAllocator>>;
+
+using PlanningStatistics = std::map<std::string, double>;
+
+template<typename StateType, typename StateAllocator=std::allocator<StateType>>
+using MultipleSolutionPlanningResults =
+    std::pair<PlannedPaths<StateType, StateAllocator>, PlanningStatistics>;
+
+template<typename StateType, typename StateAllocator=std::allocator<StateType>>
+using SingleSolutionPlanningResults =
+    std::pair<PlannedPath<StateType, StateAllocator>, PlanningStatistics>;
+
+template<typename StateType>
+using StatesConnectedFunction =
+    std::function<bool(const StateType&, const StateType&)>;
+
+template<typename StateType>
+using GoalBridgeCallbackFunction =
+    std::function<void(
+        PlanningTree<StateType>&, const int64_t,  // Start tree + index
+        PlanningTree<StateType>&, const int64_t,  // Goal tree + index
+        const bool)>;  // Was the start tree the active tree?
+
+using BidirectionalTerminationCheckFunction =
+    std::function<bool(const int64_t, const int64_t)>;
 
 /// Checks tree @param nodes to make sure the parent-child linkages are correct.
 /// This conservatively enforces that the tree does not conatin cycles by
@@ -193,15 +244,15 @@ public:
 /// planners. Note that this does *NOT* ensure that all nodes in @param nodes
 /// form a single connected tree, since it can be useful to store multiple
 /// trees in the same container.
-template<typename T, typename Allocator=std::allocator<T>>
-inline bool CheckTreeLinkage(const std::vector<SimpleRRTPlannerState<T>>& nodes)
+template<typename StateType>
+inline bool CheckTreeLinkage(const PlanningTree<StateType>& nodes)
 {
   // Step through each state in the tree.
   // Make sure that the linkage to the parent and child states are correct.
   for (size_t current_index = 0; current_index < nodes.size(); current_index++)
   {
     // For every state, make sure all the parent<->child linkages are valid
-    const SimpleRRTPlannerState<T>& current_state = nodes.at(current_index);
+    const auto& current_state = nodes.at(current_index);
     if (!current_state.IsInitialized())
     {
       std::cerr << "Tree contains uninitialized node(s): "
@@ -223,7 +274,7 @@ inline bool CheckTreeLinkage(const std::vector<SimpleRRTPlannerState<T>>& nodes)
     {
       if (parent_index != static_cast<int64_t>(current_index))
       {
-        const SimpleRRTPlannerState<T>& parent_state = nodes.at(parent_index);
+        const auto& parent_state = nodes.at(parent_index);
         // Make sure the parent state is initialized.
         if (!parent_state.IsInitialized())
         {
@@ -270,8 +321,7 @@ inline bool CheckTreeLinkage(const std::vector<SimpleRRTPlannerState<T>>& nodes)
       {
         if (current_child_index > static_cast<int64_t>(current_index))
         {
-          const SimpleRRTPlannerState<T>& child_state
-              = nodes.at(current_child_index);
+          const auto& child_state = nodes.at(current_child_index);
           if (!child_state.IsInitialized())
           {
             std::cerr << "Tree contains uninitialized node(s) "
@@ -319,19 +369,20 @@ inline bool CheckTreeLinkage(const std::vector<SimpleRRTPlannerState<T>>& nodes)
 /// Extracts a single solution path corresponding to the provided goal state.
 /// @param nodes tree produced by RRT planner.
 /// @param goal_state_index index of goal state in @param nodes.
-template<typename T, typename Allocator=std::allocator<T>>
-inline std::vector<T, Allocator> ExtractSolutionPath(
-    const std::vector<SimpleRRTPlannerState<T>>& nodes,
-    const int64_t goal_state_index)
+template<typename StateType, typename StateAllocator=std::allocator<StateType>>
+inline PlannedPath<StateType, StateAllocator> ExtractSolutionPath(
+    const PlanningTree<StateType>& nodes, const int64_t goal_state_index)
 {
-  std::vector<T, Allocator> solution_path;
-  const SimpleRRTPlannerState<T>& goal_state = nodes.at(goal_state_index);
+  PlannedPath<StateType, StateAllocator> solution_path;
+  const SimpleRRTPlannerState<StateType>& goal_state =
+      nodes.at(goal_state_index);
   solution_path.push_back(goal_state.GetValueImmutable());
   int64_t parent_index = goal_state.GetParentIndex();
   while (parent_index >= 0)
   {
-    const SimpleRRTPlannerState<T>& parent_state = nodes.at(parent_index);
-    const T& parent = parent_state.GetValueImmutable();
+    const SimpleRRTPlannerState<StateType>& parent_state =
+        nodes.at(parent_index);
+    const StateType& parent = parent_state.GetValueImmutable();
     solution_path.push_back(parent);
     parent_index = parent_state.GetParentIndex();
   }
@@ -342,19 +393,20 @@ inline std::vector<T, Allocator> ExtractSolutionPath(
 
 /// Extracts the solution paths corresponding to each of the provided goal
 /// states.
-/// /// @param nodes tree produced by RRT planner.
+/// @param nodes tree produced by RRT planner.
 /// @param goal_state_indices indices of goal states in @param nodes.
-template<typename T, typename Allocator=std::allocator<T>>
-inline std::vector<std::vector<T, Allocator>> ExtractSolutionPaths(
-    const std::vector<SimpleRRTPlannerState<T>>& nodes,
+template<typename StateType, typename StateAllocator=std::allocator<StateType>>
+inline PlannedPaths<StateType, StateAllocator> ExtractSolutionPaths(
+    const PlanningTree<StateType>& nodes,
     const std::vector<int64_t>& goal_state_indices)
 {
-  std::vector<std::vector<T, Allocator>> solution_paths(
+  PlannedPaths<StateType, StateAllocator> solution_paths(
       goal_state_indices.size());
   for (size_t idx = 0; idx < goal_state_indices.size(); idx++)
   {
-    std::vector<T, Allocator> solution_path
-        = ExtractSolutionPath<T, Allocator>(nodes, goal_state_indices.at(idx));
+    PlannedPath<StateType, StateAllocator> solution_path
+        = ExtractSolutionPath<StateType, StateAllocator>(
+            nodes, goal_state_indices.at(idx));
     solution_paths.at(idx) = solution_path;
   }
   return solution_paths;
@@ -364,63 +416,59 @@ inline std::vector<std::vector<T, Allocator>> ExtractSolutionPaths(
 /// continue to explore and add new solution paths until terminated. Note that
 /// StateType and SampleType are different; this makes implementation of some
 /// kinodynamic planning problems easier.
+///
 /// @param tree existing tree. This tree must contain at least one node, but can
-/// contain multiple nodes as well. All nodes in @param tree are assumed to be
-/// valid starting nodes, and if they are linked together, they must have valid
-/// parent-child linkage.
+///     contain multiple nodes as well. All nodes in @param tree are assumed to
+///     be valid starting nodes, and if they are linked together, they must have
+///     valid parent-child linkage.
 /// @param sampling_fn function to sample a new state.
 /// @param nearest_neighbor_fn function to compute the nearest neighbor index
-/// in the provided tree given the provided sample. If a negative index
-/// (showing that no valid nearest neighbor could be found) planning is
-/// terminated.
+///     in the provided tree given the provided sample. If a negative index
+///     (showing that no valid nearest neighbor could be found) planning is
+///     terminated.
 /// @param forward_propagation_fn function to forward propagate states from
-/// the provided state to the provided sample. The propagated states are
-/// returned as a vector<pair<state, relative_index>> in which state is the new
-/// propagated state and relative_index is a relative index used to connect the
-/// new state to the correct parent state. This relative_index is the index of
-/// the parent state, relative to the vector of propagated nodes. A negative
-/// value means the nearest neighbor in the tree, zero means the first
-/// propagated node, and so on. NOTE - the relative parent index *must* be lower
-/// than the index in the list of prograted nodes i.e. the first node must have
-/// a negative value, and so on. While complicated, this structure allows @param
-/// forward_propagation_fn to return an entire subtree at once.
+///     the provided state to the provided sample. The propagated states are
+///     returned as a vector<pair<state, relative_index>> in which state is the
+///     new propagated state and relative_index is a relative index used to
+///     connect the new state to the correct parent state. This relative_index
+///     is the index of the parent state, relative to the vector of propagated
+///     nodes. A negative value means the nearest neighbor in the tree, zero
+///     means the first propagated node, and so on. NOTE - the relative parent
+///     index *must* be lower than the index in the list of prograted nodes i.e.
+///     the first node must have a negative value, and so on. While complicated,
+///     this structure allows @param forward_propagation_fn to return an entire
+///     subtree at once, which is used for certain multi-outcome planners.
 /// @param state_added_callback_fn callback function called once a state is
-/// added to the tree, providing a mutable reference to the tree and the index
-/// of the newly-added state. This can be used, for example, to update a KD-tree
-/// used for nearest neighbors. You can leave this default-constructed ({}) if
-/// you do not need it.
+///     added to the tree, providing a mutable reference to the tree and the
+///     index of the newly-added state. This can be used, for example, to update
+///     a KD-tree used for nearest neighbors. You can leave this
+///     default-constructed ({}) if you do not need it.
 /// @param check_goal_reached_fn function to check if the provided state meets
-/// goal conditions.
+///     goal conditions.
 /// @param goal_reached_callback_fn callback function called once a state meets
-/// goal conditions, providing a mutable reference to the tree and the index of
-/// the new goal state. You can leave this default-constructed ({}) if you do
-/// not need it.
+///     goal conditions, providing a mutable reference to the tree and the index
+///     of the new goal state. You can leave this default-constructed ({}) if
+///     you do not need it.
 /// @param termination_check_fn Returns true if planning has been
-/// terminated. The provided int64_t is the current size of the planner tree,
-/// which may be useful for a size-limited planning problem.
-/// @return pair<paths, statistics> where paths is a vector of solution paths
-/// and statistics is a map<string, double> of useful statistics collected while
-/// planning.
+///     terminated. The provided int64_t is the current size of the planner
+///     tree, which may be useful for a size-limited planning problem.
+/// @return pair<paths, statistics> where paths is the vector of solution paths
+///     and statistics is a map<string, double> of useful statistics collected
+///     while planning.
 template<typename StateType,
          typename SampleType=StateType,
          typename StateAllocator=std::allocator<StateType>>
-inline std::pair<std::vector<std::vector<StateType, StateAllocator>>,
-                 std::map<std::string, double>> RRTPlanMultiPath(
-    std::vector<SimpleRRTPlannerState<StateType>>& tree,
-    const std::function<SampleType(void)>& sampling_fn,
-    const std::function<int64_t(
-        const std::vector<SimpleRRTPlannerState<StateType>>&,
-        const SampleType&)>& nearest_neighbor_fn,
-    const std::function<std::vector<std::pair<StateType, int64_t>>(
-        const StateType&, const SampleType&)>& forward_propagation_fn,
-    const std::function<void(
-        std::vector<SimpleRRTPlannerState<StateType>>&,
-        const int64_t)>& state_added_callback_fn,
-    const std::function<bool(const StateType&)>& check_goal_reached_fn,
-    const std::function<void(
-        std::vector<SimpleRRTPlannerState<StateType>>&,
-        const int64_t)>& goal_reached_callback_fn,
-    const std::function<bool(const int64_t)>& termination_check_fn)
+inline MultipleSolutionPlanningResults<StateType, StateAllocator>
+RRTPlanMultiPath(
+    PlanningTree<StateType>& tree,
+    const SamplingFunction<SampleType>& sampling_fn,
+    const NearestNeighborFunction<StateType, SampleType>& nearest_neighbor_fn,
+    const ForwardPropagationFunction<StateType, SampleType>&
+        forward_propagation_fn,
+    const StateAddedCallbackFunction<StateType>& state_added_callback_fn,
+    const CheckGoalReachedFunction<StateType>& check_goal_reached_fn,
+    const GoalReachedCallbackFunction<StateType>& goal_reached_callback_fn,
+    const SingleTreeTerminationCheckFunction& termination_check_fn)
 {
   // Make sure we've been given a start state
   if (tree.empty())
@@ -429,7 +477,7 @@ inline std::pair<std::vector<std::vector<StateType, StateAllocator>>,
         "Must be called with at least one node in tree");
   }
   // Keep track of statistics
-  std::map<std::string, double> statistics;
+  PlanningStatistics statistics;
   statistics["total_samples"] = 0.0;
   statistics["successful_samples"] = 0.0;
   statistics["failed_samples"] = 0.0;
@@ -438,7 +486,7 @@ inline std::pair<std::vector<std::vector<StateType, StateAllocator>>,
   // Safety check before doing real work
   for (size_t idx = 0; idx < tree.size(); idx++)
   {
-    if (check_goal_reached_fn(tree[idx].GetValueImmutable()))
+    if (check_goal_reached_fn(tree.at(idx).GetValueImmutable()))
     {
       std::cerr << "Starting node " << idx
                 << " meets goal conditions, adding to goal states" << std::endl;
@@ -467,7 +515,7 @@ inline std::pair<std::vector<std::vector<StateType, StateAllocator>>,
     const StateType& nearest_neighbor
         = tree.at(nearest_neighbor_index).GetValueImmutable();
     // Forward propagate towards the goal
-    const std::vector<std::pair<StateType, int64_t>> propagated
+    const ForwardPropagation<StateType> propagated
         = forward_propagation_fn(nearest_neighbor, random_target);
     if (!propagated.empty())
     {
@@ -538,7 +586,7 @@ inline std::pair<std::vector<std::vector<StateType, StateAllocator>>,
     }
   }
   // Put together the results
-  const std::vector<std::vector<StateType, StateAllocator>> planned_paths
+  const PlannedPaths<StateType, StateAllocator> planned_paths
       = ExtractSolutionPaths<StateType, StateAllocator>(
           tree, goal_state_indices);
   const std::chrono::time_point<std::chrono::steady_clock> cur_time
@@ -552,81 +600,74 @@ inline std::pair<std::vector<std::vector<StateType, StateAllocator>>,
 
 /// Plan multiple paths using a bidirectional RRT planner. This planner will
 /// continue to explore and add new solution paths until terminated.
+///
 /// @param start_tree existing starting tree. This tree must contain at least
-/// one node, but can contain multiple nodes as well. All nodes in @param
-/// start_tree are assumed to be valid starting nodes, and if they are linked
-/// together, they must have valid parent-child linkage.
+///     one node, but can contain multiple nodes as well. All nodes in @param
+///     start_tree are assumed to be valid starting nodes, and if they are
+///     linked together, they must have valid parent-child linkage.
 /// @param goal_tree existing goal tree. This tree must contain at least one
-/// node, but can contain multiple nodes as well. All nodes in @param
-/// goal_tree are assumed to be valid goal nodes, and if they are linked
-/// together, they must have valid parent-child linkage.
+///     node, but can contain multiple nodes as well. All nodes in @param
+///     goal_tree are assumed to be valid goal nodes, and if they are linked
+///     together, they must have valid parent-child linkage.
 /// @param state_sampling_fn function to sample a new state.
 /// @param nearest_neighbor_fn function to compute the nearest neighbor index
-/// in the provided tree given the provided sample. If a negative index
-/// (showing that no valid nearest neighbor could be found) planning is
-/// terminated.
+///     in the provided tree given the provided sample. If a negative index
+///     (showing that no valid nearest neighbor could be found) planning is
+///     terminated.
 /// @param forward_propagation_fn function to forward propagate states from
-/// the provided state to the provided sample. The propagated states are
-/// returned as a vector<pair<state, relative_index>> in which state is the new
-/// propagated state and relative_index is a relative index used to connect the
-/// new state to the correct parent state. This relative_index is the index of
-/// the parent state, relative to the vector of propagated nodes. A negative
-/// value means the nearest neighbor in the tree, zero means the first
-/// propagated node, and so on. NOTE - the relative parent index *must* be lower
-/// than the index in the list of prograted nodes i.e. the first node must have
-/// a negative value, and so on. While complicated, this structure allows @param
-/// forward_propagation_fn to return an entire subtree at once.
+///     the provided state to the provided sample. The propagated states are
+///     returned as a vector<pair<state, relative_index>> in which state is the
+///     new propagated state and relative_index is a relative index used to
+///     connect the new state to the correct parent state. This relative_index
+///     is the index of the parent state, relative to the vector of propagated
+///     nodes. A negative value means the nearest neighbor in the tree, zero
+///     means the first propagated node, and so on. NOTE - the relative parent
+///     index *must* be lower than the index in the list of prograted nodes i.e.
+///     the first node must have a negative value, and so on. While complicated,
+///     this structure allows @param forward_propagation_fn to return an entire
+///     subtree at once, which is used for certain multi-outcome planners.
 /// @param state_added_callback_fn callback function called once a state is
-/// added to the tree, providing a mutable reference to the tree and the index
-/// of the newly-added state. This can be used, for example, to update a KD-tree
-/// used for nearest neighbors. You can leave this default-constructed ({}) if
-/// you do not need it.
+///     added to the tree, providing a mutable reference to the tree and the
+///     index of the newly-added state. This can be used, for example, to update
+///     a KD-tree used for nearest neighbors. You can leave this
+///     default-constructed ({}) if you do not need it.
 /// @param states_connected_fn function to check if the two provided states, one
-/// from each tree, are connected, and a solution has been found.
+///     from each tree, are connected, and a solution has been found.
 /// @param goal_bridge_callback_fn callback function called once a solution
-/// "goal bridge", that is a pair of nodes, one from each tree, has been found.
-/// It provides a mutable reference to the start tree, the goal bridge index in
-/// the start tree, a mutable reference to the goal tree, the goal bridge
-/// index in the goal tree, and a bool flag that specifies which tree is the
-/// active tree. If this flag is true, start_tree is the active tree. You can
-/// leave this default-constructed ({}) if you do not need it.
+///     "goal bridge", that is a pair of nodes, one from each tree, has been
+///     found. It provides a mutable reference to the start tree, the goal
+///     bridge index in the start tree, a mutable reference to the goal tree,
+///     the goal bridge index in the goal tree, and a bool flag that specifies
+///     which tree is the current active tree. If this flag is true, start_tree
+///     is the active tree. You can leave this default-constructed ({}) if you
+///     do not need it.
 /// @param tree_sampling_bias probability that the next sample should be from
-/// the target tree, rather than from calling @param state_sampling_fn.
+///     the target tree, rather than from calling @param state_sampling_fn.
 /// @param p_switch_tree probability at each iteration that the active tree
-/// should be swapped.
+///     should be swapped.
 /// @param termination_check_fn Returns true if planning has been
-/// terminated. The provided int64_t values are the current size of the start
-/// and goal tree, respectively. These may be useful for a size-limited planning
-/// problem.
+///     terminated. The provided int64_t values are the current size of the
+///     start and goal tree, respectively. These may be useful for a
+///     size-limited planning problem.
 /// @param rng a PRNG for use in internal sampling and tree swaps.
-/// @return pair<paths, statistics> where paths is a vector of solution paths
-/// and statistics is a map<string, double> of useful statistics collected while
-/// planning.
+/// @return pair<paths, statistics> where paths is the vector of solution paths
+///     and statistics is a map<string, double> of useful statistics collected
+///     while planning.
 template<typename RNG, typename StateType,
-         typename Allocator=std::allocator<StateType>>
-inline std::pair<std::vector<std::vector<StateType, Allocator>>,
-                 std::map<std::string, double>> BidirectionalRRTPlanMultiPath(
-    std::vector<SimpleRRTPlannerState<StateType>>& start_tree,
-    std::vector<SimpleRRTPlannerState<StateType>>& goal_tree,
-    const std::function<StateType(void)>& state_sampling_fn,
-    const std::function<int64_t(
-        const std::vector<SimpleRRTPlannerState<StateType>>&,
-        const StateType&)>& nearest_neighbor_fn,
-    const std::function<std::vector<std::pair<StateType, int64_t>>(
-        const StateType&, const StateType&)>& forward_propagation_fn,
-    const std::function<void(
-        std::vector<SimpleRRTPlannerState<StateType>>&,
-        const int64_t)>& state_added_callback_fn,
-    const std::function<bool(const StateType&,
-                             const StateType&)>& states_connected_fn,
-    const std::function<void(
-        std::vector<SimpleRRTPlannerState<StateType>>&, const int64_t,
-        std::vector<SimpleRRTPlannerState<StateType>>&, const int64_t,
-        const bool)>& goal_bridge_callback_fn,
+         typename StateAllocator=std::allocator<StateType>>
+inline MultipleSolutionPlanningResults<StateType, StateAllocator>
+BidirectionalRRTPlanMultiPath(
+    PlanningTree<StateType>& start_tree,
+    PlanningTree<StateType>& goal_tree,
+    const SamplingFunction<StateType>& state_sampling_fn,
+    const NearestNeighborFunction<StateType>& nearest_neighbor_fn,
+    const ForwardPropagationFunction<StateType>& forward_propagation_fn,
+    const StateAddedCallbackFunction<StateType>& state_added_callback_fn,
+    const StatesConnectedFunction<StateType>& states_connected_fn,
+    const GoalBridgeCallbackFunction<StateType>& goal_bridge_callback_fn,
     const double tree_sampling_bias,
     const double p_switch_tree,
-    const std::function<bool(const int64_t,
-                             const int64_t)>& termination_check_fn,
+    const BidirectionalTerminationCheckFunction& termination_check_fn,
     RNG& rng)
 {
   if ((tree_sampling_bias < 0.0) || (tree_sampling_bias > 1.0))
@@ -656,7 +697,7 @@ inline std::pair<std::vector<std::vector<StateType, Allocator>>,
   // Distribution to control sampling type
   std::uniform_real_distribution<double> unit_real_distribution(0.0, 1.0);
   // Keep track of statistics
-  std::map<std::string, double> statistics;
+  PlanningStatistics statistics;
   statistics["total_samples"] = 0.0;
   statistics["successful_samples"] = 0.0;
   statistics["failed_samples"] = 0.0;
@@ -694,9 +735,9 @@ inline std::pair<std::vector<std::vector<StateType, Allocator>>,
                                static_cast<int64_t>(goal_tree.size())))
   {
     // Get the current active/target trees
-    std::vector<SimpleRRTPlannerState<StateType>>& active_tree
+    PlanningTree<StateType>& active_tree
         = (start_tree_active) ? start_tree : goal_tree;
-    std::vector<SimpleRRTPlannerState<StateType>>& target_tree
+    PlanningTree<StateType>& target_tree
         = (start_tree_active) ? goal_tree : start_tree;
     // Select our sampling type
     const bool sample_from_tree
@@ -726,7 +767,7 @@ inline std::pair<std::vector<std::vector<StateType, Allocator>>,
     const StateType& nearest_neighbor
         = active_tree.at(nearest_neighbor_index).GetValueImmutable();
     // Forward propagate towards the goal
-    const std::vector<std::pair<StateType, int64_t>> propagated
+    const ForwardPropagation<StateType> propagated
         = forward_propagation_fn(nearest_neighbor, target_state);
     if (!propagated.empty())
     {
@@ -826,17 +867,17 @@ inline std::pair<std::vector<std::vector<StateType, Allocator>>,
     }
   }
   // Put together the results
-  std::vector<std::vector<StateType, Allocator>> planned_paths;
+  PlannedPaths<StateType, StateAllocator> planned_paths;
   // Extract the solution paths
   for (const std::pair<int64_t, int64_t>& goal_bridge : goal_bridges)
   {
     // Extract the portion in the start tree
-    std::vector<StateType, Allocator> start_path
-        = ExtractSolutionPath<StateType, Allocator>(
+    PlannedPath<StateType, StateAllocator> start_path
+        = ExtractSolutionPath<StateType, StateAllocator>(
             start_tree, goal_bridge.first);
     // Extract the portion in the goal tree
-    std::vector<StateType, Allocator> goal_path
-        = ExtractSolutionPath<StateType, Allocator>(
+    PlannedPath<StateType, StateAllocator> goal_path
+        = ExtractSolutionPath<StateType, StateAllocator>(
             goal_tree, goal_bridge.second);
     // Reverse the goal tree part
     std::reverse(goal_path.begin(), goal_path.end());
@@ -857,67 +898,63 @@ inline std::pair<std::vector<std::vector<StateType, Allocator>>,
 /// Plan a single path using a single-direction RRT planner. Note that
 /// StateType and SampleType are different; this makes implementation of some
 /// kinodynamic planning problems easier.
+///
 /// @param tree existing tree. This tree must contain at least one node, but can
-/// contain multiple nodes as well. All nodes in @param tree are assumed to be
-/// valid starting nodes, and if they are linked together, they must have valid
-/// parent-child linkage.
+///     contain multiple nodes as well. All nodes in @param tree are assumed to
+///     be valid starting nodes, and if they are linked together, they must have
+///     valid parent-child linkage.
 /// @param sampling_fn function to sample a new state.
 /// @param nearest_neighbor_fn function to compute the nearest neighbor index
-/// in the provided tree given the provided sample. If a negative index
-/// (showing that no valid nearest neighbor could be found) planning is
-/// terminated.
+///     in the provided tree given the provided sample. If a negative index
+///     (showing that no valid nearest neighbor could be found) planning is
+///     terminated.
 /// @param forward_propagation_fn function to forward propagate states from
-/// the provided state to the provided sample. The propagated states are
-/// returned as a vector<pair<state, relative_index>> in which state is the new
-/// propagated state and relative_index is a relative index used to connect the
-/// new state to the correct parent state. This relative_index is the index of
-/// the parent state, relative to the vector of propagated nodes. A negative
-/// value means the nearest neighbor in the tree, zero means the first
-/// propagated node, and so on. NOTE - the relative parent index *must* be lower
-/// than the index in the list of prograted nodes i.e. the first node must have
-/// a negative value, and so on. While complicated, this structure allows @param
-/// forward_propagation_fn to return an entire subtree at once.
+///     the provided state to the provided sample. The propagated states are
+///     returned as a vector<pair<state, relative_index>> in which state is the
+///     new propagated state and relative_index is a relative index used to
+///     connect the new state to the correct parent state. This relative_index
+///     is the index of the parent state, relative to the vector of propagated
+///     nodes. A negative value means the nearest neighbor in the tree, zero
+///     means the first propagated node, and so on. NOTE - the relative parent
+///     index *must* be lower than the index in the list of prograted nodes i.e.
+///     the first node must have a negative value, and so on. While complicated,
+///     this structure allows @param forward_propagation_fn to return an entire
+///     subtree at once, which is used for certain multi-outcome planners.
 /// @param state_added_callback_fn callback function called once a state is
-/// added to the tree, providing a mutable reference to the tree and the index
-/// of the newly-added state. This can be used, for example, to update a KD-tree
-/// used for nearest neighbors.
+///     added to the tree, providing a mutable reference to the tree and the
+///     index of the newly-added state. This can be used, for example, to update
+///     a KD-tree used for nearest neighbors. You can leave this
+///     default-constructed ({}) if you do not need it.
 /// @param check_goal_reached_fn function to check if the provided state meets
-/// goal conditions.
+///     goal conditions.
 /// @param goal_reached_callback_fn callback function called once a state meets
-/// goal conditions, providing a mutable reference to the tree and the index of
-/// the new goal state.
+///     goal conditions, providing a mutable reference to the tree and the index
+///     of the new goal state. You can leave this default-constructed ({}) if
+///     you do not need it.
 /// @param termination_check_fn Returns true if planning has been
-/// terminated. The provided int64_t is the current size of the planner tree,
-/// which may be useful for a size-limited planning problem.
+///     terminated. The provided int64_t is the current size of the planner
+///     tree, which may be useful for a size-limited planning problem.
 /// @return pair<path, statistics> where path is the solution path and
-/// statistics is a map<string, double> of useful statistics collected while
-/// planning.
+///     statistics is a map<string, double> of useful statistics collected while
+///     planning.
 template<typename StateType,
          typename SampleType=StateType,
          typename StateAllocator=std::allocator<StateType>>
-inline std::pair<std::vector<StateType, StateAllocator>,
-                 std::map<std::string, double>> RRTPlanSinglePath(
-    std::vector<SimpleRRTPlannerState<StateType>>& tree,
-    const std::function<SampleType(void)>& sampling_fn,
-    const std::function<int64_t(
-        const std::vector<SimpleRRTPlannerState<StateType>>&,
-        const SampleType&)>& nearest_neighbor_fn,
-    const std::function<std::vector<std::pair<StateType, int64_t>>(
-        const StateType&, const SampleType&)>& forward_propagation_fn,
-    const std::function<void(
-        std::vector<SimpleRRTPlannerState<StateType>>&,
-        const int64_t)>& state_added_callback_fn,
-    const std::function<bool(const StateType&)>& check_goal_reached_fn,
-    const std::function<void(
-        std::vector<SimpleRRTPlannerState<StateType>>&,
-        const int64_t)>& goal_reached_callback_fn,
-    const std::function<bool(const int64_t)>& termination_check_fn)
+inline SingleSolutionPlanningResults<StateType, StateAllocator>
+RRTPlanSinglePath(
+    PlanningTree<StateType>& tree,
+    const SamplingFunction<SampleType>& sampling_fn,
+    const NearestNeighborFunction<StateType, SampleType>& nearest_neighbor_fn,
+    const ForwardPropagationFunction<StateType, SampleType>&
+        forward_propagation_fn,
+    const StateAddedCallbackFunction<StateType>& state_added_callback_fn,
+    const CheckGoalReachedFunction<StateType>& check_goal_reached_fn,
+    const GoalReachedCallbackFunction<StateType>& goal_reached_callback_fn,
+    const SingleTreeTerminationCheckFunction& termination_check_fn)
 {
   bool solution_found = false;
-  const std::function<void(
-      std::vector<SimpleRRTPlannerState<StateType>>&,
-      const int64_t)> goal_reached_callback_function
-      = [&] (std::vector<SimpleRRTPlannerState<StateType>>& planning_tree,
+  const GoalReachedCallbackFunction<StateType> internal_goal_reached_callback_fn
+      = [&] (PlanningTree<StateType>& planning_tree,
              const int64_t goal_node_index)
   {
     solution_found = true;
@@ -926,15 +963,16 @@ inline std::pair<std::vector<StateType, StateAllocator>,
       goal_reached_callback_fn(planning_tree, goal_node_index);
     }
   };
-  const std::function<bool(const int64_t)> termination_check_function
+  const SingleTreeTerminationCheckFunction internal_termination_check_fn
       = [&] (const int64_t current_tree_size)
   {
     return (solution_found || termination_check_fn(current_tree_size));
   };
-  const auto rrt_result = RRTPlanMultiPath(
-      tree, sampling_fn, nearest_neighbor_fn, forward_propagation_fn,
-      state_added_callback_fn, check_goal_reached_fn,
-      goal_reached_callback_function, termination_check_function);
+  const auto rrt_result =
+      RRTPlanMultiPath<StateType, SampleType, StateAllocator>(
+          tree, sampling_fn, nearest_neighbor_fn, forward_propagation_fn,
+          state_added_callback_fn, check_goal_reached_fn,
+          internal_goal_reached_callback_fn, internal_termination_check_fn);
   if (rrt_result.first.size() > 0)
   {
     return std::make_pair(rrt_result.first.at(0), rrt_result.second);
@@ -942,94 +980,86 @@ inline std::pair<std::vector<StateType, StateAllocator>,
   else
   {
     return std::make_pair(
-        std::vector<StateType, StateAllocator>(), rrt_result.second);
+        PlannedPath<StateType, StateAllocator>(), rrt_result.second);
   }
 }
 
 /// Plan a single path using a bidirectional RRT planner.
+///
 /// @param start_tree existing starting tree. This tree must contain at least
-/// one node, but can contain multiple nodes as well. All nodes in @param
-/// start_tree are assumed to be valid starting nodes, and if they are linked
-/// together, they must have valid parent-child linkage.
+///     one node, but can contain multiple nodes as well. All nodes in @param
+///     start_tree are assumed to be valid starting nodes, and if they are
+///     linked together, they must have valid parent-child linkage.
 /// @param goal_tree existing goal tree. This tree must contain at least one
-/// node, but can contain multiple nodes as well. All nodes in @param
-/// goal_tree are assumed to be valid goal nodes, and if they are linked
-/// together, they must have valid parent-child linkage.
+///     node, but can contain multiple nodes as well. All nodes in @param
+///     goal_tree are assumed to be valid goal nodes, and if they are linked
+///     together, they must have valid parent-child linkage.
 /// @param state_sampling_fn function to sample a new state.
 /// @param nearest_neighbor_fn function to compute the nearest neighbor index
-/// in the provided tree given the provided sample. If a negative index
-/// (showing that no valid nearest neighbor could be found) planning is
-/// terminated.
+///     in the provided tree given the provided sample. If a negative index
+///     (showing that no valid nearest neighbor could be found) planning is
+///     terminated.
 /// @param forward_propagation_fn function to forward propagate states from
-/// the provided state to the provided sample. The propagated states are
-/// returned as a vector<pair<state, relative_index>> in which state is the new
-/// propagated state and relative_index is a relative index used to connect the
-/// new state to the correct parent state. This relative_index is the index of
-/// the parent state, relative to the vector of propagated nodes. A negative
-/// value means the nearest neighbor in the tree, zero means the first
-/// propagated node, and so on. NOTE - the relative parent index *must* be lower
-/// than the index in the list of prograted nodes i.e. the first node must have
-/// a negative value, and so on. While complicated, this structure allows @param
-/// forward_propagation_fn to return an entire subtree at once.
+///     the provided state to the provided sample. The propagated states are
+///     returned as a vector<pair<state, relative_index>> in which state is the
+///     new propagated state and relative_index is a relative index used to
+///     connect the new state to the correct parent state. This relative_index
+///     is the index of the parent state, relative to the vector of propagated
+///     nodes. A negative value means the nearest neighbor in the tree, zero
+///     means the first propagated node, and so on. NOTE - the relative parent
+///     index *must* be lower than the index in the list of prograted nodes i.e.
+///     the first node must have a negative value, and so on. While complicated,
+///     this structure allows @param forward_propagation_fn to return an entire
+///     subtree at once, which is used for certain multi-outcome planners.
 /// @param state_added_callback_fn callback function called once a state is
-/// added to the tree, providing a mutable reference to the tree and the index
-/// of the newly-added state. This can be used, for example, to update a KD-tree
-/// used for nearest neighbors.
+///     added to the tree, providing a mutable reference to the tree and the
+///     index of the newly-added state. This can be used, for example, to update
+///     a KD-tree used for nearest neighbors. You can leave this
+///     default-constructed ({}) if you do not need it.
 /// @param states_connected_fn function to check if the two provided states, one
-/// from each tree, are connected, and a solution has been found.
+///     from each tree, are connected, and a solution has been found.
 /// @param goal_bridge_callback_fn callback function called once a solution
-/// "goal bridge", that is a pair of nodes, one from each tree, has been found.
-/// It provides a mutable reference to the start tree, the goal bridge index in
-/// the start tree, a mutable reference to the goal tree, the goal bridge
-/// index in the goal tree, and a bool flag that specifies which tree is the
-/// active tree. If this flag is true, start_tree is the active tree.
+///     "goal bridge", that is a pair of nodes, one from each tree, has been
+///     found. It provides a mutable reference to the start tree, the goal
+///     bridge index in the start tree, a mutable reference to the goal tree,
+///     the goal bridge index in the goal tree, and a bool flag that specifies
+///     which tree is the current active tree. If this flag is true, start_tree
+///     is the active tree. You can leave this default-constructed ({}) if you
+///     do not need it.
 /// @param tree_sampling_bias probability that the next sample should be from
-/// the target tree, rather than from calling @param state_sampling_fn.
+///     the target tree, rather than from calling @param state_sampling_fn.
 /// @param p_switch_tree probability at each iteration that the active tree
-/// should be swapped.
+///     should be swapped.
 /// @param termination_check_fn Returns true if planning has been
-/// terminated. The provided int64_t values are the current size of the start
-/// and goal tree, respectively. These may be useful for a size-limited planning
-/// problem.
+///     terminated. The provided int64_t values are the current size of the
+///     start and goal tree, respectively. These may be useful for a
+///     size-limited planning problem.
 /// @param rng a PRNG for use in internal sampling and tree swaps.
-/// @return pair<paths, statistics> where paths is a vector of solution paths
-/// and statistics is a map<string, double> of useful statistics collected while
-/// planning.
+/// @return pair<path, statistics> where path is the solution path and
+///     statistics is a map<string, double> of useful statistics collected while
+///     planning.
 template<typename RNG, typename StateType,
-         typename Allocator=std::allocator<StateType>>
-inline std::pair<std::vector<StateType, Allocator>,
-                 std::map<std::string, double>> BidirectionalRRTPlanSinglePath(
-    std::vector<SimpleRRTPlannerState<StateType>>& start_tree,
-    std::vector<SimpleRRTPlannerState<StateType>>& goal_tree,
-    const std::function<StateType(void)>& state_sampling_fn,
-    const std::function<int64_t(
-        const std::vector<SimpleRRTPlannerState<StateType>>&,
-        const StateType&)>& nearest_neighbor_fn,
-    const std::function<std::vector<std::pair<StateType, int64_t>>(
-        const StateType&, const StateType&)>& forward_propagation_fn,
-    const std::function<void(
-        std::vector<SimpleRRTPlannerState<StateType>>&,
-        const int64_t)>& state_added_callback_fn,
-    const std::function<bool(const StateType&,
-                             const StateType&)>& states_connected_fn,
-    const std::function<void(
-        std::vector<SimpleRRTPlannerState<StateType>>&, const int64_t,
-        std::vector<SimpleRRTPlannerState<StateType>>&, const int64_t,
-        const bool)>& goal_bridge_callback_fn,
+         typename StateAllocator=std::allocator<StateType>>
+inline SingleSolutionPlanningResults<StateType, StateAllocator>
+BidirectionalRRTPlanSinglePath(
+    PlanningTree<StateType>& start_tree,
+    PlanningTree<StateType>& goal_tree,
+    const SamplingFunction<StateType>& state_sampling_fn,
+    const NearestNeighborFunction<StateType>& nearest_neighbor_fn,
+    const ForwardPropagationFunction<StateType>& forward_propagation_fn,
+    const StateAddedCallbackFunction<StateType>& state_added_callback_fn,
+    const StatesConnectedFunction<StateType>& states_connected_fn,
+    const GoalBridgeCallbackFunction<StateType>& goal_bridge_callback_fn,
     const double tree_sampling_bias,
     const double p_switch_tree,
-    const std::function<bool(const int64_t,
-                             const int64_t)>& termination_check_fn,
+    const BidirectionalTerminationCheckFunction& termination_check_fn,
     RNG& rng)
 {
   bool solution_found = false;
-  const std::function<void(
-        std::vector<SimpleRRTPlannerState<StateType>>&, const int64_t,
-        std::vector<SimpleRRTPlannerState<StateType>>&, const int64_t,
-        const bool)> goal_bridge_callback_function
-      = [&] (std::vector<SimpleRRTPlannerState<StateType>>& planning_start_tree,
+  const GoalBridgeCallbackFunction<StateType> internal_goal_bridge_callback_fn
+      = [&] (PlanningTree<StateType>& planning_start_tree,
              const int64_t start_tree_index,
-             std::vector<SimpleRRTPlannerState<StateType>>& planning_goal_tree,
+             PlanningTree<StateType>& planning_goal_tree,
              const int64_t goal_tree_index, const bool was_start_tree_active)
   {
     solution_found = true;
@@ -1040,18 +1070,20 @@ inline std::pair<std::vector<StateType, Allocator>,
                               was_start_tree_active);
     }
   };
-  const std::function<bool(const int64_t, const int64_t)>
-      termination_check_function = [&] (const int64_t current_start_tree_size,
-                                        const int64_t current_goal_tree_size)
+  const BidirectionalTerminationCheckFunction
+      internal_termination_check_fn = [&] (
+          const int64_t current_start_tree_size,
+          const int64_t current_goal_tree_size)
   {
     return (solution_found || termination_check_fn(current_start_tree_size,
                                                    current_goal_tree_size));
   };
-  const auto birrt_result = BidirectionalRRTPlanMultiPath(
-      start_tree, goal_tree, state_sampling_fn, nearest_neighbor_fn,
-      forward_propagation_fn, state_added_callback_fn, states_connected_fn,
-      goal_bridge_callback_function, tree_sampling_bias, p_switch_tree,
-      termination_check_function, rng);
+  const auto birrt_result =
+      BidirectionalRRTPlanMultiPath<RNG, StateType, StateAllocator>(
+          start_tree, goal_tree, state_sampling_fn, nearest_neighbor_fn,
+          forward_propagation_fn, state_added_callback_fn, states_connected_fn,
+          internal_goal_bridge_callback_fn, tree_sampling_bias, p_switch_tree,
+          internal_termination_check_fn, rng);
   if (birrt_result.first.size() > 0)
   {
     return std::make_pair(birrt_result.first.at(0), birrt_result.second);
@@ -1059,7 +1091,7 @@ inline std::pair<std::vector<StateType, Allocator>,
   else
   {
     return std::make_pair(
-        std::vector<StateType, Allocator>(), birrt_result.second);
+        PlannedPath<StateType, StateAllocator>(), birrt_result.second);
   }
 }
 
@@ -1070,7 +1102,7 @@ private:
   OwningMaybe<std::chrono::time_point<std::chrono::steady_clock>> start_time_;
 
 public:
-  TimeoutCheckHelper(const double timeout)
+  explicit TimeoutCheckHelper(const double timeout)
   {
     if (timeout <= 0.0)
     {
@@ -1079,7 +1111,7 @@ public:
     timeout_ = std::chrono::duration<double>(timeout);
   }
 
-  bool Check()
+  bool Check() const
   {
     if (start_time_.HasValue())
     {
@@ -1125,7 +1157,7 @@ public:
 /// exceeded. The timeout function starts keeping track of elapsed time after
 /// the first call, so you can create this function well before using it.
 /// However, it can only be used once!
-inline std::function<bool(const int64_t)> MakeRRTTimeoutTerminationFunction(
+inline SingleTreeTerminationCheckFunction MakeRRTTimeoutTerminationFunction(
     const double planning_timeout)
 {
   TimeoutCheckHelper termination_fn_helper(planning_timeout);
@@ -1142,7 +1174,7 @@ inline std::function<bool(const int64_t)> MakeRRTTimeoutTerminationFunction(
 /// exceeded. The timeout function starts keeping track of elapsed time after
 /// the first call, so you can create this function well before using it.
 /// However, it can only be used once!
-inline std::function<bool(const int64_t, const int64_t)>
+inline BidirectionalTerminationCheckFunction
 MakeBiRRTTimeoutTerminationFunction(const double planning_timeout)
 {
   TimeoutCheckHelper termination_fn_helper(planning_timeout);
@@ -1165,7 +1197,7 @@ MakeBiRRTTimeoutTerminationFunction(const double planning_timeout)
 /// the lifetime of @param rng must cover the entire lifetime of the
 /// std::function this returns!
 template<typename SampleType, typename PRNG>
-inline std::function<SampleType(void)> MakeStateAndGoalSamplingFunction(
+inline SamplingFunction<SampleType> MakeStateAndGoalSamplingFunction(
     const std::function<SampleType(void)>& state_sampling_fn,
     const SampleType& goal_state, const double goal_bias,
     PRNG& rng)
@@ -1218,28 +1250,24 @@ inline std::function<SampleType(void)> MakeStateAndGoalSamplingFunction(
 /// function for use in RRT and BiRRT planners given the provided state-to-state
 /// distance function @param distance_fn and flag @param use_parallel which
 /// selects if parallel linear nearest neighbors should be performed.
-template<typename StateType>
-inline std::function<int64_t(
-    const std::vector<SimpleRRTPlannerState<StateType>>&,
-    const StateType&)>
+template<typename StateType, typename SampleType=StateType>
+inline NearestNeighborFunction<StateType, SampleType>
 MakeLinearNearestNeighborsFunction(
     const std::function<double(const StateType&,
-                               const StateType&)>& distance_fn,
+                               const SampleType&)>& distance_fn,
     const bool use_parallel = true)
 {
-  std::function<int64_t(
-      const std::vector<SimpleRRTPlannerState<StateType>>&,
-      const StateType&)> nearest_neighbors_function
+  NearestNeighborFunction<StateType, SampleType> nearest_neighbors_function
       = [=] (const std::vector<SimpleRRTPlannerState<StateType>>& tree,
-             const StateType& sampled)
+             const SampleType& sampled)
   {
     std::function<double(const SimpleRRTPlannerState<StateType>&,
-                         const StateType&)>
+                         const SampleType&)>
         real_distance_fn =
             [&](const SimpleRRTPlannerState<StateType>& tree_state,
-                const StateType& state) {
+                const SampleType& sample) {
               const StateType& candidate_q = tree_state.GetValueImmutable();
-              return distance_fn(candidate_q, state);
+              return distance_fn(candidate_q, sample);
             };
     const std::vector<std::pair<int64_t, double>> neighbors =
         simple_knearest_neighbors::GetKNearestNeighbors(
@@ -1257,6 +1285,23 @@ MakeLinearNearestNeighborsFunction(
   return nearest_neighbors_function;
 }
 
+/// Helper function to create a serial/parallel linear nearest neighbors
+/// function for use in RRT and BiRRT planners given the provided state-to-state
+/// distance function @param distance_fn and flag @param use_parallel which
+/// selects if parallel linear nearest neighbors should be performed. Use this
+/// helper for kinematic planning problems, in which state type and sample type
+/// are the same.
+template<typename StateType>
+inline NearestNeighborFunction<StateType, StateType>
+MakeKinematicLinearNearestNeighborsFunction(
+    const std::function<double(const StateType&,
+                               const StateType&)>& distance_fn,
+    const bool use_parallel = true)
+{
+  return MakeLinearNearestNeighborsFunction<StateType, StateType>(
+      distance_fn, use_parallel);
+}
+
 /// Helper function to create an RRT-Extend forward propagation function for
 /// holonomic kinematic planning problems. Given the provided distance function
 /// @param distance_fn which computes state-to-state distance, @param
@@ -1268,8 +1313,7 @@ MakeLinearNearestNeighborsFunction(
 /// propagation function will take one step (of @param step_size length) towards
 /// it.
 template<typename StateType>
-inline std::function<std::vector<std::pair<StateType, int64_t>>(
-    const StateType&, const StateType&)>
+inline ForwardPropagationFunction<StateType>
 MakeKinematicRRTExtendPropagationFunction(
     const std::function<double(const StateType&,
                                const StateType&)>& distance_fn,
@@ -1284,8 +1328,7 @@ MakeKinematicRRTExtendPropagationFunction(
   {
     throw std::invalid_argument("step_size <= 0.0");
   }
-  std::function<std::vector<std::pair<StateType, int64_t>>(
-      const StateType&, const StateType&)> forward_propagation_fn
+  ForwardPropagationFunction<StateType> forward_propagation_fn
          = [=] (const StateType& nearest, const StateType& sampled)
   {
     const double distance = distance_fn(nearest, sampled);
@@ -1296,12 +1339,11 @@ MakeKinematicRRTExtendPropagationFunction(
     if (edge_validity_check_fn(nearest, extend_state))
     {
       // -1 is the parent offset used in adding the new node to the tree.
-      return std::vector<std::pair<StateType, int64_t>>{
-          std::make_pair(extend_state, -1)};
+      return ForwardPropagation<StateType>{std::make_pair(extend_state, -1)};
     }
     else
     {
-      return std::vector<std::pair<StateType, int64_t>>();
+      return ForwardPropagation<StateType>();
     }
   };
   return forward_propagation_fn;
@@ -1318,8 +1360,7 @@ MakeKinematicRRTExtendPropagationFunction(
 /// propagation function will take a sequence of steps (of @param step_size
 /// length) towards it.
 template<typename StateType>
-inline std::function<std::vector<std::pair<StateType, int64_t>>(
-    const StateType&, const StateType&)>
+inline ForwardPropagationFunction<StateType>
 MakeKinematicRRTConnectPropagationFunction(
     const std::function<double(const StateType&,
                                const StateType&)>& distance_fn,
@@ -1334,11 +1375,10 @@ MakeKinematicRRTConnectPropagationFunction(
   {
     throw std::invalid_argument("step_size <= 0.0");
   }
-  std::function<std::vector<std::pair<StateType, int64_t>>(
-      const StateType&, const StateType&)> forward_propagation_fn
+  ForwardPropagationFunction<StateType> forward_propagation_fn
          = [=] (const StateType& nearest, const StateType& sampled)
   {
-    std::vector<std::pair<StateType, int64_t>> propagated_states;
+    ForwardPropagation<StateType> propagated_states;
     int64_t parent_offset = -1;
     // Compute a maximum number of steps to take
     const double total_distance = distance_fn(nearest, sampled);

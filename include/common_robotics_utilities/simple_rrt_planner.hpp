@@ -501,7 +501,7 @@ RRTPlanMultiPath(
   while (!termination_check_fn(static_cast<int64_t>(tree.size())))
   {
     // Sample a random goal
-    const StateType random_target = sampling_fn();
+    const SampleType random_target = sampling_fn();
     statistics["total_samples"] += 1.0;
     // Get the nearest neighbor
     const int64_t nearest_neighbor_index

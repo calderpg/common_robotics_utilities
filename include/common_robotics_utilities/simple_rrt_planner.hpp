@@ -1187,41 +1187,50 @@ MakeBiRRTTimeoutTerminationFunction(const double planning_timeout)
 }
 
 /// Helper function to create a sampling function that wraps a state sampling
-/// function @param state_sampling_fn and goal state @param goal_state and
-/// samples states and goal according to @param goal_bias. In the basic single-
-/// direction RRT with a fixed goal state, you interleave sampling random states
+/// function @param state_sampling_fn and goal states @param goal_states and
+/// samples states and goals according to @param goal_bias. In the basic single-
+/// direction RRT with fixed goal states, you interleave sampling random states
 /// (accomplished here by calling @param state_sampling_fn) and "sampling" the
-/// known goal state (here, @param goal_state) with probablity @param goal_bias.
-/// This helper function copies the provided @param state_sampling_fn, @param
-/// goal_state, and @param goal_bias, but passes @param rng by reference. Thus,
-/// the lifetime of @param rng must cover the entire lifetime of the
-/// std::function this returns!
-template<typename SampleType, typename PRNG>
-inline SamplingFunction<SampleType> MakeStateAndGoalSamplingFunction(
+/// known goal states (here, @param goal_states) with probablity
+/// @param goal_bias. This helper function copies the provided
+/// @param state_sampling_fn, @param goal_states, and @param goal_bias, but
+/// passes @param rng by reference. Thus, the lifetime of @param rng must cover
+/// the entire lifetime of the std::function this returns!
+template<typename SampleType, typename PRNG,
+         typename SampleAllocator=std::allocator<SampleType>>
+inline SamplingFunction<SampleType> MakeStateAndGoalsSamplingFunction(
     const std::function<SampleType(void)>& state_sampling_fn,
-    const SampleType& goal_state, const double goal_bias,
-    PRNG& rng)
+    const std::vector<SampleType, SampleAllocator>& goal_states,
+    const double goal_bias, PRNG& rng)
 {
-  class StateAndGoalSamplingFunction
+  class StateAndGoalsSamplingFunction
   {
   private:
-    SampleType goal_sample_;
+    std::vector<SampleType, SampleAllocator> goal_samples_;
     const double goal_bias_ = 0.0;
     std::uniform_real_distribution<double> unit_real_dist_;
+    std::uniform_int_distribution<size_t> goal_sampling_dist_;
     const std::function<SampleType(void)> state_sampling_fn_;
 
   public:
-    StateAndGoalSamplingFunction(
-          const SampleType& goal_sample, const double goal_bias,
+    StateAndGoalsSamplingFunction(
+          const std::vector<SampleType, SampleAllocator>& goal_samples,
+          const double goal_bias,
           const std::function<SampleType(void)>& state_sampling_fn)
-        : goal_sample_(goal_sample), goal_bias_(goal_bias),
+        : goal_samples_(goal_samples), goal_bias_(goal_bias),
           unit_real_dist_(0.0, 1.0), state_sampling_fn_(state_sampling_fn)
     {
       if ((goal_bias_ < 0.0) || (goal_bias_ > 1.0))
       {
         throw std::invalid_argument(
-            "goal_bias_ is not a valid probability");
+            "goal_bias is not a valid probability");
       }
+      if (goal_samples_.empty())
+      {
+        throw std::invalid_argument("goal_samples is empty");
+      }
+      goal_sampling_dist_ =
+          std::uniform_int_distribution<size_t>(0, goal_samples_.size() - 1);
     }
 
     SampleType Sample(PRNG& rng)
@@ -1232,12 +1241,19 @@ inline SamplingFunction<SampleType> MakeStateAndGoalSamplingFunction(
       }
       else
       {
-        return goal_sample_;
+        if (goal_samples_.size() == 1)
+        {
+          return goal_samples_.at(0);
+        }
+        else
+        {
+          return goal_samples_.at(goal_sampling_dist_(rng));
+        }
       }
     }
   };
-  StateAndGoalSamplingFunction sampling_fn_helper(
-      goal_state, goal_bias, state_sampling_fn);
+  StateAndGoalsSamplingFunction sampling_fn_helper(
+      goal_states, goal_bias, state_sampling_fn);
   std::function<SampleType(void)> sampling_function
       = [sampling_fn_helper, &rng] (void) mutable
   {

@@ -474,8 +474,8 @@ TEST(PlanningTest, allPlannersTest)
         std::cout << "RRT-Extend Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
         const auto rrt_sample_fn
-            = simple_rrt_planner::MakeStateAndGoalSamplingFunction<Waypoint>(
-                state_sampling_fn, goal, rrt_goal_bias, prng);
+            = simple_rrt_planner::MakeStateAndGoalsSamplingFunction<Waypoint>(
+                state_sampling_fn, {goal}, rrt_goal_bias, prng);
         const std::function<bool(const Waypoint&)> rrt_goal_reached_fn
             = [&] (const Waypoint& state)
         {

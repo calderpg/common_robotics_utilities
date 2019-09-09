@@ -182,29 +182,37 @@ template<typename SampleType>
 using SamplingFunction = std::function<SampleType(void)>;
 
 template<typename StateType, typename SampleType=StateType>
-using NearestNeighborFunction =
-    std::function<int64_t(const PlanningTree<StateType>&, const SampleType&)>;
+using RRTNearestNeighborFunction =
+    std::function<int64_t(
+        const PlanningTree<StateType>&,  // Planner tree
+        const SampleType&)>;  // Sampled state
 
 template<typename StateType>
 using ForwardPropagation = std::vector<std::pair<StateType, int64_t>>;
 
 template<typename StateType, typename SampleType=StateType>
-using ForwardPropagationFunction =
+using RRTForwardPropagationFunction =
     std::function<ForwardPropagation<StateType>(
-        const StateType&, const SampleType&)>;
+        const StateType&,  // Nearest state
+        const SampleType&)>;  // Sampled state
 
 template<typename StateType>
-using StateAddedCallbackFunction =
-    std::function<void(PlanningTree<StateType>&, const int64_t)>;
+using RRTStateAddedCallbackFunction =
+    std::function<void(
+        PlanningTree<StateType>&,  // Planner tree
+        const int64_t)>;  // Index of added state in planner tree
 
 template<typename StateType>
 using CheckGoalReachedFunction = std::function<bool(const StateType&)>;
 
 template<typename StateType>
 using GoalReachedCallbackFunction =
-    std::function<void(PlanningTree<StateType>&, const int64_t)>;
+    std::function<void(
+        PlanningTree<StateType>&,  // Planner tree
+        const int64_t)>;  // Index of goal state in planner tree
 
-using SingleTreeTerminationCheckFunction = std::function<bool(const int64_t)>;
+using RRTTerminationCheckFunction =
+    std::function<bool(const int64_t)>;  // Size of planner tree
 
 template<typename StateType, typename StateAllocator=std::allocator<StateType>>
 using PlannedPath = std::vector<StateType, StateAllocator>;
@@ -223,18 +231,44 @@ using SingleSolutionPlanningResults =
     std::pair<PlannedPath<StateType, StateAllocator>, PlanningStatistics>;
 
 template<typename StateType>
+using BiRRTNearestNeighborFunction =
+    std::function<int64_t(
+        const PlanningTree<StateType>&,  // Active tree
+        const StateType&,  // Sampled state
+        const bool)>;  // Is the start tree the active tree?
+
+template<typename StateType>
+using BiRRTPropagationFunction =
+    std::function<ForwardPropagation<StateType>(
+        const StateType&,  // Nearest state (from the active tree)
+        const StateType&,  // Target state
+        const bool)>;  // Is the start tree the active tree?
+
+template<typename StateType>
+using BiRRTStateAddedCallbackFunction =
+    std::function<void(
+        PlanningTree<StateType>&,  // Active tree
+        const int64_t, // Index of added state in active tree
+        const bool)>;  // Is the start tree the active tree?
+
+template<typename StateType>
 using StatesConnectedFunction =
-    std::function<bool(const StateType&, const StateType&)>;
+    std::function<bool(
+        const StateType&,  // Source state (from the active tree)
+        const StateType&,  // Target state
+        const bool)>;  // Is the start tree the active tree?
 
 template<typename StateType>
 using GoalBridgeCallbackFunction =
     std::function<void(
         PlanningTree<StateType>&, const int64_t,  // Start tree + index
         PlanningTree<StateType>&, const int64_t,  // Goal tree + index
-        const bool)>;  // Was the start tree the active tree?
+        const bool)>;  // Is the start tree the active tree?
 
-using BidirectionalTerminationCheckFunction =
-    std::function<bool(const int64_t, const int64_t)>;
+using BiRRTTerminationCheckFunction =
+    std::function<bool(
+        const int64_t,  // Size of start tree
+        const int64_t)>;  // Size of goal tree
 
 /// Checks tree @param nodes to make sure the parent-child linkages are correct.
 /// This conservatively enforces that the tree does not conatin cycles by
@@ -462,13 +496,14 @@ inline MultipleSolutionPlanningResults<StateType, StateAllocator>
 RRTPlanMultiPath(
     PlanningTree<StateType>& tree,
     const SamplingFunction<SampleType>& sampling_fn,
-    const NearestNeighborFunction<StateType, SampleType>& nearest_neighbor_fn,
-    const ForwardPropagationFunction<StateType, SampleType>&
+    const RRTNearestNeighborFunction<StateType, SampleType>&
+        nearest_neighbor_fn,
+    const RRTForwardPropagationFunction<StateType, SampleType>&
         forward_propagation_fn,
-    const StateAddedCallbackFunction<StateType>& state_added_callback_fn,
+    const RRTStateAddedCallbackFunction<StateType>& state_added_callback_fn,
     const CheckGoalReachedFunction<StateType>& check_goal_reached_fn,
     const GoalReachedCallbackFunction<StateType>& goal_reached_callback_fn,
-    const SingleTreeTerminationCheckFunction& termination_check_fn)
+    const RRTTerminationCheckFunction& termination_check_fn)
 {
   // Make sure we've been given a start state
   if (tree.empty())
@@ -656,18 +691,18 @@ RRTPlanMultiPath(
 template<typename RNG, typename StateType,
          typename StateAllocator=std::allocator<StateType>>
 inline MultipleSolutionPlanningResults<StateType, StateAllocator>
-BidirectionalRRTPlanMultiPath(
+BiRRTPlanMultiPath(
     PlanningTree<StateType>& start_tree,
     PlanningTree<StateType>& goal_tree,
     const SamplingFunction<StateType>& state_sampling_fn,
-    const NearestNeighborFunction<StateType>& nearest_neighbor_fn,
-    const ForwardPropagationFunction<StateType>& forward_propagation_fn,
-    const StateAddedCallbackFunction<StateType>& state_added_callback_fn,
+    const BiRRTNearestNeighborFunction<StateType>& nearest_neighbor_fn,
+    const BiRRTPropagationFunction<StateType>& propagation_fn,
+    const BiRRTStateAddedCallbackFunction<StateType>& state_added_callback_fn,
     const StatesConnectedFunction<StateType>& states_connected_fn,
     const GoalBridgeCallbackFunction<StateType>& goal_bridge_callback_fn,
     const double tree_sampling_bias,
     const double p_switch_tree,
-    const BidirectionalTerminationCheckFunction& termination_check_fn,
+    const BiRRTTerminationCheckFunction& termination_check_fn,
     RNG& rng)
 {
   if ((tree_sampling_bias < 0.0) || (tree_sampling_bias > 1.0))
@@ -710,7 +745,8 @@ BidirectionalRRTPlanMultiPath(
          goal_tree_idx++)
     {
       if (states_connected_fn(start_tree.at(start_tree_idx).GetValueImmutable(),
-                              goal_tree.at(goal_tree_idx).GetValueImmutable()))
+                              goal_tree.at(goal_tree_idx).GetValueImmutable(),
+                              start_tree_active))
       {
         std::cerr << "Starting pair (" << start_tree_idx << ", "
                   << goal_tree_idx
@@ -756,19 +792,19 @@ BidirectionalRRTPlanMultiPath(
           : state_sampling_fn();
     // Get the nearest neighbor
     const int64_t nearest_neighbor_index
-        = nearest_neighbor_fn(active_tree, target_state);
+        = nearest_neighbor_fn(active_tree, target_state, start_tree_active);
     // nearest_neighbor_index < 0 is handled as a sepecial case of early
     // termination.
     if (UNLIKELY(nearest_neighbor_index < 0))
     {
-        break;
+      break;
     }
     statistics["total_samples"] += 1.0;
     const StateType& nearest_neighbor
         = active_tree.at(nearest_neighbor_index).GetValueImmutable();
     // Forward propagate towards the goal
     const ForwardPropagation<StateType> propagated
-        = forward_propagation_fn(nearest_neighbor, target_state);
+        = propagation_fn(nearest_neighbor, target_state, start_tree_active);
     if (!propagated.empty())
     {
       statistics["successful_samples"] += 1.0;
@@ -820,7 +856,8 @@ BidirectionalRRTPlanMultiPath(
         // Call the state added callback
         if (state_added_callback_fn)
         {
-          state_added_callback_fn(active_tree, new_node_index);
+          state_added_callback_fn(
+              active_tree, new_node_index, start_tree_active);
         }
         // If we sampled from the other tree
         if (sample_from_tree)
@@ -828,7 +865,7 @@ BidirectionalRRTPlanMultiPath(
           // Check if we have connected the trees
           if (states_connected_fn(
                 active_tree.at(new_node_index).GetValueImmutable(),
-                target_state))
+                target_state, start_tree_active))
           {
             if (start_tree_active)
             {
@@ -944,13 +981,14 @@ inline SingleSolutionPlanningResults<StateType, StateAllocator>
 RRTPlanSinglePath(
     PlanningTree<StateType>& tree,
     const SamplingFunction<SampleType>& sampling_fn,
-    const NearestNeighborFunction<StateType, SampleType>& nearest_neighbor_fn,
-    const ForwardPropagationFunction<StateType, SampleType>&
+    const RRTNearestNeighborFunction<StateType, SampleType>&
+        nearest_neighbor_fn,
+    const RRTForwardPropagationFunction<StateType, SampleType>&
         forward_propagation_fn,
-    const StateAddedCallbackFunction<StateType>& state_added_callback_fn,
+    const RRTStateAddedCallbackFunction<StateType>& state_added_callback_fn,
     const CheckGoalReachedFunction<StateType>& check_goal_reached_fn,
     const GoalReachedCallbackFunction<StateType>& goal_reached_callback_fn,
-    const SingleTreeTerminationCheckFunction& termination_check_fn)
+    const RRTTerminationCheckFunction& termination_check_fn)
 {
   bool solution_found = false;
   const GoalReachedCallbackFunction<StateType> internal_goal_reached_callback_fn
@@ -963,7 +1001,7 @@ RRTPlanSinglePath(
       goal_reached_callback_fn(planning_tree, goal_node_index);
     }
   };
-  const SingleTreeTerminationCheckFunction internal_termination_check_fn
+  const RRTTerminationCheckFunction internal_termination_check_fn
       = [&] (const int64_t current_tree_size)
   {
     return (solution_found || termination_check_fn(current_tree_size));
@@ -1041,18 +1079,18 @@ RRTPlanSinglePath(
 template<typename RNG, typename StateType,
          typename StateAllocator=std::allocator<StateType>>
 inline SingleSolutionPlanningResults<StateType, StateAllocator>
-BidirectionalRRTPlanSinglePath(
+BiRRTPlanSinglePath(
     PlanningTree<StateType>& start_tree,
     PlanningTree<StateType>& goal_tree,
     const SamplingFunction<StateType>& state_sampling_fn,
-    const NearestNeighborFunction<StateType>& nearest_neighbor_fn,
-    const ForwardPropagationFunction<StateType>& forward_propagation_fn,
-    const StateAddedCallbackFunction<StateType>& state_added_callback_fn,
+    const BiRRTNearestNeighborFunction<StateType>& nearest_neighbor_fn,
+    const BiRRTPropagationFunction<StateType>& propagation_fn,
+    const BiRRTStateAddedCallbackFunction<StateType>& state_added_callback_fn,
     const StatesConnectedFunction<StateType>& states_connected_fn,
     const GoalBridgeCallbackFunction<StateType>& goal_bridge_callback_fn,
     const double tree_sampling_bias,
     const double p_switch_tree,
-    const BidirectionalTerminationCheckFunction& termination_check_fn,
+    const BiRRTTerminationCheckFunction& termination_check_fn,
     RNG& rng)
 {
   bool solution_found = false;
@@ -1070,18 +1108,17 @@ BidirectionalRRTPlanSinglePath(
                               was_start_tree_active);
     }
   };
-  const BidirectionalTerminationCheckFunction
-      internal_termination_check_fn = [&] (
-          const int64_t current_start_tree_size,
-          const int64_t current_goal_tree_size)
+  const BiRRTTerminationCheckFunction internal_termination_check_fn
+      = [&] (const int64_t current_start_tree_size,
+             const int64_t current_goal_tree_size)
   {
     return (solution_found || termination_check_fn(current_start_tree_size,
                                                    current_goal_tree_size));
   };
   const auto birrt_result =
-      BidirectionalRRTPlanMultiPath<RNG, StateType, StateAllocator>(
+      BiRRTPlanMultiPath<RNG, StateType, StateAllocator>(
           start_tree, goal_tree, state_sampling_fn, nearest_neighbor_fn,
-          forward_propagation_fn, state_added_callback_fn, states_connected_fn,
+          propagation_fn, state_added_callback_fn, states_connected_fn,
           internal_goal_bridge_callback_fn, tree_sampling_bias, p_switch_tree,
           internal_termination_check_fn, rng);
   if (birrt_result.first.size() > 0)
@@ -1157,11 +1194,11 @@ public:
 /// exceeded. The timeout function starts keeping track of elapsed time after
 /// the first call, so you can create this function well before using it.
 /// However, it can only be used once!
-inline SingleTreeTerminationCheckFunction MakeRRTTimeoutTerminationFunction(
+inline RRTTerminationCheckFunction MakeRRTTimeoutTerminationFunction(
     const double planning_timeout)
 {
   TimeoutCheckHelper termination_fn_helper(planning_timeout);
-  std::function<bool(const int64_t)> termination_function
+  RRTTerminationCheckFunction termination_function
       = [termination_fn_helper] (const int64_t) mutable
   {
     return termination_fn_helper.CheckOrStart();
@@ -1174,11 +1211,11 @@ inline SingleTreeTerminationCheckFunction MakeRRTTimeoutTerminationFunction(
 /// exceeded. The timeout function starts keeping track of elapsed time after
 /// the first call, so you can create this function well before using it.
 /// However, it can only be used once!
-inline BidirectionalTerminationCheckFunction
-MakeBiRRTTimeoutTerminationFunction(const double planning_timeout)
+inline BiRRTTerminationCheckFunction MakeBiRRTTimeoutTerminationFunction(
+    const double planning_timeout)
 {
   TimeoutCheckHelper termination_fn_helper(planning_timeout);
-  std::function<bool(const int64_t, const int64_t)> termination_function
+  BiRRTTerminationCheckFunction termination_function
       = [termination_fn_helper] (const int64_t, const int64_t) mutable
   {
     return termination_fn_helper.CheckOrStart();
@@ -1263,17 +1300,17 @@ inline SamplingFunction<SampleType> MakeStateAndGoalsSamplingFunction(
 }
 
 /// Helper function to create a serial/parallel linear nearest neighbors
-/// function for use in RRT and BiRRT planners given the provided state-to-state
-/// distance function @param distance_fn and flag @param use_parallel which
-/// selects if parallel linear nearest neighbors should be performed.
+/// function for use in RRT planner given the provided state-to-state distance
+/// function @param distance_fn and flag @param use_parallel which selects if
+/// parallel linear nearest neighbors should be performed.
 template<typename StateType, typename SampleType=StateType>
-inline NearestNeighborFunction<StateType, SampleType>
-MakeLinearNearestNeighborsFunction(
+inline RRTNearestNeighborFunction<StateType, SampleType>
+MakeLinearRRTNearestNeighborsFunction(
     const std::function<double(const StateType&,
                                const SampleType&)>& distance_fn,
     const bool use_parallel = true)
 {
-  NearestNeighborFunction<StateType, SampleType> nearest_neighbors_function
+  RRTNearestNeighborFunction<StateType, SampleType> nearest_neighbors_function
       = [=] (const std::vector<SimpleRRTPlannerState<StateType>>& tree,
              const SampleType& sampled)
   {
@@ -1302,23 +1339,64 @@ MakeLinearNearestNeighborsFunction(
 }
 
 /// Helper function to create a serial/parallel linear nearest neighbors
-/// function for use in RRT and BiRRT planners given the provided state-to-state
-/// distance function @param distance_fn and flag @param use_parallel which
-/// selects if parallel linear nearest neighbors should be performed. Use this
-/// helper for kinematic planning problems, in which state type and sample type
-/// are the same.
+/// function for use in RRT planner given the provided state-to-state distance
+/// function @param distance_fn and flag @param use_parallel which selects if
+/// parallel linear nearest neighbors should be performed. Use this helper for
+/// kinematic planning problems, in which state type and sample type are the
+/// same.
 template<typename StateType>
-inline NearestNeighborFunction<StateType, StateType>
-MakeKinematicLinearNearestNeighborsFunction(
+inline RRTNearestNeighborFunction<StateType, StateType>
+MakeKinematicLinearRRTNearestNeighborsFunction(
     const std::function<double(const StateType&,
                                const StateType&)>& distance_fn,
     const bool use_parallel = true)
 {
-  return MakeLinearNearestNeighborsFunction<StateType, StateType>(
+  return MakeLinearRRTNearestNeighborsFunction<StateType, StateType>(
       distance_fn, use_parallel);
 }
 
-/// Helper function to create an RRT-Extend forward propagation function for
+/// Helper function to create a serial/parallel linear nearest neighbors
+/// function for use in BiRRT planners given the provided state-to-state
+/// distance function @param distance_fn and flag @param use_parallel which
+/// selects if parallel linear nearest neighbors should be performed. This is
+/// best used for kinematic planning problems, where nearest neighbors is the
+/// same for both start and goal tree.
+template<typename StateType>
+inline BiRRTNearestNeighborFunction<StateType>
+MakeKinematicLinearBiRRTNearestNeighborsFunction(
+    const std::function<double(const StateType&,
+                               const StateType&)>& distance_fn,
+    const bool use_parallel = true)
+{
+  BiRRTNearestNeighborFunction<StateType> nearest_neighbors_function
+      = [=] (const std::vector<SimpleRRTPlannerState<StateType>>& tree,
+             const StateType& sampled, const bool)
+  {
+    std::function<double(const SimpleRRTPlannerState<StateType>&,
+                         const StateType&)>
+        real_distance_fn =
+            [&](const SimpleRRTPlannerState<StateType>& tree_state,
+                const StateType& sample) {
+              const StateType& candidate_q = tree_state.GetValueImmutable();
+              return distance_fn(candidate_q, sample);
+            };
+    const std::vector<std::pair<int64_t, double>> neighbors =
+        simple_knearest_neighbors::GetKNearestNeighbors(
+            tree, sampled, real_distance_fn, 1, use_parallel);
+    if (neighbors.size() > 0)
+    {
+      const std::pair<int64_t, double>& nearest_neighbor = neighbors.front();
+      return nearest_neighbor.first;
+    }
+    else
+    {
+      throw std::runtime_error("NN check produced no neighbors");
+    }
+  };
+  return nearest_neighbors_function;
+}
+
+/// Helper function to create a RRT-Extend forward propagation function for
 /// holonomic kinematic planning problems. Given the provided distance function
 /// @param distance_fn which computes state-to-state distance, @param
 /// state_interpolation_fn which interpolates a state between the provided start
@@ -1329,7 +1407,7 @@ MakeKinematicLinearNearestNeighborsFunction(
 /// propagation function will take one step (of @param step_size length) towards
 /// it.
 template<typename StateType>
-inline ForwardPropagationFunction<StateType>
+inline RRTForwardPropagationFunction<StateType>
 MakeKinematicRRTExtendPropagationFunction(
     const std::function<double(const StateType&,
                                const StateType&)>& distance_fn,
@@ -1344,8 +1422,8 @@ MakeKinematicRRTExtendPropagationFunction(
   {
     throw std::invalid_argument("step_size <= 0.0");
   }
-  ForwardPropagationFunction<StateType> forward_propagation_fn
-         = [=] (const StateType& nearest, const StateType& sampled)
+  RRTForwardPropagationFunction<StateType> forward_propagation_fn
+      = [=] (const StateType& nearest, const StateType& sampled)
   {
     const double distance = distance_fn(nearest, sampled);
     const double ratio = (distance > step_size) ? (step_size / distance) : 1.0;
@@ -1365,7 +1443,54 @@ MakeKinematicRRTExtendPropagationFunction(
   return forward_propagation_fn;
 }
 
-/// Helper function to create an RRT-Connect forward propagation function for
+/// Helper function to create a BiRRT-Extend forward propagation function for
+/// holonomic kinematic planning problems. Given the provided distance function
+/// @param distance_fn which computes state-to-state distance, @param
+/// state_interpolation_fn which interpolates a state between the provided start
+/// and end states and interpolation ratio, @param edge_validity_check peforms
+/// collision checks on the edge between the provided start and end states and
+/// returns true if the edge is valid. @param step_size is the maximum length
+/// edge to consider at once; if the sampled state is farther away, the forward
+/// propagation function will take one step (of @param step_size length) towards
+/// it.
+template<typename StateType>
+inline BiRRTPropagationFunction<StateType>
+MakeKinematicBiRRTExtendPropagationFunction(
+    const std::function<double(const StateType&,
+                               const StateType&)>& distance_fn,
+    const std::function<StateType(const StateType&,
+                                  const StateType&,
+                                  const double)>& state_interpolation_fn,
+    const std::function<bool(const StateType&,
+                             const StateType&)>& edge_validity_check_fn,
+    const double step_size)
+{
+  if (step_size <= 0.0)
+  {
+    throw std::invalid_argument("step_size <= 0.0");
+  }
+  BiRRTPropagationFunction<StateType> forward_propagation_fn
+      = [=] (const StateType& nearest, const StateType& sampled, const bool)
+  {
+    const double distance = distance_fn(nearest, sampled);
+    const double ratio = (distance > step_size) ? (step_size / distance) : 1.0;
+    const StateType extend_state =
+        (ratio < 1.0) ? state_interpolation_fn(nearest, sampled, ratio)
+                      : sampled;
+    if (edge_validity_check_fn(nearest, extend_state))
+    {
+      // -1 is the parent offset used in adding the new node to the tree.
+      return ForwardPropagation<StateType>{std::make_pair(extend_state, -1)};
+    }
+    else
+    {
+      return ForwardPropagation<StateType>();
+    }
+  };
+  return forward_propagation_fn;
+}
+
+/// Helper function to create a RRT-Connect forward propagation function for
 /// holonomic kinematic planning problems. Given the provided distance function
 /// @param distance_fn which computes state-to-state distance, @param
 /// state_interpolation_fn which interpolates a state between the provided start
@@ -1376,7 +1501,7 @@ MakeKinematicRRTExtendPropagationFunction(
 /// propagation function will take a sequence of steps (of @param step_size
 /// length) towards it.
 template<typename StateType>
-inline ForwardPropagationFunction<StateType>
+inline RRTForwardPropagationFunction<StateType>
 MakeKinematicRRTConnectPropagationFunction(
     const std::function<double(const StateType&,
                                const StateType&)>& distance_fn,
@@ -1391,8 +1516,90 @@ MakeKinematicRRTConnectPropagationFunction(
   {
     throw std::invalid_argument("step_size <= 0.0");
   }
-  ForwardPropagationFunction<StateType> forward_propagation_fn
-         = [=] (const StateType& nearest, const StateType& sampled)
+  RRTForwardPropagationFunction<StateType> forward_propagation_fn
+      = [=] (const StateType& nearest, const StateType& sampled)
+  {
+    ForwardPropagation<StateType> propagated_states;
+    int64_t parent_offset = -1;
+    // Compute a maximum number of steps to take
+    const double total_distance = distance_fn(nearest, sampled);
+    const int32_t total_steps =
+        static_cast<int32_t>(
+            std::ceil(total_distance / step_size));
+    StateType current = nearest;
+    int32_t steps = 0;
+    bool completed = false;
+    while (!completed && (steps < total_steps))
+    {
+      // Compute the next intermediate target state
+      StateType current_target = sampled;
+      const double target_distance = distance_fn(current, current_target);
+      if (target_distance > step_size)
+      {
+        const double step_fraction = step_size / target_distance;
+        const StateType interpolated_target =
+            state_interpolation_fn(current, sampled, step_fraction);
+        current_target = interpolated_target;
+      }
+      else if (std::abs(target_distance) <=
+                 std::numeric_limits<double>::epsilon())
+      {
+        // If we've reached the target state, stop
+        completed = true;
+        break;
+      }
+      else
+      {
+        // If we're less than step size away, this is our last step
+        completed = true;
+      }
+      // If the current edge is valid, we keep going
+      if (edge_validity_check_fn(current, current_target))
+      {
+        propagated_states.emplace_back(
+            std::make_pair(current_target, parent_offset));
+        current = current_target;
+        parent_offset++;
+        steps++;
+      }
+      else
+      {
+        completed = true;
+      }
+    }
+    return propagated_states;
+  };
+  return forward_propagation_fn;
+}
+
+/// Helper function to create a BiRRT-Connect forward propagation function for
+/// holonomic kinematic planning problems. Given the provided distance function
+/// @param distance_fn which computes state-to-state distance, @param
+/// state_interpolation_fn which interpolates a state between the provided start
+/// and end states and interpolation ratio, @param edge_validity_check peforms
+/// collision checks on the edge between the provided start and end states and
+/// returns true if the edge is valid. @param step_size is the maximum length
+/// edge to consider at once; if the sampled state is farther away, the forward
+/// propagation function will take a sequence of steps (of @param step_size
+/// length) towards it.
+template<typename StateType>
+inline BiRRTPropagationFunction<StateType>
+MakeKinematicBiRRTConnectPropagationFunction(
+    const std::function<double(const StateType&,
+                               const StateType&)>& distance_fn,
+    const std::function<StateType(const StateType&,
+                                  const StateType&,
+                                  const double)>& state_interpolation_fn,
+    const std::function<bool(const StateType&,
+                             const StateType&)>& edge_validity_check_fn,
+    const double step_size)
+{
+  if (step_size <= 0.0)
+  {
+    throw std::invalid_argument("step_size <= 0.0");
+  }
+  BiRRTPropagationFunction<StateType> forward_propagation_fn
+      = [=] (const StateType& nearest, const StateType& sampled, const bool)
   {
     ForwardPropagation<StateType> propagated_states;
     int64_t parent_offset = -1;

@@ -338,9 +338,9 @@ TEST(PlanningTest, allPlannersTest)
   const double birrt_tree_sampling_bias = 0.5;
   const double birrt_p_switch_trees = 0.25;
   // Make RRT helpers
-  auto nearest_neighbors_fn
+  auto rrt_nearest_neighbors_fn
       = simple_rrt_planner
-          ::MakeKinematicLinearNearestNeighborsFunction<Waypoint>(
+          ::MakeKinematicLinearRRTNearestNeighborsFunction<Waypoint>(
               WaypointDistance, false);
   auto rrt_extend_fn
       = simple_rrt_planner::MakeKinematicRRTExtendPropagationFunction<Waypoint>(
@@ -349,6 +349,20 @@ TEST(PlanningTest, allPlannersTest)
   auto rrt_connect_fn
       = simple_rrt_planner
           ::MakeKinematicRRTConnectPropagationFunction<Waypoint>(
+              WaypointDistance, InterpolateWaypoint, check_edge_validity_fn,
+              rrt_step_size);
+  auto birrt_nearest_neighbors_fn
+      = simple_rrt_planner
+          ::MakeKinematicLinearBiRRTNearestNeighborsFunction<Waypoint>(
+              WaypointDistance, false);
+  auto birrt_extend_fn
+      = simple_rrt_planner
+          ::MakeKinematicBiRRTExtendPropagationFunction<Waypoint>(
+              WaypointDistance, InterpolateWaypoint, check_edge_validity_fn,
+              rrt_step_size);
+  auto birrt_connect_fn
+      = simple_rrt_planner
+          ::MakeKinematicBiRRTConnectPropagationFunction<Waypoint>(
               WaypointDistance, InterpolateWaypoint, check_edge_validity_fn,
               rrt_step_size);
   // Build a roadmap on the environment
@@ -476,8 +490,8 @@ TEST(PlanningTest, allPlannersTest)
         const auto rrt_sample_fn
             = simple_rrt_planner::MakeStateAndGoalsSamplingFunction<Waypoint>(
                 state_sampling_fn, {goal}, rrt_goal_bias, prng);
-        const std::function<bool(const Waypoint&)> rrt_goal_reached_fn
-            = [&] (const Waypoint& state)
+        const simple_rrt_planner::CheckGoalReachedFunction<Waypoint>
+            rrt_goal_reached_fn = [&] (const Waypoint& state)
         {
           return WaypointsEqual(goal, state);
         };
@@ -488,7 +502,7 @@ TEST(PlanningTest, allPlannersTest)
         const auto rrt_extend_path
             = simple_rrt_planner::RRTPlanSinglePath<
                 Waypoint, Waypoint, std::allocator<Waypoint>>(
-                    rrt_extend_tree, rrt_sample_fn, nearest_neighbors_fn,
+                    rrt_extend_tree, rrt_sample_fn, rrt_nearest_neighbors_fn,
                     rrt_extend_fn, {}, rrt_goal_reached_fn, {},
                     simple_rrt_planner
                         ::MakeRRTTimeoutTerminationFunction(rrt_timeout)).first;
@@ -503,7 +517,7 @@ TEST(PlanningTest, allPlannersTest)
         const auto rrt_connect_path
             = simple_rrt_planner::RRTPlanSinglePath<
                 Waypoint, Waypoint, std::allocator<Waypoint>>(
-                    rrt_connect_tree, rrt_sample_fn, nearest_neighbors_fn,
+                    rrt_connect_tree, rrt_sample_fn, rrt_nearest_neighbors_fn,
                     rrt_connect_fn, {}, rrt_goal_reached_fn, {},
                     simple_rrt_planner
                         ::MakeRRTTimeoutTerminationFunction(rrt_timeout)).first;
@@ -511,6 +525,12 @@ TEST(PlanningTest, allPlannersTest)
         // Plan with BiRRT-Extend
         std::cout << "BiRRT-Extend Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
+        const simple_rrt_planner::StatesConnectedFunction<Waypoint>
+            birrt_states_connected_fn
+                = [] (const Waypoint& first, const Waypoint& second, const bool)
+        {
+          return WaypointsEqual(first, second);
+        };
         std::vector<simple_rrt_planner::SimpleRRTPlannerState<Waypoint>>
             birrt_extend_start_tree;
         birrt_extend_start_tree.emplace_back(
@@ -520,12 +540,12 @@ TEST(PlanningTest, allPlannersTest)
         birrt_extend_goal_tree.emplace_back(
             simple_rrt_planner::SimpleRRTPlannerState<Waypoint>(goal));
         const auto birrt_extent_path
-            = simple_rrt_planner::BidirectionalRRTPlanSinglePath<
+            = simple_rrt_planner::BiRRTPlanSinglePath<
                 std::mt19937_64, Waypoint, std::allocator<Waypoint>>(
                     birrt_extend_start_tree, birrt_extend_goal_tree,
-                    state_sampling_fn, nearest_neighbors_fn, rrt_extend_fn, {},
-                    WaypointsEqual, {}, birrt_tree_sampling_bias,
-                    birrt_p_switch_trees,
+                    state_sampling_fn, birrt_nearest_neighbors_fn,
+                    birrt_extend_fn, {}, birrt_states_connected_fn, {},
+                    birrt_tree_sampling_bias, birrt_p_switch_trees,
                     simple_rrt_planner
                         ::MakeBiRRTTimeoutTerminationFunction(rrt_timeout),
                     prng).first;
@@ -542,12 +562,12 @@ TEST(PlanningTest, allPlannersTest)
         birrt_connect_goal_tree.emplace_back(
             simple_rrt_planner::SimpleRRTPlannerState<Waypoint>(goal));
         const auto birrt_connect_path
-            = simple_rrt_planner::BidirectionalRRTPlanSinglePath<
+            = simple_rrt_planner::BiRRTPlanSinglePath<
                 std::mt19937_64, Waypoint, std::allocator<Waypoint>>(
                     birrt_connect_start_tree, birrt_connect_goal_tree,
-                    state_sampling_fn, nearest_neighbors_fn, rrt_connect_fn, {},
-                    WaypointsEqual, {}, birrt_tree_sampling_bias,
-                    birrt_p_switch_trees,
+                    state_sampling_fn, birrt_nearest_neighbors_fn,
+                    birrt_connect_fn, {}, birrt_states_connected_fn, {},
+                    birrt_tree_sampling_bias, birrt_p_switch_trees,
                     simple_rrt_planner
                         ::MakeBiRRTTimeoutTerminationFunction(rrt_timeout),
                     prng).first;

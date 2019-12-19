@@ -506,6 +506,10 @@ inline std::pair<std::vector<Container>, double> ClusterWithDistanceMatrix(
     const double max_cluster_distance, const ClusterStrategy strategy,
     const bool use_parallel = false)
 {
+  if (data.empty())
+  {
+    throw std::invalid_argument("data is empty");
+  }
   if (static_cast<size_t>(distance_matrix.rows()) != data.size()
       || static_cast<size_t>(distance_matrix.cols()) != data.size())
   {

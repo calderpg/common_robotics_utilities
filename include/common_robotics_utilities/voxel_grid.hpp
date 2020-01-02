@@ -415,7 +415,7 @@ class GridQuery : public ReferencingMaybe<T>
 private:
   template<typename Item, typename BackingStore> friend class VoxelGridBase;
 
-  // This constructor is protected because users should not be able to create
+  // This constructor is private because users should not be able to create
   // GridQuery<T> with a value on their own, creation should only be possible
   // within a VoxelGridBase<T> to which the GridQuery<T> references.
   explicit GridQuery(T& item) : ReferencingMaybe<T>(item) {}
@@ -559,7 +559,7 @@ private:
   }
 
 protected:
-  // These are pure-virtual in the base clas to force their implementation in
+  // These are pure-virtual in the base class to force their implementation in
   // derived classes.
 
   /// Do the work necessary for Clone() to copy the current object.

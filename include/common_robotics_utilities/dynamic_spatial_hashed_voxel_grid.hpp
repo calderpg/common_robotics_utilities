@@ -94,7 +94,7 @@ private:
   template<typename Item, typename BackingStore> friend class
       DynamicSpatialHashedVoxelGridChunk;
 
-  // This constructor is protected because users should not be able to create
+  // This constructor is private because users should not be able to create
   // DynamicSpatialHashedGridQuery<T> with a value on their own, creation should
   // only be possible within a DynamicSpatialHashedVoxelGridBase<T> to which the
   // DynamicSpatialHashedGridQuery<T> references.
@@ -600,12 +600,19 @@ template<typename T, typename BackingStore=std::vector<T>>
 class DynamicSpatialHashedVoxelGridBase
 {
 private:
+  using GridChunk = DynamicSpatialHashedVoxelGridChunk<T, BackingStore>;
+  using ChunkMapAllocator =
+      Eigen::aligned_allocator<std::pair<ChunkRegion, GridChunk>>;
+  using ChunkMap =
+      std::unordered_map<
+          ChunkRegion, GridChunk, std::hash<ChunkRegion>,
+          std::equal_to<ChunkRegion>, ChunkMapAllocator>;
+
   Eigen::Isometry3d origin_transform_ = Eigen::Isometry3d::Identity();
   Eigen::Isometry3d inverse_origin_transform_ = Eigen::Isometry3d::Identity();
   T default_value_;
   GridSizes chunk_sizes_;
-  std::unordered_map<
-      ChunkRegion, DynamicSpatialHashedVoxelGridChunk<T, BackingStore>> chunks_;
+  ChunkMap chunks_;
   bool initialized_ = false;
 
   uint64_t BaseSerializeSelf(
@@ -622,14 +629,13 @@ private:
     GridSizes::Serialize(chunk_sizes_, buffer);
     // Serialize the data
     const auto chunk_serializer
-        = [&] (const DynamicSpatialHashedVoxelGridChunk<T, BackingStore>& chunk,
-               std::vector<uint8_t>& serialize_buffer)
+        = [&] (const GridChunk& chunk, std::vector<uint8_t>& serialize_buffer)
     {
-      return DynamicSpatialHashedVoxelGridChunk<T, BackingStore>::Serialize(
-            chunk, serialize_buffer, value_serializer);
+      return GridChunk::Serialize(chunk, serialize_buffer, value_serializer);
     };
     serialization::SerializeUnorderedMap<
-        ChunkRegion, DynamicSpatialHashedVoxelGridChunk<T, BackingStore>>(
+        ChunkRegion, GridChunk, std::hash<ChunkRegion>,
+        std::equal_to<ChunkRegion>, ChunkMapAllocator>(
             chunks_, buffer, ChunkRegion::Serialize, chunk_serializer);
     // Serialize the initialized
     serialization::SerializeMemcpyable<uint8_t>(
@@ -667,18 +673,15 @@ private:
         = [&] (const std::vector<uint8_t>& deserialize_buffer,
                const uint64_t offset)
     {
-      return DynamicSpatialHashedVoxelGridChunk<T, BackingStore>::Deserialize(
-            deserialize_buffer, offset, value_deserializer);
+      return GridChunk::Deserialize(
+          deserialize_buffer, offset, value_deserializer);
     };
-    const std::pair<
-        std::unordered_map<ChunkRegion,
-                           DynamicSpatialHashedVoxelGridChunk<T, BackingStore>>,
-        uint64_t> chunks_deserialized
-            = serialization::DeserializeUnorderedMap<
-                ChunkRegion,
-                DynamicSpatialHashedVoxelGridChunk<T, BackingStore>>(
-                    buffer, current_position, ChunkRegion::Deserialize,
-                    chunk_deserializer);
+    const std::pair<ChunkMap, uint64_t> chunks_deserialized
+        = serialization::DeserializeUnorderedMap<
+            ChunkRegion, GridChunk, std::hash<ChunkRegion>,
+            std::equal_to<ChunkRegion>, ChunkMapAllocator>(
+                buffer, current_position, ChunkRegion::Deserialize,
+                chunk_deserializer);
     chunks_ = chunks_deserialized.first;
     current_position += chunks_deserialized.second;
     // Deserialize the initialized
@@ -730,8 +733,7 @@ private:
   {
     const auto result = chunks_.emplace(
         chunk_region,
-        DynamicSpatialHashedVoxelGridChunk<T, BackingStore>(
-            chunk_region, chunk_sizes_, fill_type, default_value_));
+        GridChunk(chunk_region, chunk_sizes_, fill_type, default_value_));
     if (result.second != true)
     {
       throw std::runtime_error(
@@ -740,7 +742,7 @@ private:
   }
 
 protected:
-  // These are pure-virtual in the base clas to force their implementation in
+  // These are pure-virtual in the base class to force their implementation in
   // derived classes.
 
   /// Do the work necessary for Clone() to copy the current object.
@@ -1035,17 +1037,12 @@ public:
 
   bool HasUniformCellSize() const { return chunk_sizes_.UniformCellSize(); }
 
-  const
-  std::unordered_map<ChunkRegion,
-                     DynamicSpatialHashedVoxelGridChunk<T, BackingStore>>&
-  GetImmutableInternalChunks() const
+  const ChunkMap& GetImmutableInternalChunks() const
   {
     return chunks_;
   }
 
-  std::unordered_map<ChunkRegion,
-                     DynamicSpatialHashedVoxelGridChunk<T, BackingStore>>&
-  GetMutableInternalChunks() const
+  ChunkMap& GetMutableInternalChunks() const
   {
     return chunks_;
   }

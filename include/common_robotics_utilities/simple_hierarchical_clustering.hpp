@@ -175,7 +175,8 @@ inline ClosestPair GetClosestClustersParallel(
   for (const ClosestPair& per_thread_closest_cluster_pair
        : per_thread_closest_clusters)
   {
-    if (per_thread_closest_cluster_pair.Distance() < closest_clusters.Distance())
+    if (per_thread_closest_cluster_pair.Distance()
+        < closest_clusters.Distance())
     {
       closest_clusters = per_thread_closest_cluster_pair;
     }
@@ -473,49 +474,29 @@ inline ClosestPair GetClosestPair(
   }
   else
   {
-    throw std::runtime_error("No valid closest pair");
+    return ClosestPair();
   }
 }
 
-/// Perform hierarchical clustering of @param data up to @param
-/// max_cluster_distance, using @param distance_fn to compute pairwise
-/// value-to-value distance for values in @param data. Strategy to use is
-/// specified by @param strategy, and @param use_parallel selects if parallel
-/// search should be used internally.
-template<typename DataType, typename Container=std::vector<DataType>>
-inline std::pair<std::vector<Container>, double> Cluster(
-    const Container& data,
-    const std::function<double(const DataType&, const DataType&)>& distance_fn,
-    const double max_cluster_distance, const ClusterStrategy strategy,
-    const bool use_parallel = false)
-{
-  const Eigen::MatrixXd distance_matrix
-      = math::BuildPairwiseDistanceMatrix(data, distance_fn, use_parallel);
-  return Cluster(
-      data, distance_matrix, max_cluster_distance, strategy, use_parallel);
-}
-
-/// Perform hierarchical clustering of @param data up to @param
+/// Perform hierarchical index clustering of @param data up to @param
 /// max_cluster_distance, using @param distance_matrix to provide pairwise
 /// value-to-value distance for values in @param data. Strategy to use is
 /// specified by @param strategy, and @param use_parallel selects if parallel
 /// search should be used internally.
-template<typename DataType, typename Container=std::vector<DataType>>
-inline std::pair<std::vector<Container>, double> ClusterWithDistanceMatrix(
-    const Container& data, const Eigen::MatrixXd& distance_matrix,
-    const double max_cluster_distance, const ClusterStrategy strategy,
-    const bool use_parallel = false)
+inline std::pair<std::vector<std::vector<int64_t>>, double>
+IndexClusterWithDistanceMatrix(
+    const Eigen::MatrixXd& distance_matrix, const double max_cluster_distance,
+    const ClusterStrategy strategy, const bool use_parallel = false)
 {
-  if (data.empty())
+  if (distance_matrix.rows() != distance_matrix.cols())
   {
-    throw std::invalid_argument("data is empty");
+    throw std::invalid_argument("distance_matrix is not square");
   }
-  if (static_cast<size_t>(distance_matrix.rows()) != data.size()
-      || static_cast<size_t>(distance_matrix.cols()) != data.size())
+  else if (distance_matrix.rows() == 0)
   {
-    throw std::invalid_argument("distance_matrix is the wrong size");
+    throw std::invalid_argument("distance_matrix is empty");
   }
-  std::vector<uint8_t> datapoint_mask(data.size(), 0u);
+  std::vector<uint8_t> datapoint_mask(distance_matrix.rows(), 0u);
   std::vector<std::vector<int64_t>> cluster_indices;
   double closest_distance = 0.0;
   bool complete = false;
@@ -525,9 +506,10 @@ inline std::pair<std::vector<Container>, double> ClusterWithDistanceMatrix(
     const ClosestPair closest_element_pair
         = GetClosestPair(datapoint_mask, distance_matrix, cluster_indices,
                          strategy, use_parallel);
-    closest_distance = closest_element_pair.Distance();
-    if (closest_distance <= max_cluster_distance)
+    if (closest_element_pair.IsValid()
+        && closest_element_pair.Distance() <= max_cluster_distance)
     {
+      closest_distance = closest_element_pair.Distance();
       const auto& first_item = closest_element_pair.FirstItem();
       const auto& second_item = closest_element_pair.SecondItem();
       // If both elements are values, create a new cluster
@@ -565,7 +547,7 @@ inline std::pair<std::vector<Container>, double> ClusterWithDistanceMatrix(
             = (first_is_cluster) ? second_item.Index() : first_item.Index();
         // Add the element to the cluster
         std::vector<int64_t>& cluster
-            = cluster_indices.at((size_t)cluster_index);
+            = cluster_indices.at(static_cast<size_t>(cluster_index));
         cluster.push_back(value_index);
         // Mask out the index (this way we know it is are already clustered)
         datapoint_mask.at(static_cast<size_t>(value_index)) = 1u;
@@ -576,33 +558,122 @@ inline std::pair<std::vector<Container>, double> ClusterWithDistanceMatrix(
       complete = true;
     }
   }
-  // Extract the actual cluster data
-  std::vector<Container> clusters;
-  for (size_t idx = 0; idx < cluster_indices.size(); idx++)
+  // Get rid of empty clusters left over from cluster-cluster merges
+  std::vector<std::vector<int64_t>> index_clusters;
+  index_clusters.reserve(cluster_indices.size());
+  for (const auto& index_cluster : cluster_indices)
   {
-    const std::vector<int64_t>& current_cluster = cluster_indices[idx];
-    // Ignore empty clusters
-    if (current_cluster.size() > 0)
+    if (index_cluster.size() > 0)
     {
-      Container new_cluster;
-      for (size_t cdx = 0; cdx < current_cluster.size(); cdx++)
-      {
-        const int64_t index = current_cluster[cdx];
-        new_cluster.push_back(data[static_cast<size_t>(index)]);
-      }
-      clusters.push_back(new_cluster);
+      index_clusters.push_back(index_cluster);
     }
   }
   // Add any points that we haven't clustered into their own clusters
   for (size_t idx = 0; idx < datapoint_mask.size(); idx++)
   {
-    // If an element hasn't been clustered at all
+    // If an element hasn't been clustered at all yet, make a new cluster
     if (datapoint_mask.at(idx) == 0)
     {
-      clusters.push_back(Container(1, data[idx]));
+      index_clusters.push_back(
+          std::vector<int64_t>(1, static_cast<int64_t>(idx)));
     }
   }
-  return std::pair<std::vector<Container>, double>(clusters, closest_distance);
+  index_clusters.shrink_to_fit();
+  return std::pair<std::vector<std::vector<int64_t>>, double>(
+      index_clusters, closest_distance);
+}
+
+template<typename DataType, typename Container=std::vector<DataType>>
+inline std::vector<Container> MakeElementClustersFromIndexClusters(
+    const Container& data,
+    const std::vector<std::vector<int64_t>>& index_clusters)
+{
+  std::vector<Container> clusters(index_clusters.size());
+  for (size_t idx = 0; idx < index_clusters.size(); idx++)
+  {
+    const std::vector<int64_t>& current_index_cluster = index_clusters.at(idx);
+    Container& current_cluster = clusters.at(idx);
+    // Use reserve + shrink_to_fit for cases where DataType is not
+    // default-constructible.
+    current_cluster.reserve(current_index_cluster.size());
+    for (const int64_t data_index : current_index_cluster)
+    {
+      current_cluster.push_back(data.at(static_cast<size_t>(data_index)));
+    }
+    current_cluster.shrink_to_fit();
+  }
+  return clusters;
+}
+
+/// Perform hierarchical clustering of @param data up to @param
+/// max_cluster_distance, using @param distance_matrix to provide pairwise
+/// value-to-value distance for values in @param data. Strategy to use is
+/// specified by @param strategy, and @param use_parallel selects if parallel
+/// search should be used internally.
+template<typename DataType, typename Container=std::vector<DataType>>
+inline std::pair<std::vector<Container>, double> ClusterWithDistanceMatrix(
+    const Container& data, const Eigen::MatrixXd& distance_matrix,
+    const double max_cluster_distance, const ClusterStrategy strategy,
+    const bool use_parallel = false)
+{
+  // Safety check the input
+  if (data.empty())
+  {
+    throw std::invalid_argument("data is empty");
+  }
+  if (static_cast<size_t>(distance_matrix.rows()) != data.size()
+      || static_cast<size_t>(distance_matrix.cols()) != data.size())
+  {
+    throw std::invalid_argument("distance_matrix is the wrong size");
+  }
+  // Perform index clustering
+  const auto index_clustering = IndexClusterWithDistanceMatrix(
+      distance_matrix, max_cluster_distance, strategy, use_parallel);
+  const std::vector<std::vector<int64_t>>& index_clusters =
+      index_clustering.first;
+  // Extract the actual cluster data from index clusters
+  return std::pair<std::vector<Container>, double>(
+      MakeElementClustersFromIndexClusters<DataType, Container>(
+          data, index_clusters),
+      index_clustering.second);
+}
+
+/// Perform hierarchical index clustering of @param data up to @param
+/// max_cluster_distance, using @param distance_fn to compute pairwise
+/// value-to-value distance for values in @param data. Strategy to use is
+/// specified by @param strategy, and @param use_parallel selects if parallel
+/// search should be used internally.
+template<typename DataType, typename Container=std::vector<DataType>>
+inline std::pair<std::vector<std::vector<int64_t>>, double> IndexCluster(
+    const Container& data,
+    const std::function<double(const DataType&, const DataType&)>& distance_fn,
+    const double max_cluster_distance, const ClusterStrategy strategy,
+    const bool use_parallel = false)
+{
+  const Eigen::MatrixXd distance_matrix
+      = math::BuildPairwiseDistanceMatrix<DataType, Container>(
+          data, distance_fn, use_parallel);
+  return IndexClusterWithDistanceMatrix(
+      distance_matrix, max_cluster_distance, strategy, use_parallel);
+}
+
+/// Perform hierarchical clustering of @param data up to @param
+/// max_cluster_distance, using @param distance_fn to compute pairwise
+/// value-to-value distance for values in @param data. Strategy to use is
+/// specified by @param strategy, and @param use_parallel selects if parallel
+/// search should be used internally.
+template<typename DataType, typename Container=std::vector<DataType>>
+inline std::pair<std::vector<Container>, double> Cluster(
+    const Container& data,
+    const std::function<double(const DataType&, const DataType&)>& distance_fn,
+    const double max_cluster_distance, const ClusterStrategy strategy,
+    const bool use_parallel = false)
+{
+  const Eigen::MatrixXd distance_matrix
+      = math::BuildPairwiseDistanceMatrix<DataType, Container>(
+          data, distance_fn, use_parallel);
+  return ClusterWithDistanceMatrix<DataType, Container>(
+      data, distance_matrix, max_cluster_distance, strategy, use_parallel);
 }
 }  // namespace simple_hierarchical_clustering
 }  // namespace common_robotics_utilities

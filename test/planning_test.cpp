@@ -30,6 +30,9 @@ namespace planning_test
 {
 using TestMap = Eigen::Matrix<char, Eigen::Dynamic, Eigen::Dynamic>;
 using Waypoint = std::pair<ssize_t, ssize_t>;
+using WaypointAllocator = std::allocator<Waypoint>;
+using WaypointVector = std::vector<Waypoint, WaypointAllocator>;
+using WaypointPlanningTree = simple_rrt_planner::PlanningTree<Waypoint>;
 
 bool WaypointsEqual(const Waypoint& first, const Waypoint& second)
 {
@@ -66,7 +69,7 @@ Waypoint InterpolateWaypoint(
   return Waypoint(interp_row, interp_col);
 }
 
-std::vector<Waypoint> ResampleWaypoints(const std::vector<Waypoint>& waypoints)
+WaypointVector ResampleWaypoints(const WaypointVector& waypoints)
 {
   return path_processing::ResamplePath<Waypoint>(
       waypoints, 0.5, WaypointDistance, InterpolateWaypoint);
@@ -87,9 +90,9 @@ void SetCell(TestMap& map, const ssize_t row, const ssize_t col, const char val)
 
 void DrawPaths(
     const TestMap& environment,
-    const std::vector<Waypoint>& starts,
-    const std::vector<Waypoint>& goals,
-    const std::vector<std::vector<Waypoint>>& paths)
+    const WaypointVector& starts,
+    const WaypointVector& goals,
+    const std::vector<WaypointVector>& paths)
 {
   TestMap working_copy = environment;
   for (const auto& path : paths)
@@ -127,9 +130,9 @@ void DrawPaths(
 
 void DrawPath(
     const TestMap& environment,
-    const std::vector<Waypoint>& starts,
-    const std::vector<Waypoint>& goals,
-    const std::vector<Waypoint>& path)
+    const WaypointVector& starts,
+    const WaypointVector& goals,
+    const WaypointVector& path)
 {
   return DrawPaths(environment, starts, goals, {path});
 }
@@ -176,8 +179,8 @@ bool CheckEdgeCollisionFree(
 }
 
 template<typename PRNG>
-std::vector<Waypoint> SmoothWaypoints(
-    const std::vector<Waypoint>& waypoints,
+WaypointVector SmoothWaypoints(
+    const WaypointVector& waypoints,
     const std::function<bool(const Waypoint&, const Waypoint&)>& check_edge_fn,
     PRNG& prng)
 {
@@ -227,10 +230,10 @@ void DrawRoadmap(
   DrawEnvironment(working_copy);
 }
 
-std::vector<Waypoint> GenerateAllPossible8ConnectedChildren(
+WaypointVector GenerateAllPossible8ConnectedChildren(
     const Waypoint& waypoint)
 {
-  return std::vector<Waypoint>{
+  return WaypointVector{
       Waypoint(waypoint.first - 1, waypoint.second - 1),
       Waypoint(waypoint.first - 1, waypoint.second),
       Waypoint(waypoint.first - 1, waypoint.second + 1),
@@ -276,7 +279,7 @@ TEST(PlanningTest, allPlannersTest)
   DrawEnvironment(test_env);
   const int64_t prng_seed = 42;
   std::mt19937_64 prng(prng_seed);
-  const std::vector<Waypoint> keypoints
+  const WaypointVector keypoints
       = {Waypoint(1, 1), Waypoint(18, 18), Waypoint(7, 13), Waypoint(9, 5)};
   // Bind helper functions used by multiple planners
   const std::function<bool(const Waypoint&)> check_state_validity_fn
@@ -297,8 +300,8 @@ TEST(PlanningTest, allPlannersTest)
     return SampleWaypoint(test_env, prng);
   };
   // Functions to check planning results
-  const std::function<void(const std::vector<Waypoint>&)> check_path =
-      [&] (const std::vector<Waypoint>& path)
+  const std::function<void(const WaypointVector&)> check_path =
+      [&] (const WaypointVector& path)
   {
     ASSERT_GE(static_cast<int32_t>(path.size()), 2);
     for (size_t idx = 1; idx < path.size(); idx++)
@@ -314,11 +317,11 @@ TEST(PlanningTest, allPlannersTest)
     }
   };
   const std::function<void(
-      const TestMap&, const std::vector<Waypoint>&,
-      const std::vector<Waypoint>&, const std::vector<Waypoint>&)> check_plan =
-      [&] (const TestMap& environment, const std::vector<Waypoint>& starts,
-           const std::vector<Waypoint>& goals,
-           const std::vector<Waypoint>& path)
+      const TestMap&, const WaypointVector&,
+      const WaypointVector&, const WaypointVector&)> check_plan =
+      [&] (const TestMap& environment, const WaypointVector& starts,
+           const WaypointVector& goals,
+           const WaypointVector& path)
   {
     DrawPath(environment, starts, goals, path);
     std::cout << "Checking raw path" << std::endl;
@@ -479,7 +482,7 @@ TEST(PlanningTest, allPlannersTest)
                   << print::Print(goal) << ")" << std::endl;
         const auto astar_path
             = simple_astar_search::PerformAstarSearch<
-                Waypoint, std::allocator<Waypoint>>(
+                Waypoint, WaypointVector>(
                     start, goal, GenerateAllPossible8ConnectedChildren,
                     check_edge_validity_fn, WaypointDistance, WaypointDistance,
                     HashWaypoint, true).first;
@@ -495,8 +498,7 @@ TEST(PlanningTest, allPlannersTest)
         {
           return WaypointsEqual(goal, state);
         };
-        std::vector<simple_rrt_planner::SimpleRRTPlannerState<Waypoint>>
-            rrt_extend_tree;
+        WaypointPlanningTree rrt_extend_tree;
         rrt_extend_tree.emplace_back(
             simple_rrt_planner::SimpleRRTPlannerState<Waypoint>(start));
         const auto rrt_extend_path
@@ -510,8 +512,7 @@ TEST(PlanningTest, allPlannersTest)
         // Plan with RRT-Connect
         std::cout << "RRT-Connect Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
-        std::vector<simple_rrt_planner::SimpleRRTPlannerState<Waypoint>>
-            rrt_connect_tree;
+        WaypointPlanningTree rrt_connect_tree;
         rrt_connect_tree.emplace_back(
             simple_rrt_planner::SimpleRRTPlannerState<Waypoint>(start));
         const auto rrt_connect_path
@@ -531,12 +532,10 @@ TEST(PlanningTest, allPlannersTest)
         {
           return WaypointsEqual(first, second);
         };
-        std::vector<simple_rrt_planner::SimpleRRTPlannerState<Waypoint>>
-            birrt_extend_start_tree;
+        WaypointPlanningTree birrt_extend_start_tree;
         birrt_extend_start_tree.emplace_back(
             simple_rrt_planner::SimpleRRTPlannerState<Waypoint>(start));
-        std::vector<simple_rrt_planner::SimpleRRTPlannerState<Waypoint>>
-            birrt_extend_goal_tree;
+        WaypointPlanningTree birrt_extend_goal_tree;
         birrt_extend_goal_tree.emplace_back(
             simple_rrt_planner::SimpleRRTPlannerState<Waypoint>(goal));
         const auto birrt_extent_path
@@ -553,12 +552,10 @@ TEST(PlanningTest, allPlannersTest)
         // Plan with BiRRT-Connect
         std::cout << "BiRRT-Connect Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
-        std::vector<simple_rrt_planner::SimpleRRTPlannerState<Waypoint>>
-            birrt_connect_start_tree;
+        WaypointPlanningTree birrt_connect_start_tree;
         birrt_connect_start_tree.emplace_back(
             simple_rrt_planner::SimpleRRTPlannerState<Waypoint>(start));
-        std::vector<simple_rrt_planner::SimpleRRTPlannerState<Waypoint>>
-            birrt_connect_goal_tree;
+        WaypointPlanningTree birrt_connect_goal_tree;
         birrt_connect_goal_tree.emplace_back(
             simple_rrt_planner::SimpleRRTPlannerState<Waypoint>(goal));
         const auto birrt_connect_path
@@ -576,8 +573,8 @@ TEST(PlanningTest, allPlannersTest)
     }
   }
   // Plan with PRM
-  const std::vector<Waypoint> starts = {keypoints.at(0), keypoints.at(1)};
-  const std::vector<Waypoint> goals = {keypoints.at(2), keypoints.at(3)};
+  const WaypointVector starts = {keypoints.at(0), keypoints.at(1)};
+  const WaypointVector goals = {keypoints.at(2), keypoints.at(3)};
   std::cout << "Multi start/goal PRM Path (" << print::Print(starts) << " to "
             << print::Print(goals) << ")" << std::endl;
   const auto path

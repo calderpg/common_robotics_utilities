@@ -11,10 +11,9 @@ namespace common_robotics_utilities
 {
 namespace path_processing
 {
-template<typename Configuration,
-         typename ConfigAlloc=std::allocator<Configuration>>
+template<typename Configuration, typename Container=std::vector<Configuration>>
 inline double ComputePercentCollisionFree(
-  const std::vector<Configuration, ConfigAlloc>& path,
+  const Container& path,
   const std::function<bool(const Configuration&,
                            const Configuration&)>& edge_validity_check_fn)
 {
@@ -56,10 +55,9 @@ inline double ComputePercentCollisionFree(
   }
 }
 
-template<typename Configuration,
-         typename ConfigAlloc=std::allocator<Configuration>>
-inline std::vector<Configuration, ConfigAlloc> AttemptShortcut(
-    const std::vector<Configuration, ConfigAlloc>& current_path,
+template<typename Configuration, typename Container=std::vector<Configuration>>
+inline Container AttemptShortcut(
+    const Container& current_path,
     const size_t start_index,
     const size_t end_index,
     const uint32_t remaining_backtracking_steps,
@@ -84,7 +82,7 @@ inline std::vector<Configuration, ConfigAlloc> AttemptShortcut(
   if (edge_valid)
   {
     // Make the shortcut
-    std::vector<Configuration, ConfigAlloc> shortcut;
+    Container shortcut;
     // Copy the start config
     shortcut.emplace_back(start_config);
     // Insert resampled states in the shortcut if needed
@@ -110,7 +108,7 @@ inline std::vector<Configuration, ConfigAlloc> AttemptShortcut(
       return shortcut;
     }
     // Check if this was a marginal path that could clip obstacles
-    else if (ComputePercentCollisionFree<Configuration, ConfigAlloc>(
+    else if (ComputePercentCollisionFree<Configuration, Container>(
                  shortcut, edge_validity_check_fn)
              == 1.0)
     {
@@ -129,18 +127,18 @@ inline std::vector<Configuration, ConfigAlloc> AttemptShortcut(
       const uint32_t available_backtracking_steps
           = remaining_backtracking_steps - 1;
       const auto first_half_shortcut
-          = AttemptShortcut<Configuration, ConfigAlloc>(
+          = AttemptShortcut<Configuration, Container>(
               current_path, start_index, middle_index,
               available_backtracking_steps, resample_shortcuts_interval,
               check_for_marginal_shortcuts, edge_validity_check_fn,
               state_distance_fn, state_interpolation_fn);
       const auto second_half_shortcut
-          = AttemptShortcut<Configuration, ConfigAlloc>(
+          = AttemptShortcut<Configuration, Container>(
               current_path, middle_index, end_index,
               available_backtracking_steps, resample_shortcuts_interval,
               check_for_marginal_shortcuts, edge_validity_check_fn,
               state_distance_fn, state_interpolation_fn);
-      std::vector<Configuration, ConfigAlloc> shortcut;
+      Container shortcut;
       if (first_half_shortcut.size() > 0 && second_half_shortcut.size() > 0)
       {
         shortcut.insert(shortcut.end(),
@@ -183,13 +181,13 @@ inline std::vector<Configuration, ConfigAlloc> AttemptShortcut(
     }
   }
   // If we get here, the shortcut failed and we return an empty shortcut path
-  return std::vector<Configuration, ConfigAlloc>();
+  return Container();
 }
 
 template<typename PRNG, typename Configuration,
-         typename ConfigAlloc=std::allocator<Configuration>>
-inline std::vector<Configuration, ConfigAlloc> ShortcutSmoothPath(
-    const std::vector<Configuration, ConfigAlloc>& path,
+         typename Container=std::vector<Configuration>>
+inline Container ShortcutSmoothPath(
+    const Container& path,
     const uint32_t max_iterations,
     const uint32_t max_failed_iterations,
     const uint32_t max_backtracking_steps,
@@ -205,7 +203,7 @@ inline std::vector<Configuration, ConfigAlloc> ShortcutSmoothPath(
                                       const double)>& state_interpolation_fn,
     PRNG& prng)
 {
-  std::vector<Configuration, ConfigAlloc> current_path = path;
+  Container current_path = path;
   uint32_t num_iterations = 0;
   uint32_t failed_iterations = 0;
   while (num_iterations < max_iterations
@@ -238,7 +236,7 @@ inline std::vector<Configuration, ConfigAlloc> ShortcutSmoothPath(
     {
       continue;
     }
-    const auto shortcut = AttemptShortcut<Configuration, ConfigAlloc>(
+    const auto shortcut = AttemptShortcut<Configuration, Container>(
         current_path, start_index, end_index, max_backtracking_steps,
         resample_shortcuts_interval, check_for_marginal_shortcuts,
         edge_validity_check_fn, state_distance_fn, state_interpolation_fn);
@@ -246,7 +244,7 @@ inline std::vector<Configuration, ConfigAlloc> ShortcutSmoothPath(
     // start and end configurations
     if (shortcut.size() > 0)
     {
-      std::vector<Configuration, ConfigAlloc> shortened_path;
+      Container shortened_path;
       if (start_index > 0)
       {
         // Copy the path before the shortcut (excluding start_index)
@@ -276,10 +274,9 @@ inline std::vector<Configuration, ConfigAlloc> ShortcutSmoothPath(
   return current_path;
 }
 
-template<typename Configuration,
-         typename ConfigAlloc=std::allocator<Configuration>>
-inline std::vector<Configuration, ConfigAlloc> ResamplePath(
-    const std::vector<Configuration, ConfigAlloc>& path,
+template<typename Configuration, typename Container=std::vector<Configuration>>
+inline Container ResamplePath(
+    const Container& path,
     const double resampled_state_distance,
     const std::function<double(const Configuration&,
                                const Configuration&)>& state_distance_fn,
@@ -295,7 +292,7 @@ inline std::vector<Configuration, ConfigAlloc> ResamplePath(
   {
     throw std::invalid_argument("resampled_state_distance must be > 0");
   }
-  std::vector<Configuration, ConfigAlloc> resampled_path;
+  Container resampled_path;
   // Add the first state
   resampled_path.push_back(path[0]);
   // Loop through the path, adding interpolated states as needed

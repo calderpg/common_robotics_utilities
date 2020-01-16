@@ -60,16 +60,10 @@ inline std::vector<std::pair<int64_t, double>> GetKNearestNeighborsParallel(
     }
     std::vector<std::pair<int64_t, double>> k_nearests;
     k_nearests.reserve(K);
-    for (size_t thread_idx = 0; thread_idx < per_thread_nearests.size();
-         thread_idx++)
+    for (const auto& thread_nearests : per_thread_nearests)
     {
-      const std::vector<std::pair<int64_t, double>>& thread_nearests =
-          per_thread_nearests.at(thread_idx);
-      for (size_t nearest_idx = 0; nearest_idx < thread_nearests.size();
-           nearest_idx++)
+      for (const auto& current_ith_nearest : thread_nearests)
       {
-        const std::pair<int64_t, double> current_ith_nearest =
-            thread_nearests.at(nearest_idx);
         if (!std::isinf(current_ith_nearest.second)
             && current_ith_nearest.first != -1)
         {

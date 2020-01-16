@@ -176,7 +176,12 @@ public:
 /// Helper function type definitions
 
 template<typename StateType>
-using PlanningTree = std::vector<SimpleRRTPlannerState<StateType>>;
+using SimpleRRTPlannerStateAllocator =
+    Eigen::aligned_allocator<SimpleRRTPlannerState<StateType>>;
+
+template<typename StateType>
+using PlanningTree = std::vector<SimpleRRTPlannerState<StateType>,
+                                 SimpleRRTPlannerStateAllocator<StateType>>;
 
 template<typename SampleType>
 using SamplingFunction = std::function<SampleType(void)>;
@@ -1311,8 +1316,7 @@ MakeLinearRRTNearestNeighborsFunction(
     const bool use_parallel = true)
 {
   RRTNearestNeighborFunction<StateType, SampleType> nearest_neighbors_function
-      = [=] (const std::vector<SimpleRRTPlannerState<StateType>>& tree,
-             const SampleType& sampled)
+      = [=] (const PlanningTree<StateType>& tree, const SampleType& sampled)
   {
     std::function<double(const SimpleRRTPlannerState<StateType>&,
                          const SampleType&)>
@@ -1369,7 +1373,7 @@ MakeKinematicLinearBiRRTNearestNeighborsFunction(
     const bool use_parallel = true)
 {
   BiRRTNearestNeighborFunction<StateType> nearest_neighbors_function
-      = [=] (const std::vector<SimpleRRTPlannerState<StateType>>& tree,
+      = [=] (const PlanningTree<StateType>& tree,
              const StateType& sampled, const bool)
   {
     std::function<double(const SimpleRRTPlannerState<StateType>&,

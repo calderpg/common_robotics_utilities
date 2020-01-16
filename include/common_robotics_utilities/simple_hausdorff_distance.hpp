@@ -270,13 +270,15 @@ inline double ComputeDistance(
 {
   if (use_parallel)
   {
-    return ComputeDistanceParallel(
-        first_distribution, second_distribution, distance_fn);
+    return ComputeDistanceParallel
+        <FirstDatatype, SecondDatatype, FirstContainer, SecondContainer>(
+            first_distribution, second_distribution, distance_fn);
   }
   else
   {
-    return ComputeDistanceSerial(
-        first_distribution, second_distribution, distance_fn);
+    return ComputeDistanceSerial
+        <FirstDatatype, SecondDatatype, FirstContainer, SecondContainer>(
+            first_distribution, second_distribution, distance_fn);
   }
 }
 
@@ -299,13 +301,15 @@ inline double ComputeDistance(
 {
   if (use_parallel)
   {
-    return ComputeDistanceParallel(
-        first_distribution, second_distribution, distance_matrix);
+    return ComputeDistanceParallel
+        <FirstDatatype, SecondDatatype, FirstContainer, SecondContainer>(
+            first_distribution, second_distribution, distance_matrix);
   }
   else
   {
-    return ComputeDistanceSerial(
-        first_distribution, second_distribution, distance_matrix);
+    return ComputeDistanceSerial
+        <FirstDatatype, SecondDatatype, FirstContainer, SecondContainer>(
+            first_distribution, second_distribution, distance_matrix);
   }
 }
 }  // namespace simple_hausdorff_distance

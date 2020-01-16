@@ -54,7 +54,7 @@ public:
 /// Search result is a pair<path, cost>.
 /// Path is a vector of node_ids, and cost is the computed cost-to-come of the
 /// goal node.
-typedef std::pair<std::vector<int64_t>, double> AstarResult;
+using AstarResult = std::pair<std::vector<int64_t>, double>;
 
 /// Extract the result from the explored node map @param explored produced by A*
 /// search, with @param start_id the node_id of the start node and @param
@@ -261,11 +261,10 @@ inline AstarResult PerformGenericAstarSearch(
 /// Note that @param generate_children_fn and @param edge_validity_check overlap
 /// in functionality and that @param edge_validity_check can always return true
 /// if @param generate_children_fn always generates valid children.
-template<typename T, typename Allocator=std::allocator<T>>
-inline std::pair<std::vector<T, Allocator>, double> PerformAstarSearch(
+template<typename T, typename Container=std::vector<T>>
+inline std::pair<Container, double> PerformAstarSearch(
     const T& start, const T& goal,
-    const std::function<std::vector<T, Allocator>(const T&)>&
-        generate_children_fn,
+    const std::function<Container(const T&)>& generate_children_fn,
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<double(const T&, const T&)>& heuristic_fn,
@@ -323,7 +322,7 @@ inline std::pair<std::vector<T, Allocator>, double> PerformAstarSearch(
           edge_validity_check_function, distance_function, heuristic_function,
           limit_pqueue_duplicates);
   // Extract the solution path
-  std::vector<T, Allocator> solution_path;
+  Container solution_path;
   solution_path.reserve(astar_solution.first.size());
   for (const int64_t state_id : astar_solution.first)
   {

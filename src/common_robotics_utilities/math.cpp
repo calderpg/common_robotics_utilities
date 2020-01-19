@@ -847,6 +847,12 @@ Eigen::Vector3d AverageEigenVector3d(const VectorVector3d& vectors,
   return AverageEigenVector(vectors, weights);
 }
 
+Eigen::Vector4d AverageEigenVector4d(const VectorVector4d& vectors,
+                                     const std::vector<double>& weights)
+{
+  return AverageEigenVector(vectors, weights);
+}
+
 Eigen::VectorXd AverageEigenVectorXd(
     const std::vector<Eigen::VectorXd>& vectors,
     const std::vector<double>& weights)

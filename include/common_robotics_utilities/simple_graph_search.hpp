@@ -346,7 +346,7 @@ inline simple_astar_search::AstarResult PerformLazyAstarSearch(
             // Add to the queue member map
             if (limit_pqueue_duplicates)
             {
-              queue_members_map[child_node_id] = child_cost_to_come;
+              queue_members_map[child_node_index] = child_cost_to_come;
             }
           }
         }

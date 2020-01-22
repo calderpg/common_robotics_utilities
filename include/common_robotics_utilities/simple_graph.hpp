@@ -28,13 +28,13 @@ public:
     return edge.SerializeSelf(buffer);
   }
 
-  static std::pair<GraphEdge, uint64_t> Deserialize(
+  static serialization::Deserialized<GraphEdge> Deserialize(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
   {
     GraphEdge temp_edge;
     const uint64_t bytes_read
         = temp_edge.DeserializeSelf(buffer, starting_offset);
-    return std::make_pair(temp_edge, bytes_read);
+    return serialization::MakeDeserialized(temp_edge, bytes_read);
   }
 
   GraphEdge(
@@ -69,26 +69,26 @@ public:
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
   {
     uint64_t current_position = starting_offset;
-    const std::pair<int64_t, uint64_t> deserialized_from_index
+    const auto deserialized_from_index
         = serialization::DeserializeMemcpyable<int64_t>(buffer,
                                                         current_position);
-    from_index_ = deserialized_from_index.first;
-    current_position += deserialized_from_index.second;
-    const std::pair<int64_t, uint64_t> deserialized_to_index
+    from_index_ = deserialized_from_index.Value();
+    current_position += deserialized_from_index.BytesRead();
+    const auto deserialized_to_index
         = serialization::DeserializeMemcpyable<int64_t>(buffer,
                                                         current_position);
-    to_index_ = deserialized_to_index.first;
-    current_position += deserialized_to_index.second;
-    const std::pair<double, uint64_t> deserialized_weight
+    to_index_ = deserialized_to_index.Value();
+    current_position += deserialized_to_index.BytesRead();
+    const auto deserialized_weight
         = serialization::DeserializeMemcpyable<double>(buffer,
                                                        current_position);
-    weight_ = deserialized_weight.first;
-    current_position += deserialized_weight.second;
-    const std::pair<uint64_t, uint64_t> deserialized_scratchpad
+    weight_ = deserialized_weight.Value();
+    current_position += deserialized_weight.BytesRead();
+    const auto deserialized_scratchpad
         = serialization::DeserializeMemcpyable<uint64_t>(buffer,
                                                          current_position);
-    scratchpad_ = deserialized_scratchpad.first;
-    current_position += deserialized_scratchpad.second;
+    scratchpad_ = deserialized_scratchpad.Value();
+    current_position += deserialized_scratchpad.BytesRead();
     // Figure out how many bytes were read
     const uint64_t bytes_read = current_position - starting_offset;
     return bytes_read;
@@ -148,22 +148,20 @@ public:
 
   static uint64_t Serialize(
       const GraphNodeType& node, std::vector<uint8_t>& buffer,
-      const std::function<uint64_t(
-          const NodeValueType&, std::vector<uint8_t>&)>& value_serializer)
+      const serialization::Serializer<NodeValueType>& value_serializer)
   {
     return node.SerializeSelf(buffer, value_serializer);
   }
 
-  static std::pair<GraphNodeType, uint64_t> Deserialize(
+  static serialization::Deserialized<GraphNodeType> Deserialize(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const std::function<std::pair<NodeValueType, uint64_t>(
-          const std::vector<uint8_t>&, const uint64_t)>& value_deserializer)
+      const serialization::Deserializer<NodeValueType>& value_deserializer)
   {
     GraphNodeType temp_node;
     const uint64_t bytes_read
         = temp_node.DeserializeSelf(buffer, starting_offset,
                                     value_deserializer);
-    return std::make_pair(temp_node, bytes_read);
+    return serialization::MakeDeserialized(temp_node, bytes_read);
   }
 
   GraphNode(const NodeValueType& value,
@@ -177,8 +175,7 @@ public:
 
   uint64_t SerializeSelf(
       std::vector<uint8_t>& buffer,
-      const std::function<uint64_t(
-          const NodeValueType&, std::vector<uint8_t>&)>& value_serializer) const
+      const serialization::Serializer<NodeValueType>& value_serializer) const
   {
     const uint64_t start_buffer_size = buffer.size();
     // Serialize the value
@@ -197,27 +194,26 @@ public:
 
   uint64_t DeserializeSelf(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const std::function<std::pair<NodeValueType, uint64_t>(
-          const std::vector<uint8_t>&, const uint64_t)>& value_deserializer)
+      const serialization::Deserializer<T>& value_deserializer)
   {
     uint64_t current_position = starting_offset;
     // Deserialize the value
-    const std::pair<NodeValueType, uint64_t> value_deserialized
+    const auto value_deserialized
         = value_deserializer(buffer, current_position);
-    value_ = value_deserialized.first;
-    current_position += value_deserialized.second;
+    value_ = value_deserialized.Value();
+    current_position += value_deserialized.BytesRead();
     // Deserialize the in edges
-    const std::pair<std::vector<GraphEdge>, uint64_t> in_edges_deserialized
+    const auto in_edges_deserialized
         = serialization::DeserializeVectorLike<GraphEdge>(
             buffer, current_position, GraphEdge::Deserialize);
-    in_edges_ = in_edges_deserialized.first;
-    current_position += in_edges_deserialized.second;
+    in_edges_ = in_edges_deserialized.Value();
+    current_position += in_edges_deserialized.BytesRead();
     // Deserialize the out edges
-    const std::pair<std::vector<GraphEdge>, uint64_t> out_edges_deserialized
+    const auto out_edges_deserialized
         = serialization::DeserializeVectorLike<GraphEdge>(
             buffer, current_position, GraphEdge::Deserialize);
-    out_edges_ = out_edges_deserialized.first;
-    current_position += out_edges_deserialized.second;
+    out_edges_ = out_edges_deserialized.Value();
+    current_position += out_edges_deserialized.BytesRead();
     // Figure out how many bytes were read
     const uint64_t bytes_read = current_position - starting_offset;
     return bytes_read;
@@ -306,6 +302,7 @@ template<typename NodeValueType>
 class Graph
 {
 private:
+  using GraphType = Graph<NodeValueType>;
   using GraphNodeType = GraphNode<NodeValueType>;
   using GraphNodeAllocatorType = GraphNodeAllocator<NodeValueType>;
   using GraphNodeVector = std::vector<GraphNodeType, GraphNodeAllocatorType>;
@@ -315,22 +312,20 @@ private:
 public:
   static uint64_t Serialize(
       const Graph<NodeValueType>& graph, std::vector<uint8_t>& buffer,
-      const std::function<uint64_t(
-          const NodeValueType&, std::vector<uint8_t>&)>& value_serializer)
+      const serialization::Serializer<NodeValueType>& value_serializer)
   {
     return graph.SerializeSelf(buffer, value_serializer);
   }
 
-  static std::pair<Graph<NodeValueType>, uint64_t> Deserialize(
+  static serialization::Deserialized<GraphType> Deserialize(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const std::function<std::pair<NodeValueType, uint64_t>(
-          const std::vector<uint8_t>&, const uint64_t)>& value_deserializer)
+      const serialization::Deserializer<NodeValueType>& value_deserializer)
   {
     Graph<NodeValueType> temp_graph;
     const uint64_t bytes_read
         = temp_graph.DeserializeSelf(
             buffer, starting_offset, value_deserializer);
-    return std::make_pair(temp_graph, bytes_read);
+    return serialization::MakeDeserialized(temp_graph, bytes_read);
   }
 
   Graph(const GraphNodeVector& nodes)
@@ -351,12 +346,10 @@ public:
 
   uint64_t SerializeSelf(
       std::vector<uint8_t>& buffer,
-      const std::function<uint64_t(
-          const NodeValueType&, std::vector<uint8_t>&)>& value_serializer) const
+      const serialization::Serializer<NodeValueType>& value_serializer) const
   {
     const uint64_t start_buffer_size = buffer.size();
-    std::function<uint64_t(const GraphNodeType&,
-                           std::vector<uint8_t>&)> graph_state_serializer =
+    const serialization::Serializer<GraphNodeType> graph_node_serializer =
         [&] (const GraphNodeType& node,
              std::vector<uint8_t>& serialize_buffer)
     {
@@ -364,7 +357,7 @@ public:
           node, serialize_buffer, value_serializer);
     };
     serialization::SerializeVectorLike<GraphNodeType, GraphNodeVector>(
-        nodes_, buffer, graph_state_serializer);
+        nodes_, buffer, graph_node_serializer);
     // Figure out how many bytes were written
     const uint64_t end_buffer_size = buffer.size();
     const uint64_t bytes_written = end_buffer_size - start_buffer_size;
@@ -373,27 +366,27 @@ public:
 
   uint64_t DeserializeSelf(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const std::function<std::pair<NodeValueType, uint64_t>(
-          const std::vector<uint8_t>&, const uint64_t)>& value_deserializer)
+      const serialization::Deserializer<NodeValueType>& value_deserializer)
   {
-    const std::function<std::pair<GraphNodeType, uint64_t>(
-        const std::vector<uint8_t>&, const uint64_t)> graph_state_deserializer =
+    const serialization::Deserializer<GraphNodeType> graph_node_deserializer =
         [&] (const std::vector<uint8_t>& deserialize_buffer,
              const uint64_t offset)
     {
       return GraphNodeType::Deserialize(
           deserialize_buffer, offset, value_deserializer);
     };
-    const std::pair<GraphNodeVector, uint64_t>
-        deserialized_nodes
+    const auto deserialized_nodes
         = serialization::DeserializeVectorLike<GraphNodeType, GraphNodeVector>(
-            buffer, starting_offset, graph_state_deserializer);
-    nodes_ = deserialized_nodes.first;
-    if (!CheckGraphLinkage())
+            buffer, starting_offset, graph_node_deserializer);
+    if (CheckGraphLinkage(deserialized_nodes.Value()))
+    {
+      nodes_ = deserialized_nodes.Value();
+    }
+    else
     {
       throw std::invalid_argument("Deserialized invalid graph linkage");
     }
-    return deserialized_nodes.second;
+    return deserialized_nodes.BytesRead();
   }
 
   std::string Print() const

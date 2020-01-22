@@ -238,6 +238,10 @@ inline AstarResult PerformGenericAstarSearch(
             const double child_value = child_cost_to_come + child_heuristic;
             queue.push(AstarPQueueElement(child_node_id, top_node.NodeID(),
                                           child_cost_to_come, child_value));
+            if (limit_pqueue_duplicates)
+            {
+              queue_members_map[child_node_id] = child_cost_to_come;
+            }
           }
         }
       }

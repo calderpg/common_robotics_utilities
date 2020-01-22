@@ -327,6 +327,10 @@ inline simple_astar_search::AstarResult PerformLazyAstarSearch(
             queue.push(simple_astar_search::AstarPQueueElement(
                 child_node_index, top_node.NodeID(), child_cost_to_come,
                          child_value));
+            if (limit_pqueue_duplicates)
+            {
+              queue_members_map[child_node_index] = child_cost_to_come;
+            }
           }
         }
       }

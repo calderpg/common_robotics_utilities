@@ -351,7 +351,7 @@ inline uint64_t SerializeString(
 {
   const uint64_t start_buffer_size = buffer.size();
   // First, write a uint64_t size header
-  const uint64_t size = (uint64_t)str_to_serialize.size();
+  const uint64_t size = static_cast<uint64_t>(str_to_serialize.size());
   SerializeMemcpyable<uint64_t>(size, buffer);
   // Serialize the contained items
   for (size_t idx = 0; idx < size; idx++)
@@ -399,7 +399,7 @@ inline uint64_t SerializeVectorLike(
 {
   const uint64_t start_buffer_size = buffer.size();
   // First, write a uint64_t size header
-  const uint64_t size = (uint64_t)vec_to_serialize.size();
+  const uint64_t size = static_cast<uint64_t>(vec_to_serialize.size());
   SerializeMemcpyable<uint64_t>(size, buffer);
   // Serialize the contained items
   for (size_t idx = 0; idx < size; idx++)
@@ -448,7 +448,7 @@ inline uint64_t SerializeMemcpyableVectorLike(
 {
   const uint64_t start_buffer_size = buffer.size();
   // First, write a uint64_t size header
-  const uint64_t size = (uint64_t)vec_to_serialize.size();
+  const uint64_t size = static_cast<uint64_t>(vec_to_serialize.size());
   SerializeMemcpyable<uint64_t>(size, buffer);
   // Expand the buffer to handle everything
   const size_t serialized_length = sizeof(T) * vec_to_serialize.size();
@@ -680,7 +680,7 @@ inline uint64_t SerializeNetworkMemcpyableInPlace(
            temp_buffer.data(),
            sizeof(item_to_serialize));
     // Figure out how many bytes were written
-    return (uint64_t)sizeof(item_to_serialize);
+    return static_cast<uint64_t>(sizeof(item_to_serialize));
   }
   else
   {
@@ -799,7 +799,7 @@ inline uint64_t SerializeNetworkString(
 {
   const uint64_t start_buffer_size = buffer.size();
   // First, write a uint64_t size header
-  const uint64_t size = (uint64_t)str_to_serialize.size();
+  const uint64_t size = static_cast<uint64_t>(str_to_serialize.size());
   SerializeNetworkMemcpyable<uint64_t>(size, buffer);
   // Serialize the contained items
   for (size_t idx = 0; idx < size; idx++)
@@ -849,7 +849,7 @@ inline uint64_t SerializeNetworkVectorLike(
 {
   const uint64_t start_buffer_size = buffer.size();
   // First, write a uint64_t size header
-  const uint64_t size = (uint64_t)vec_to_serialize.size();
+  const uint64_t size = static_cast<uint64_t>(vec_to_serialize.size());
   SerializeNetworkMemcpyable<uint64_t>(size, buffer);
   // Serialize the contained items
   for (size_t idx = 0; idx < size; idx++)
@@ -899,7 +899,7 @@ inline uint64_t SerializeNetworkMemcpyableVectorLike(
 {
   const uint64_t start_buffer_size = buffer.size();
   // First, write a uint64_t size header
-  const uint64_t size = (uint64_t)vec_to_serialize.size();
+  const uint64_t size = static_cast<uint64_t>(vec_to_serialize.size());
   SerializeNetworkMemcpyable<uint64_t>(size, buffer);
   // Expand the buffer to handle everything
   const size_t serialized_length = sizeof(T) * vec_to_serialize.size();

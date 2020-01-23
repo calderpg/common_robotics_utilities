@@ -158,16 +158,18 @@ public:
   std::list<double> GetSwitchingPoints() const
   {
     std::list<double> switching_points;
-    const size_t dim = (size_t)x_.size();
+    const size_t dim = static_cast<size_t>(x_.size());
     for (size_t i = 0; i < dim; i++)
     {
-      double switching_angle = std::atan2(y_[(ssize_t)i], x_[(ssize_t)i]);
-      if(switching_angle < 0.0)
+      double switching_angle
+          = std::atan2(y_[static_cast<ssize_t>(i)],
+                       x_[static_cast<ssize_t>(i)]);
+      if (switching_angle < 0.0)
       {
         switching_angle += M_PI;
       }
       const double switching_point = switching_angle * radius_;
-      if(switching_point < length_)
+      if (switching_point < length_)
       {
         switching_points.push_back(switching_point);
       }
@@ -344,7 +346,7 @@ Trajectory::Trajectory(const std::list<Eigen::VectorXd>& waypoints,
   : path_(Path(waypoints, max_deviation)),
     max_velocity_(max_velocity),
     max_acceleration_(max_acceleration),
-    n_((unsigned int)max_velocity.size()),
+    n_(static_cast<uint32_t>(max_velocity.size())),
     time_step_(timestep),
     cached_time_(std::numeric_limits<double>::max())
 {
@@ -390,7 +392,7 @@ Trajectory::Trajectory(const Path& path,
   : path_(path),
     max_velocity_(max_velocity),
     max_acceleration_(max_acceleration),
-    n_((unsigned int)max_velocity.size()),
+    n_(static_cast<uint32_t>(max_velocity.size())),
     time_step_(timestep),
     cached_time_(std::numeric_limits<double>::max())
 {
@@ -841,7 +843,7 @@ double Trajectory::GetMinMaxPathAcceleration(const double path_pos,
   Eigen::VectorXd config_deriv2 = path_.GetCurvature(path_pos);
   double factor = max ? 1.0 : -1.0;
   double max_path_accceleration = std::numeric_limits<double>::max();
-  for (unsigned int i = 0; i < n_; i++)
+  for (uint32_t i = 0; i < n_; i++)
   {
     if (config_deriv[i] != 0.0)
     {
@@ -867,11 +869,11 @@ double Trajectory::GetAccelerationMaxPathVelocity(double path_pos) const
   double max_path_velocity = std::numeric_limits<double>::infinity();
   const Eigen::VectorXd config_deriv = path_.GetTangent(path_pos);
   const Eigen::VectorXd config_deriv2 = path_.GetCurvature(path_pos);
-  for (unsigned int i = 0; i < n_; i++)
+  for (uint32_t i = 0; i < n_; i++)
   {
     if (config_deriv[i] != 0.0)
     {
-      for (unsigned int j = i + 1; j < n_; j++)
+      for (uint32_t j = i + 1; j < n_; j++)
       {
         if (config_deriv[j] != 0.0)
         {
@@ -904,7 +906,7 @@ double Trajectory::GetVelocityMaxPathVelocity(double path_pos) const
 {
   const Eigen::VectorXd tangent = path_.GetTangent(path_pos);
   double max_path_velocity = std::numeric_limits<double>::max();
-  for (unsigned int i = 0; i < n_; i++)
+  for (uint32_t i = 0; i < n_; i++)
   {
     max_path_velocity
         = std::min(max_path_velocity, max_velocity_[i] / std::abs(tangent[i]));
@@ -922,8 +924,8 @@ double Trajectory::GetVelocityMaxPathVelocityDeriv(const double path_pos)
 {
   const Eigen::VectorXd tangent = path_.GetTangent(path_pos);
   double max_path_velocity = std::numeric_limits<double>::max();
-  unsigned int active_constraint = 0;
-  for (unsigned int i = 0; i < n_; i++)
+  uint32_t active_constraint = 0;
+  for (uint32_t i = 0; i < n_; i++)
   {
     const double this_max_path_velocity
         = max_velocity_[i] / std::abs(tangent[i]);

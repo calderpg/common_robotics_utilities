@@ -38,19 +38,19 @@ std::vector<uint8_t> Decode(const std::string& encoded)
                       | B64IndexTable[encoded[i + 1]] << 12
                       | B64IndexTable[encoded[i + 2]] << 6
                       | B64IndexTable[encoded[i + 3]];
-    buffer[j++] = (uint8_t)(n >> 16);
-    buffer[j++] = (uint8_t)(n >> 8 & 0xFF);
-    buffer[j++] = (uint8_t)(n & 0xFF);
+    buffer[j++] = static_cast<uint8_t>(n >> 16);
+    buffer[j++] = static_cast<uint8_t>(n >> 8 & 0xFF);
+    buffer[j++] = static_cast<uint8_t>(n & 0xFF);
   }
   if (pad > 0)
   {
     int32_t n = B64IndexTable[encoded[L]] << 18
                 | B64IndexTable[encoded[L + 1]] << 12;
-    buffer[buffer.size() - 1] = (uint8_t)(n >> 16);
+    buffer[buffer.size() - 1] = static_cast<uint8_t>(n >> 16);
     if (encoded_length > L + 2 && encoded[L + 2] != '=')
     {
       n |= B64IndexTable[encoded[L + 2]] << 6;
-      buffer.push_back((uint8_t)(n >> 8 & 0xFF));
+      buffer.push_back(static_cast<uint8_t>(n >> 8 & 0xFF));
     }
   }
   return buffer;

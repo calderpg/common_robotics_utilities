@@ -390,7 +390,7 @@ GetArbitraryOrthogonalVector(const Eigen::MatrixBase<DerivedV>& vector)
       Eigen::Matrix<typename DerivedV::Scalar, Eigen::Dynamic, 1> test_vector
           = Eigen::Matrix<typename DerivedV::Scalar, Eigen::Dynamic, 1>
           ::Zero(vector_size);
-      test_vector(idx) = (typename DerivedV::Scalar)1.0;
+      test_vector(idx) = static_cast<typename DerivedV::Scalar>(1.0);
       const auto rejected_vector = VectorRejection(vector, test_vector);
       const typename DerivedV::Scalar rejected_vector_squared_norm
           = rejected_vector.squaredNorm();

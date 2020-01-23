@@ -202,7 +202,8 @@ Eigen::Matrix3Xd VectorGeometryPointToEigenMatrix3Xd(
 std::vector<geometry_msgs::Point> EigenMatrix3XdToVectorGeometryPoint(
     const Eigen::Matrix3Xd& eigen_matrix)
 {
-  std::vector<geometry_msgs::Point> vector_geom((size_t)eigen_matrix.cols());
+  std::vector<geometry_msgs::Point> vector_geom(
+      static_cast<size_t>(eigen_matrix.cols()));
   for (size_t idx = 0; idx < vector_geom.size(); idx++)
   {
     vector_geom.at(idx)

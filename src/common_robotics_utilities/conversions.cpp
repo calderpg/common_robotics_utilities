@@ -59,18 +59,17 @@ Eigen::Isometry3d TransformFromXYZRPY(const double x,
                                       const double pitch,
                                       const double yaw)
 {
-  const Eigen::Isometry3d transform = Eigen::Translation3d(x, y, z)
-                                      * QuaternionFromRPY(roll, pitch, yaw);
+  const Eigen::Isometry3d transform
+      = Eigen::Translation3d(x, y, z) * QuaternionFromRPY(roll, pitch, yaw);
   return transform;
 }
 
 Eigen::Isometry3d TransformFromRPY(const Eigen::Vector3d& translation,
                                    const Eigen::Vector3d& rotation)
 {
-  const Eigen::Isometry3d transform = (Eigen::Translation3d)translation
-                                      * QuaternionFromRPY(rotation.x(),
-                                                          rotation.y(),
-                                                          rotation.z());
+  const Eigen::Isometry3d transform
+      = static_cast<Eigen::Translation3d>(translation)
+            * QuaternionFromRPY(rotation.x(), rotation.y(), rotation.z());
   return transform;
 }
 
@@ -109,10 +108,9 @@ Eigen::Isometry3d TransformFromUrdfXYZRPY(const double x,
 Eigen::Isometry3d TransformFromUrdfRPY(const Eigen::Vector3d& translation,
                                        const Eigen::Vector3d& rotation)
 {
-  const Eigen::Isometry3d transform = (Eigen::Translation3d)translation
-                                      * QuaternionFromUrdfRPY(rotation.x(),
-                                                              rotation.y(),
-                                                              rotation.z());
+  const Eigen::Isometry3d transform
+      = static_cast<Eigen::Translation3d>(translation)
+          * QuaternionFromUrdfRPY(rotation.x(), rotation.y(), rotation.z());
   return transform;
 }
 
@@ -180,8 +178,8 @@ std::vector<double> EigenVector3dToStdVectorDouble(
 std::vector<double> EigenVectorXdToStdVectorDouble(
     const Eigen::VectorXd& eigen_vector)
 {
-  std::vector<double> vector((size_t)eigen_vector.size());
-  for (size_t idx = 0; idx < (size_t)eigen_vector.size(); idx++)
+  std::vector<double> vector(static_cast<size_t>(eigen_vector.size()));
+  for (size_t idx = 0; idx < vector.size(); idx++)
   {
     const double val = eigen_vector(static_cast<ssize_t>(idx));
     vector.at(idx) = val;

@@ -186,8 +186,8 @@ inline bool CheckAlignment(const T& item,
                            const uint64_t desired_alignment,
                            bool verbose=false)
 {
-  const T* item_ptr = &item;
-  const uintptr_t item_ptr_val = (uintptr_t)item_ptr;
+  const T* item_ptr = std::addressof(item);
+  const uintptr_t item_ptr_val = reinterpret_cast<uintptr_t>(item_ptr);
   if ((item_ptr_val % desired_alignment) == 0)
   {
     if (verbose)
@@ -215,8 +215,8 @@ inline bool CheckAlignment(const T& item,
 template<typename T>
 inline void RequireAlignment(const T& item, const uint64_t desired_alignment)
 {
-  const T* item_ptr = &item;
-  const uintptr_t item_ptr_val = (uintptr_t)item_ptr;
+  const T* item_ptr = std::addressof(item);
+  const uintptr_t item_ptr_val = reinterpret_cast<uintptr_t>(item_ptr);
   if ((item_ptr_val % desired_alignment) != 0)
   {
     throw std::runtime_error("Item @ " + std::to_string(item_ptr_val)
@@ -254,7 +254,7 @@ template <typename T>
 inline bool GetBit(const T current, const uint32_t bit_position)
 {
   // Type safety checks are performed in the SetBit() function
-  const uint32_t mask = SetBit((T)0, bit_position, true);
+  const uint32_t mask = SetBit(static_cast<T>(0), bit_position, true);
   if ((mask & current) > 0)
   {
     return true;

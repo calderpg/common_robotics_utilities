@@ -339,8 +339,8 @@ Eigen::Matrix<double, 6, 1> TransformTwist(
     const Eigen::Isometry3d& transform,
     const Eigen::Matrix<double, 6, 1>& initial_twist)
 {
-  return (Eigen::Matrix<double, 6, 1>)(AdjointFromTransform(transform)
-                                       * initial_twist);
+  return static_cast<Eigen::Matrix<double, 6, 1>>(
+      AdjointFromTransform(transform) * initial_twist);
 }
 
 Eigen::Matrix<double, 6, 1> TwistBetweenTransforms(
@@ -565,7 +565,7 @@ Eigen::Isometry3d Interpolate(const Eigen::Isometry3d& t1,
   const Eigen::Quaterniond q2(t2.rotation());
   const Eigen::Vector3d vint = Interpolate3d(v1, v2, real_ratio);
   const Eigen::Quaterniond qint = Interpolate(q1, q2, real_ratio);
-  const Eigen::Isometry3d tint = ((Eigen::Translation3d)vint) * qint;
+  const Eigen::Isometry3d tint = static_cast<Eigen::Translation3d>(vint) * qint;
   return tint;
 }
 
@@ -818,7 +818,7 @@ double ComputeStdDevStdVectorDouble(const std::vector<double>& values,
   }
   else
   {
-    const double inv_n_minus_1 = 1.0 / (double)(values.size() - 1);
+    const double inv_n_minus_1 = 1.0 / static_cast<double>(values.size() - 1);
     double stddev_sum = 0.0;
     for (size_t idx = 0; idx < values.size(); idx++)
     {
@@ -894,10 +894,8 @@ Eigen::Quaterniond AverageEigenQuaterniond(const VectorQuaterniond& quaternions,
   {
     const double weight = use_weights ? std::abs(weights[idx]) : 1.0;
     const Eigen::Quaterniond& q = quaternions[idx];
-    q_matrix.col((ssize_t)idx) << weight * q.w(),
-                                  weight * q.x(),
-                                  weight * q.y(),
-                                  weight * q.z();
+    q_matrix.col(static_cast<ssize_t>(idx))
+        << weight * q.w(), weight * q.x(), weight * q.y(), weight * q.z();
   }
   // Make the matrix square
   const Eigen::Matrix<double, 4, 4> qqtranspose_matrix
@@ -914,11 +912,12 @@ Eigen::Quaterniond AverageEigenQuaterniond(const VectorQuaterniond& quaternions,
   int64_t max_eigenvector_index = -1;
   for (size_t idx = 0; idx < 4; idx++)
   {
-    const double current_eigenvalue = eigen_values((long)idx).real();
+    const double current_eigenvalue
+        = eigen_values(static_cast<ssize_t>(idx)).real();
     if (current_eigenvalue > max_eigenvalue)
     {
       max_eigenvalue = current_eigenvalue;
-      max_eigenvector_index = (int64_t)idx;
+      max_eigenvector_index = static_cast<int64_t>(idx);
     }
   }
   if (max_eigenvector_index < 0)
@@ -927,7 +926,7 @@ Eigen::Quaterniond AverageEigenQuaterniond(const VectorQuaterniond& quaternions,
   }
   // Note that these are already normalized!
   const Eigen::Vector4cd best_eigenvector
-      = eigen_vectors.col((long)max_eigenvector_index);
+      = eigen_vectors.col(static_cast<ssize_t>(max_eigenvector_index));
   // Convert back into a quaternion
   const Eigen::Quaterniond average_q(best_eigenvector(0).real(),
                                      best_eigenvector(1).real(),
@@ -975,7 +974,8 @@ Eigen::Isometry3d AverageEigenIsometry3d(const VectorIsometry3d& transforms,
       = AverageEigenQuaterniond(rotations, weights);
   // Make the average transform
   const Eigen::Isometry3d average_transform
-      = (Eigen::Translation3d)average_translation * average_rotation;
+      = static_cast<Eigen::Translation3d>(average_translation)
+          * average_rotation;
   return average_transform;
 }
 

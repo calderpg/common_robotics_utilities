@@ -426,7 +426,7 @@ inline bool CheckTreeLinkage(const PlanningTree<StateType>& nodes)
           }
           // Make sure the child node points to us as the parent index
           const int64_t child_parent_index = child_state.GetParentIndex();
-          if (child_parent_index != (int64_t)current_index)
+          if (child_parent_index != static_cast<int64_t>(current_index))
           {
             std::cerr << "Parent index " << child_parent_index
                       << " for current child state " << current_child_index

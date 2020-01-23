@@ -46,12 +46,12 @@ public:
     state_ = seed_val;
   }
 
-  void discard(const unsigned long long z)
+  void discard(const uint64_t z)
   {
     // This suppresses "set but not used" warnings
     uint64_t temp __attribute__((unused));
     temp = 0u;
-    for (unsigned long long i = 0; i < z; i++)
+    for (uint64_t i = 0; i < z; i++)
     {
       // This should prevent the compiler from optimizing out the loop
       temp = Next();
@@ -107,12 +107,12 @@ public:
     state_2_ = temp_seed_gen();
   }
 
-  void discard(const unsigned long long z)
+  void discard(const uint64_t z)
   {
     // This suppresses "set but not used" warnings
     uint64_t temp __attribute__((unused));
     temp = 0u;
-    for (unsigned long long i = 0; i < z; i++)
+    for (uint64_t i = 0; i < z; i++)
     {
       temp = Next();
       // This should prevent the compiler from optimizing out the loop
@@ -133,16 +133,16 @@ private:
 
   std::array<uint64_t, 16> state_ = {{0, 0, 0, 0, 0, 0, 0, 0,
                                       0, 0, 0, 0, 0, 0, 0, 0}};
-  int32_t p_ = 0;
+  size_t p_ = 0;
 
   uint64_t Next()
   {
-    const uint64_t s0 = state_[(size_t)p_];
+    const uint64_t s0 = state_.at(p_);
     p_ = (p_ + 1) & 15;
-    uint64_t s1 = state_[(size_t)p_];
+    uint64_t s1 = state_.at(p_);
     s1 ^= s1 << 31; // a
-    state_[(size_t)p_] = s1 ^ s0 ^ (s1 >> 11) ^ (s0 >> 30); // b,c
-    return state_[(size_t)p_] * UINT64_C(1181783497276652981);
+    state_.at(p_) = s1 ^ s0 ^ (s1 >> 11) ^ (s0 >> 30); // b,c
+    return state_.at(p_) * UINT64_C(1181783497276652981);
   }
 
 public:
@@ -172,12 +172,12 @@ public:
     }
   }
 
-  void discard(const unsigned long long z)
+  void discard(const uint64_t z)
   {
     // This suppresses "set but not used" warnings
     uint64_t temp __attribute__((unused));
     temp = 0u;
-    for (unsigned long long i = 0; i < z; i++)
+    for (uint64_t i = 0; i < z; i++)
     {
       temp = Next();
       // This should prevent the compiler from optimizing out the loop

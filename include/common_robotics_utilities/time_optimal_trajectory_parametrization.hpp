@@ -203,7 +203,7 @@ private:
   Path path_;
   Eigen::VectorXd max_velocity_;
   Eigen::VectorXd max_acceleration_;
-  unsigned int n_;
+  uint32_t n_ = 0u;
   std::list<TrajectoryStep> trajectory_;
 
   static const double eps;

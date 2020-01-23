@@ -1074,7 +1074,7 @@ public:
   bool SetRawData(const BackingStore& data)
   {
     const int64_t expected_length = GetTotalCells();
-    if ((int64_t)data.size() == expected_length)
+    if (static_cast<int64_t>(data.size()) == expected_length)
     {
       data_ = data;
       return true;

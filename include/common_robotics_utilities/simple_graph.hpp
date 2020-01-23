@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <unordered_set>
 #include <vector>
 
 #include <Eigen/Geometry>
@@ -328,6 +329,115 @@ public:
     return serialization::MakeDeserialized(temp_graph, bytes_read);
   }
 
+  static GraphType PruneGraph(
+      const GraphType& graph, const std::unordered_set<int64_t>& nodes_to_prune,
+      const bool use_parallel)
+  {
+    GraphType pruned_graph(graph.Size());
+    // First, serial pass through to copy nodes to be kept
+    for (int64_t node_index = 0;
+         node_index < static_cast<int64_t>(graph.Size());
+         node_index++)
+    {
+      if (nodes_to_prune.count(node_index) == 0)
+      {
+        // Copy the node to the new graph
+        pruned_graph.AddNode(graph.GetNodeImmutable(node_index));
+      }
+    }
+    pruned_graph.ShrinkToFit();
+    // Loop body for second pass to update edges for the kept nodes
+    const auto update_edge_fn = [&] (const int64_t kept_node_index)
+    {
+      GraphNodeType& kept_graph_node
+          = pruned_graph.GetNodeMutable(kept_node_index);
+      // Make space for the updated in edges
+      std::vector<GraphEdge> new_in_edges;
+      new_in_edges.reserve(kept_graph_node.GetInEdgesImmutable().size());
+      // Go through the in edges
+      for (const auto& in_edge : kept_graph_node.GetInEdgesImmutable())
+      {
+        const int64_t original_from_index = in_edge.GetFromIndex();
+        // Only update edges we keep
+        if (nodes_to_prune.count(original_from_index) == 0)
+        {
+          // Make a copy of the existing edge
+          GraphEdge new_in_edge = in_edge;
+          // Update the "to index" to our node's index
+          new_in_edge.SetToIndex(kept_node_index);
+          // Update the "from index" to account for pruned nodes
+          int64_t new_from_index = original_from_index;
+          for (const int64_t index_to_prune : nodes_to_prune)
+          {
+            // For each pruned node before the "from node", decrement the index
+            if (index_to_prune < original_from_index)
+            {
+              new_from_index--;
+            }
+          }
+          new_in_edge.SetFromIndex(new_from_index);
+          // Copy the new edge
+          new_in_edges.push_back(new_in_edge);
+        }
+      }
+      new_in_edges.shrink_to_fit();
+      // Make space for the updated out edges
+      std::vector<GraphEdge> new_out_edges;
+      new_out_edges.reserve(kept_graph_node.GetOutEdgesImmutable().size());
+      // Go through the out edges
+      for (const auto& out_edge : kept_graph_node.GetOutEdgesImmutable())
+      {
+        const int64_t original_to_index = out_edge.GetToIndex();
+        // Only update edges we keep
+        if (nodes_to_prune.count(original_to_index) == 0)
+        {
+          // Make a copy of the existing edge
+          GraphEdge new_out_edge = out_edge;
+          // Update the "from index" to our node's index
+          new_out_edge.SetFromIndex(kept_node_index);
+          // Update the "from index" to account for pruned nodes
+          int64_t new_to_index = original_to_index;
+          for (const int64_t index_to_prune : nodes_to_prune)
+          {
+            // For each pruned node before the "from node", decrement the index
+            if (index_to_prune < original_to_index)
+            {
+              new_to_index--;
+            }
+          }
+          new_out_edge.SetToIndex(new_to_index);
+          // Copy the new edge
+          new_out_edges.push_back(new_out_edge);
+        }
+      }
+      new_out_edges.shrink_to_fit();
+      // Copy in the updated edges
+      kept_graph_node.SetInEdges(new_in_edges);
+      kept_graph_node.SetOutEdges(new_out_edges);
+    };
+    // Second, optionally parallel pass to update edges for the kept nodes
+    if (use_parallel)
+    {
+#pragma omp parallel for
+      for (int64_t kept_node_index = 0;
+          kept_node_index < static_cast<int64_t>(pruned_graph.Size());
+          kept_node_index++)
+      {
+        update_edge_fn(kept_node_index);
+      }
+    }
+    else
+    {
+      for (int64_t kept_node_index = 0;
+          kept_node_index < static_cast<int64_t>(pruned_graph.Size());
+          kept_node_index++)
+      {
+        update_edge_fn(kept_node_index);
+      }
+    }
+    return pruned_graph;
+  }
+
   Graph(const GraphNodeVector& nodes)
   {
     if (CheckGraphLinkage(nodes))
@@ -404,6 +514,13 @@ public:
     return strm.str();
   }
 
+  GraphType MakePrunedCopy(
+      const std::unordered_set<int64_t>& nodes_to_prune,
+      const bool use_parallel) const
+  {
+    return PruneGraph(*this, nodes_to_prune, use_parallel);
+  }
+
   void ShrinkToFit()
   {
     nodes_.shrink_to_fit();
@@ -449,17 +566,20 @@ public:
         const int64_t from_index = current_edge.GetFromIndex();
         if (from_index < 0 || from_index >= static_cast<int64_t>(nodes.size()))
         {
+          std::cerr << "From index out of bounds" << std::endl;
           return false;
         }
         // Check to index to make sure it matches our own index
         const int64_t to_index = current_edge.GetToIndex();
         if (to_index != static_cast<int64_t>(idx))
         {
+          std::cerr << "To index does not point to current node" << std::endl;
           return false;
         }
         // Check edge validity (edges to ourself are not allowed)
         if (from_index == to_index)
         {
+          std::cerr << "From index == to index not allowed" << std::endl;
           return false;
         }
         // Check to make sure that the from index node is linked to us
@@ -480,6 +600,7 @@ public:
         }
         if (from_node_connection_valid == false)
         {
+          std::cerr << "From index connection is invalid" << std::endl;
           return false;
         }
       }
@@ -492,17 +613,20 @@ public:
         const int64_t from_index = current_edge.GetFromIndex();
         if (from_index != static_cast<int64_t>(idx))
         {
+          std::cerr << "From index does not point to current node" << std::endl;
           return false;
         }
         // Check to index to make sure it's in bounds
         const int64_t to_index = current_edge.GetToIndex();
         if (to_index < 0 || to_index >= static_cast<int64_t>(nodes.size()))
         {
+          std::cerr << "To index out of bounds" << std::endl;
           return false;
         }
         // Check edge validity (edges to ourself are not allowed)
         if (from_index == to_index)
         {
+          std::cerr << "From index == to index not allowed" << std::endl;
           return false;
         }
         // Check to make sure that the to index node is linked to us
@@ -523,6 +647,7 @@ public:
         }
         if (to_node_connection_valid == false)
         {
+          std::cerr << "To index connection is invalid" << std::endl;
           return false;
         }
       }
@@ -530,10 +655,7 @@ public:
     return true;
   }
 
-  const GraphNodeVector& GetNodesImmutable() const
-  {
-    return nodes_;
-  }
+  const GraphNodeVector& GetNodesImmutable() const { return nodes_; }
 
   GraphNodeVector& GetNodesMutable() { return nodes_; }
 

@@ -7,6 +7,7 @@
 #include <random>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -370,18 +371,30 @@ TEST(PlanningTest, allPlannersTest)
               rrt_step_size);
   // Build a roadmap on the environment
   const size_t K = 5;
+  const int64_t roadmap_size = 100;
   const std::function<bool(const int64_t)> roadmap_termination_fn
       = [] (const int64_t current_roadmap_size)
   {
-    return (current_roadmap_size >= 100);
+    return (current_roadmap_size >= roadmap_size);
   };
   simple_graph::Graph<Waypoint> roadmap;
   simple_prm_planner::GrowRoadMap<Waypoint>(
       roadmap, state_sampling_fn, WaypointDistance, check_state_validity_fn,
       check_edge_validity_fn, roadmap_termination_fn, K, false, true, false);
+  ASSERT_TRUE(roadmap.CheckGraphLinkage());
+  std::cout << "Roadmap built" << std::endl;
   simple_prm_planner::UpdateRoadMapEdges<Waypoint>(
       roadmap, check_edge_validity_fn, WaypointDistance, false);
-  std::cout << "Roadmap" << std::endl;
+  ASSERT_TRUE(roadmap.CheckGraphLinkage());
+  std::cout << "Roadmap updated" << std::endl;
+  // Test graph pruning
+  const std::unordered_set<int64_t> nodes_to_prune = {10, 20, 30, 40, 50, 60};
+  const auto serial_pruned_roadmap
+      = roadmap.MakePrunedCopy(nodes_to_prune, false);
+  ASSERT_TRUE(serial_pruned_roadmap.CheckGraphLinkage());
+  const auto parallel_pruned_roadmap
+      = roadmap.MakePrunedCopy(nodes_to_prune, true);
+  ASSERT_TRUE(parallel_pruned_roadmap.CheckGraphLinkage());
   DrawRoadmap(test_env, roadmap);
   // Serialize & load & check the roadmap
   serialization::Serializer<Waypoint> serialize_waypoint_fn

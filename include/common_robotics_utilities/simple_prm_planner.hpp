@@ -339,15 +339,15 @@ inline void UpdateRoadMapEdges(
 
 /// Extracts the solution path from the roadmap.
 /// @param roadmap roadmap used to find solution path.
-/// @param solution_path_indices indices of the solution nodes in the graph, in
-/// order of the solution path.
+/// @param astar_index_solution A* planned path, in terms of node indices in the
+/// provided roadmap.
 template<typename T, typename Container=std::vector<T>>
 inline simple_astar_search::AstarResult<T, Container> ExtractSolution(
     const simple_graph::Graph<T>& roadmap,
     const simple_astar_search::AstarIndexResult& astar_index_solution)
 {
   Container solution_path;
-  solution_path.reserve(solution_path_indices.size());
+  solution_path.reserve(astar_index_solution.Path().size());
   for (const int64_t solution_path_index : astar_index_solution.Path())
   {
     const T& solution_path_state
@@ -459,7 +459,7 @@ QueryPathAndAddNodesMultiStartSingleGoal(
         previous_index = dijkstras_solution.GetPreviousIndex(current_index);
       }
     }
-    return ExtractPath<T, Container>(
+    return ExtractSolution<T, Container>(
         roadmap,
         simple_astar_search::AstarIndexResult(
             solution_path_indices, start_node_distance));

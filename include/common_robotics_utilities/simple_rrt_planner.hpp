@@ -47,7 +47,7 @@ public:
   static serialization::Deserialized<SimpleRRTPlannerState<StateType>>
   Deserialize(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const serialization::Deserializer<T>& value_deserializer)
+      const serialization::Deserializer<StateType>& value_deserializer)
   {
     SimpleRRTPlannerState<StateType> temp_state;
     const uint64_t bytes_read
@@ -72,7 +72,7 @@ public:
 
   uint64_t SerializeSelf(
       std::vector<uint8_t>& buffer,
-      const serialization::Serializer<T>& value_serializer) const
+      const serialization::Serializer<StateType>& value_serializer) const
   {
     const uint64_t start_buffer_size = buffer.size();
     // Serialize the value
@@ -93,7 +93,7 @@ public:
 
   uint64_t DeserializeSelf(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const serialization::Deserializer<T>& value_deserializer)
+      const serialization::Deserializer<StateType>& value_deserializer)
   {
     uint64_t current_position = starting_offset;
     // Deserialize the value
@@ -191,7 +191,8 @@ using RRTNearestNeighborFunction =
 
 template<typename StateType>
 class PropagatedState
-{private:
+{
+private:
   StateType state_;
   int64_t relative_parent_index_ = -1;
 
@@ -207,7 +208,7 @@ public:
   const StateType& State() const { return state_; }
 
   int64_t RelativeParentIndex() const { return relative_parent_index_; }
-}
+};
 
 template<typename StateType>
 using PropagatedStateAllocator =
@@ -283,7 +284,7 @@ public:
       const PlanningStatistics& statistics) : statistics_(statistics) {}
 
   SingleSolutionPlanningResults(
-      const Container>& path, const PlanningStatistics& statistics)
+      const Container& path, const PlanningStatistics& statistics)
       : path_(path), statistics_(statistics) {}
 
   const Container& Path() const { return path_; }
@@ -1091,7 +1092,7 @@ RRTPlanSinglePath(
           tree, sampling_fn, nearest_neighbor_fn, forward_propagation_fn,
           state_added_callback_fn, check_goal_reached_fn,
           internal_goal_reached_callback_fn, internal_termination_check_fn);
-  if (rrt_result.Paths() > 0)
+  if (rrt_result.Paths().size() > 0)
   {
     return SingleSolutionPlanningResults<StateType, Container>(
         rrt_result.Paths().at(0), rrt_result.Statistics());

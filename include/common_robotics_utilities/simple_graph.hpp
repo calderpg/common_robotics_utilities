@@ -194,7 +194,7 @@ public:
 
   uint64_t DeserializeSelf(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const serialization::Deserializer<T>& value_deserializer)
+      const serialization::Deserializer<NodeValueType>& value_deserializer)
   {
     uint64_t current_position = starting_offset;
     // Deserialize the value

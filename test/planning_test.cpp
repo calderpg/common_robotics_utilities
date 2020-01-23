@@ -500,7 +500,7 @@ TEST(PlanningTest, allPlannersTest)
             simple_rrt_planner::SimpleRRTPlannerState<Waypoint>(start));
         const auto rrt_extend_path
             = simple_rrt_planner::RRTPlanSinglePath<
-                Waypoint, Waypoint, std::allocator<Waypoint>>(
+                Waypoint, Waypoint, WaypointVector>(
                     rrt_extend_tree, rrt_sample_fn, rrt_nearest_neighbors_fn,
                     rrt_extend_fn, {}, rrt_goal_reached_fn, {},
                     simple_rrt_planner
@@ -515,7 +515,7 @@ TEST(PlanningTest, allPlannersTest)
             simple_rrt_planner::SimpleRRTPlannerState<Waypoint>(start));
         const auto rrt_connect_path
             = simple_rrt_planner::RRTPlanSinglePath<
-                Waypoint, Waypoint, std::allocator<Waypoint>>(
+                Waypoint, Waypoint, WaypointVector>(
                     rrt_connect_tree, rrt_sample_fn, rrt_nearest_neighbors_fn,
                     rrt_connect_fn, {}, rrt_goal_reached_fn, {},
                     simple_rrt_planner
@@ -539,7 +539,7 @@ TEST(PlanningTest, allPlannersTest)
             simple_rrt_planner::SimpleRRTPlannerState<Waypoint>(goal));
         const auto birrt_extent_path
             = simple_rrt_planner::BiRRTPlanSinglePath<
-                std::mt19937_64, Waypoint, std::allocator<Waypoint>>(
+                std::mt19937_64, Waypoint, WaypointVector>(
                     birrt_extend_start_tree, birrt_extend_goal_tree,
                     state_sampling_fn, birrt_nearest_neighbors_fn,
                     birrt_extend_fn, {}, birrt_states_connected_fn, {},
@@ -559,7 +559,7 @@ TEST(PlanningTest, allPlannersTest)
             simple_rrt_planner::SimpleRRTPlannerState<Waypoint>(goal));
         const auto birrt_connect_path
             = simple_rrt_planner::BiRRTPlanSinglePath<
-                std::mt19937_64, Waypoint, std::allocator<Waypoint>>(
+                std::mt19937_64, Waypoint, WaypointVector>(
                     birrt_connect_start_tree, birrt_connect_goal_tree,
                     state_sampling_fn, birrt_nearest_neighbors_fn,
                     birrt_connect_fn, {}, birrt_states_connected_fn, {},

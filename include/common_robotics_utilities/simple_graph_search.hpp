@@ -130,8 +130,8 @@ public:
 class CompareIndexDistancePairFn
 {
 public:
-  constexpr bool operator()(const IndexAndDistance& lhs,
-                            const IndexAndDistance& rhs) const
+  bool operator()(const IndexAndDistance& lhs,
+                  const IndexAndDistance& rhs) const
   {
     return lhs.Distance() > rhs.Distance();
   }
@@ -155,7 +155,7 @@ inline DijkstrasResult PerformDijkstrasAlgorithm(
   std::unordered_map<int64_t, uint32_t> explored(graph.Size());
   previous_index_map.at(static_cast<size_t>(start_index)) = start_index;
   distances.at(static_cast<size_t>(start_index)) = 0.0;
-  queue.push(std::make_pair(start_index, 0.0));
+  queue.push(IndexAndDistance(start_index, 0.0));
   while (queue.size() > 0)
   {
     const IndexAndDistance top_node = queue.top();
@@ -191,7 +191,7 @@ inline DijkstrasResult PerformDijkstrasAlgorithm(
             // If it hasn't been explored, we need to add it to the queue
             // even though it may already be in the queue, we have found it with
             // a lower distance.
-            queue.push(std::make_pair(neighbor_index, new_neighbor_distance));
+            queue.push(IndexAndDistance(neighbor_index, new_neighbor_distance));
           }
           // Update that we're the best previous node
           previous_index_map.at(static_cast<size_t>(neighbor_index))
@@ -211,7 +211,7 @@ inline DijkstrasResult PerformDijkstrasAlgorithm(
 }
 
 template<typename NodeValueType>
-inline simple_astar_search::AstarResult PerformLazyAstarSearch(
+inline simple_astar_search::AstarIndexResult PerformLazyAstarSearch(
     const simple_graph::Graph<NodeValueType>& graph, const int64_t start_index,
     const int64_t goal_index,
     const std::function<bool(
@@ -358,7 +358,7 @@ inline simple_astar_search::AstarResult PerformLazyAstarSearch(
 }
 
 template<typename NodeValueType>
-inline simple_astar_search::AstarResult PerformLazyAstarSearch(
+inline simple_astar_search::AstarIndexResult PerformLazyAstarSearch(
     const simple_graph::Graph<NodeValueType>& graph, const int64_t start_index,
     const int64_t goal_index,
     const std::function<bool(const NodeValueType&,
@@ -400,7 +400,7 @@ inline simple_astar_search::AstarResult PerformLazyAstarSearch(
 }
 
 template<typename NodeValueType>
-inline simple_astar_search::AstarResult PerformAstarSearch(
+inline simple_astar_search::AstarIndexResult PerformAstarSearch(
     const simple_graph::Graph<NodeValueType>& graph, const int64_t start_index,
     const int64_t goal_index,
     const std::function<double(const NodeValueType&,

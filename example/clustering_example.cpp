@@ -11,9 +11,15 @@
 #include <common_robotics_utilities/simple_kmeans_clustering.hpp>
 
 using PointVector = common_robotics_utilities::math::VectorVector4d;
+using IndexClusteringResult
+    = common_robotics_utilities::simple_hierarchical_clustering
+        ::IndexClusteringResult;
+using PointClusteringResult
+    = common_robotics_utilities::simple_hierarchical_clustering
+        ::ClusteringResult<Eigen::Vector4d, PointVector>;
 
 void SaveClustering(
-    const std::vector<PointVector>& clusters,
+    const PointClusteringResult& clusters,
     const std::string& filename)
 {
   // Use the cluster index to set z-coordinates for easy visualization
@@ -24,9 +30,9 @@ void SaveClustering(
         "Log file " + filename + " must be write-openable");
   }
   std::cout << "Saving clustering to " << filename << std::endl;
-  for (size_t idx = 0; idx < clusters.size(); idx++)
+  for (size_t idx = 0; idx < clusters.Clusters().size(); idx++)
   {
-    const PointVector& cluster = clusters.at(idx);
+    const PointVector& cluster = clusters.Clusters().at(idx);
     const double cluster_num = 1.0 + static_cast<double>(idx);
     for (const Eigen::Vector4d& point : cluster)
     {
@@ -39,13 +45,13 @@ void SaveClustering(
 
 void SaveIndexClustering(
     const PointVector& raw_points,
-    const std::vector<std::vector<int64_t>>& index_clusters,
+    const IndexClusteringResult& index_clusters,
     const std::string& filename)
 {
   SaveClustering(
       common_robotics_utilities::simple_hierarchical_clustering
-          ::MakeElementClustersFromIndexClusters<Eigen::Vector4d>(
-              raw_points, index_clusters),
+          ::MakeElementClusteringFromIndexClustering<
+              Eigen::Vector4d, PointVector>(raw_points, index_clusters),
       filename);
 }
 
@@ -83,12 +89,12 @@ int main(int argc, char** argv)
     std::cout << "Single-link hierarchical index clustering " << num_points
               << " points..." << std::endl;
     const auto slhic_start = std::chrono::steady_clock::now();
-    const std::vector<std::vector<int64_t>> single_link_index_clusters
+    const auto single_link_index_clusters
         = common_robotics_utilities::simple_hierarchical_clustering
             ::IndexCluster(
                 random_points, distance_fn, 1.0,
                 common_robotics_utilities::simple_hierarchical_clustering
-                    ::ClusterStrategy::SINGLE_LINK, use_parallel).first;
+                    ::ClusterStrategy::SINGLE_LINK, use_parallel);
     const auto slhic_end = std::chrono::steady_clock::now();
     const double slhic_elapsed =
         std::chrono::duration<double>(slhic_end - slhic_start).count();
@@ -102,12 +108,12 @@ int main(int argc, char** argv)
     std::cout << "Complete-link hierarchical index clustering " << num_points
               << " points..." << std::endl;
     const auto clhic_start = std::chrono::steady_clock::now();
-    const std::vector<std::vector<int64_t>> complete_link_index_clusters
+    const auto complete_link_index_clusters
         = common_robotics_utilities::simple_hierarchical_clustering
             ::IndexCluster(
                 random_points, distance_fn, 1.0,
                 common_robotics_utilities::simple_hierarchical_clustering
-                    ::ClusterStrategy::COMPLETE_LINK, use_parallel).first;
+                    ::ClusterStrategy::COMPLETE_LINK, use_parallel);
     const auto clhic_end = std::chrono::steady_clock::now();
     const double clhic_elapsed =
         std::chrono::duration<double>(clhic_end - clhic_start).count();
@@ -122,11 +128,11 @@ int main(int argc, char** argv)
     std::cout << "Single-link hierarchical clustering " << num_points
               << " points..." << std::endl;
     const auto slhc_start = std::chrono::steady_clock::now();
-    const std::vector<PointVector> single_link_clusters
+    const auto single_link_clusters
         = common_robotics_utilities::simple_hierarchical_clustering::Cluster(
             random_points, distance_fn, 1.0,
             common_robotics_utilities::simple_hierarchical_clustering
-                ::ClusterStrategy::SINGLE_LINK, use_parallel).first;
+                ::ClusterStrategy::SINGLE_LINK, use_parallel);
     const auto slhc_end = std::chrono::steady_clock::now();
     const double slhc_elapsed =
         std::chrono::duration<double>(slhc_end - slhc_start).count();
@@ -139,11 +145,11 @@ int main(int argc, char** argv)
     std::cout << "Complete-link hierarchical clustering " << num_points
               << " points..." << std::endl;
     const auto clhc_start = std::chrono::steady_clock::now();
-    const std::vector<PointVector> complete_link_clusters
+    const auto complete_link_clusters
         = common_robotics_utilities::simple_hierarchical_clustering::Cluster(
             random_points, distance_fn, 1.0,
             common_robotics_utilities::simple_hierarchical_clustering
-                ::ClusterStrategy::COMPLETE_LINK, use_parallel).first;
+                ::ClusterStrategy::COMPLETE_LINK, use_parallel);
     const auto clhc_end = std::chrono::steady_clock::now();
     const double clhc_elapsed =
         std::chrono::duration<double>(clhc_end - clhc_start).count();

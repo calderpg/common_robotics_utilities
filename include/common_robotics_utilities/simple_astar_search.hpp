@@ -54,7 +54,7 @@ public:
 /// Search result is both path and path cost.
 /// Path is a vector of values, and cost is the computed cost-to-come of the
 /// goal node.
-template<typename T, typename Container=std::vector<t>>
+template<typename T, typename Container=std::vector<T>>
 class AstarResult
 {
 private:
@@ -141,7 +141,7 @@ inline AstarIndexResult ExtractAstarResult(
         // Using map.at(key) throws an exception if key not found
         // This provides bounds safety check
         const auto current_index_data = explored.at(current_id);
-        backpointer = current_index_data.first;
+        backpointer = current_index_data.BackPointer();
       }
     }
     // Reverse
@@ -386,7 +386,7 @@ inline AstarResult<T, Container> PerformAstarSearch(
     solution_path.push_back(solution_path_state);
   }
   solution_path.shrink_to_fit();
-  return AstarResult(solution_path, astar_solution.PathCost());
+  return AstarResult<T, Container>(solution_path, astar_solution.PathCost());
 }
 }  // namespace simple_astar_search
 }  // namespace common_robotics_utilities

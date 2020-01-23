@@ -478,7 +478,7 @@ inline ClosestPair GetClosestPair(
   }
 }
 
-template<typename DataType, typename Container=std::vector<T>>
+template<typename DataType, typename Container=std::vector<DataType>>
 class ClusteringResult
 {
 private:
@@ -609,10 +609,10 @@ MakeElementClusteringFromIndexClustering(
     const IndexClusteringResult& index_clustering)
 {
   std::vector<Container> clusters(index_clustering.Clusters().size());
-  for (size_t idx = 0; idx < index_clusters.size(); idx++)
+  for (size_t idx = 0; idx < clusters.size(); idx++)
   {
     const std::vector<int64_t>& current_index_cluster
-        = index_clusters.Clusters().at(idx);
+        = index_clustering.Clusters().at(idx);
     Container& current_cluster = clusters.at(idx);
     // Use reserve + shrink_to_fit for cases where DataType is not
     // default-constructible.

@@ -1,5 +1,6 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
 #include <unordered_set>
 #include <vector>
@@ -7,6 +8,7 @@
 #include <Eigen/Geometry>
 #include <common_robotics_utilities/print.hpp>
 #include <common_robotics_utilities/serialization.hpp>
+#include <common_robotics_utilities/utility.hpp>
 
 namespace common_robotics_utilities
 {
@@ -333,7 +335,15 @@ public:
       const GraphType& graph, const std::unordered_set<int64_t>& nodes_to_prune,
       const bool use_parallel)
   {
-    GraphType pruned_graph(graph.Size());
+    // By making a sorted copy of the indices in nodes_to_prune, the two
+    // for-loops that update edge to/from indices can terminate early once the
+    // node_to_prune is greater than the original to/from index.
+    std::vector<int64_t> vector_nodes_to_prune
+        = utility::GetKeysFromSetLike<int64_t>(nodes_to_prune);
+    std::sort(vector_nodes_to_prune.begin(), vector_nodes_to_prune.end());
+    // Make the pruned graph, initialized with the number of nodes we expect it
+    // to contain.
+    GraphType pruned_graph(graph.Size() - nodes_to_prune.size());
     // First, serial pass through to copy nodes to be kept
     for (int64_t node_index = 0;
          node_index < static_cast<int64_t>(graph.Size());
@@ -367,12 +377,22 @@ public:
           new_in_edge.SetToIndex(kept_node_index);
           // Update the "from index" to account for pruned nodes
           int64_t new_from_index = original_from_index;
-          for (const int64_t index_to_prune : nodes_to_prune)
+          for (const int64_t index_to_prune : vector_nodes_to_prune)
           {
             // For each pruned node before the "from node", decrement the index
             if (index_to_prune < original_from_index)
             {
               new_from_index--;
+            }
+            // We can terminate early because we know the indices are sorted
+            else if (index_to_prune > original_from_index)
+            {
+              break;
+            }
+            else
+            {
+              throw std::runtime_error(
+                  "index_to_prune cannot equal original_from_index");
             }
           }
           new_in_edge.SetFromIndex(new_from_index);
@@ -397,12 +417,22 @@ public:
           new_out_edge.SetFromIndex(kept_node_index);
           // Update the "from index" to account for pruned nodes
           int64_t new_to_index = original_to_index;
-          for (const int64_t index_to_prune : nodes_to_prune)
+          for (const int64_t index_to_prune : vector_nodes_to_prune)
           {
             // For each pruned node before the "from node", decrement the index
             if (index_to_prune < original_to_index)
             {
               new_to_index--;
+            }
+            // We can terminate early because we know the indices are sorted
+            else if (index_to_prune > original_to_index)
+            {
+              break;
+            }
+            else
+            {
+              throw std::runtime_error(
+                  "index_to_prune cannot equal original_to_index");
             }
           }
           new_out_edge.SetToIndex(new_to_index);

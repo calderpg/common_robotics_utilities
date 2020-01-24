@@ -36,16 +36,6 @@ public:
     }
   }
 
-  // Deserialized(T&& value, const uint64_t bytes_read)
-  //     : value_(value), bytes_read_(bytes_read)
-  // {
-  //   if (bytes_read == 0)
-  //   {
-  //     throw std::invalid_argument(
-  //         "Deserialized item cannot have bytes_read == 0");
-  //   }
-  // }
-
   const T& Value() const
   {
     if (HasValue())
@@ -93,12 +83,6 @@ Deserialized<T> MakeDeserialized(const T& value, const uint64_t bytes_read)
 {
   return Deserialized<T>(value, bytes_read);
 }
-
-// template<typename T>
-// Deserialized<T> MakeDeserialized(T&& value, const uint64_t bytes_read)
-// {
-//   return Deserialized<T>(value, bytes_read);
-// }
 
 template<typename T>
 using Serializer = std::function<uint64_t(const T&, std::vector<uint8_t>&)>;

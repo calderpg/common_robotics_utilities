@@ -207,7 +207,14 @@ public:
 
   const StateType& State() const { return state_; }
 
+  StateType& MutableState() { return state_; }
+
   int64_t RelativeParentIndex() const { return relative_parent_index_; }
+
+  void SetRelativeParentIndex(const int64_t relative_parent_index)
+  {
+    relative_parent_index_ = relative_parent_index;
+  }
 };
 
 template<typename StateType>

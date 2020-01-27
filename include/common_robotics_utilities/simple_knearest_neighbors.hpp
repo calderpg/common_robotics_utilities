@@ -51,7 +51,7 @@ public:
 };
 
 /// Comparison function for std::max_element.
-bool IndexAndDistanceCompare(
+inline bool IndexAndDistanceCompare(
     const IndexAndDistance& index1, const IndexAndDistance& index2)
 {
   return (index1.Distance() < index2.Distance());

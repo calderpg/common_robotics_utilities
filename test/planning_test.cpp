@@ -7,6 +7,7 @@
 #include <random>
 #include <stdexcept>
 #include <unordered_map>
+#include <unordered_set>
 #include <utility>
 #include <vector>
 
@@ -370,33 +371,42 @@ TEST(PlanningTest, allPlannersTest)
               rrt_step_size);
   // Build a roadmap on the environment
   const size_t K = 5;
+  const int64_t roadmap_size = 100;
   const std::function<bool(const int64_t)> roadmap_termination_fn
       = [] (const int64_t current_roadmap_size)
   {
-    return (current_roadmap_size >= 100);
+    return (current_roadmap_size >= roadmap_size);
   };
   simple_graph::Graph<Waypoint> roadmap;
   simple_prm_planner::GrowRoadMap<Waypoint>(
       roadmap, state_sampling_fn, WaypointDistance, check_state_validity_fn,
       check_edge_validity_fn, roadmap_termination_fn, K, false, true, false);
+  ASSERT_TRUE(roadmap.CheckGraphLinkage());
+  std::cout << "Roadmap built" << std::endl;
   simple_prm_planner::UpdateRoadMapEdges<Waypoint>(
       roadmap, check_edge_validity_fn, WaypointDistance, false);
-  std::cout << "Roadmap" << std::endl;
+  ASSERT_TRUE(roadmap.CheckGraphLinkage());
+  std::cout << "Roadmap updated" << std::endl;
+  // Test graph pruning
+  const std::unordered_set<int64_t> nodes_to_prune = {10, 20, 30, 40, 50, 60};
+  const auto serial_pruned_roadmap
+      = roadmap.MakePrunedCopy(nodes_to_prune, false);
+  ASSERT_TRUE(serial_pruned_roadmap.CheckGraphLinkage());
+  const auto parallel_pruned_roadmap
+      = roadmap.MakePrunedCopy(nodes_to_prune, true);
+  ASSERT_TRUE(parallel_pruned_roadmap.CheckGraphLinkage());
   DrawRoadmap(test_env, roadmap);
   // Serialize & load & check the roadmap
-  std::function<int64_t(const Waypoint&, std::vector<uint8_t>&)>
-      serialize_waypoint_fn
-          = [] (const Waypoint& wp, std::vector<uint8_t>& serialization_buffer)
+  serialization::Serializer<Waypoint> serialize_waypoint_fn
+      = [] (const Waypoint& wp, std::vector<uint8_t>& serialization_buffer)
   {
     return serialization::SerializePair<ssize_t, ssize_t>(
         wp, serialization_buffer, serialization::SerializeMemcpyable<ssize_t>,
         serialization::SerializeMemcpyable<ssize_t>);
   };
-  std::function<std::pair<Waypoint, uint64_t>(
-      const std::vector<uint8_t>&, const uint64_t)>
-          deserialize_waypoint_fn
-              = [] (const std::vector<uint8_t>& deserialization_buffer,
-                    const uint64_t starting_offset)
+  serialization::Deserializer<Waypoint> deserialize_waypoint_fn
+      = [] (const std::vector<uint8_t>& deserialization_buffer,
+            const uint64_t starting_offset)
   {
     return serialization::DeserializePair<ssize_t, ssize_t>(
         deserialization_buffer, starting_offset,
@@ -413,7 +423,7 @@ TEST(PlanningTest, allPlannersTest)
   ASSERT_EQ(buffer.size(), load_buffer.size());
   const auto loaded = simple_graph::Graph<Waypoint>::Deserialize(
                         load_buffer, 0, deserialize_waypoint_fn);
-  const simple_graph::Graph<Waypoint>& loaded_roadmap = loaded.first;
+  const simple_graph::Graph<Waypoint>& loaded_roadmap = loaded.Value();
   ASSERT_EQ(roadmap.Size(), loaded_roadmap.Size());
   std::cout << "Old roadmap nodes: " << roadmap.Size() << "\n"
             << "Old roadmap binary size: " << buffer.size() << "\n"
@@ -467,7 +477,7 @@ TEST(PlanningTest, allPlannersTest)
         const auto path
             = simple_prm_planner::QueryPathSingleStartSingleGoal<Waypoint>(
                 start, goal, loaded_roadmap, WaypointDistance,
-                check_edge_validity_fn, K, false, true, false, true).first;
+                check_edge_validity_fn, K, false, true, false, true).Path();
         check_plan(test_env, {start}, {goal}, path);
         // Plan with Lazy-PRM
         std::cout << "Lazy-PRM Path (" << print::Print(start) << " to "
@@ -475,7 +485,7 @@ TEST(PlanningTest, allPlannersTest)
         const auto lazy_path
             = simple_prm_planner::LazyQueryPathSingleStartSingleGoal<Waypoint>(
                 start, goal, loaded_roadmap, WaypointDistance,
-                check_edge_validity_fn, K, false, true, false, true).first;
+                check_edge_validity_fn, K, false, true, false, true).Path();
         check_plan(test_env, {start}, {goal}, lazy_path);
         // Plan with A*
         std::cout << "A* Path (" << print::Print(start) << " to "
@@ -485,7 +495,7 @@ TEST(PlanningTest, allPlannersTest)
                 Waypoint, WaypointVector>(
                     start, goal, GenerateAllPossible8ConnectedChildren,
                     check_edge_validity_fn, WaypointDistance, WaypointDistance,
-                    HashWaypoint, true).first;
+                    HashWaypoint, true).Path();
         check_plan(test_env, {start}, {goal}, astar_path);
         // Plan with RRT-Extend
         std::cout << "RRT-Extend Path (" << print::Print(start) << " to "
@@ -503,11 +513,12 @@ TEST(PlanningTest, allPlannersTest)
             simple_rrt_planner::SimpleRRTPlannerState<Waypoint>(start));
         const auto rrt_extend_path
             = simple_rrt_planner::RRTPlanSinglePath<
-                Waypoint, Waypoint, std::allocator<Waypoint>>(
+                Waypoint, Waypoint, WaypointVector>(
                     rrt_extend_tree, rrt_sample_fn, rrt_nearest_neighbors_fn,
                     rrt_extend_fn, {}, rrt_goal_reached_fn, {},
                     simple_rrt_planner
-                        ::MakeRRTTimeoutTerminationFunction(rrt_timeout)).first;
+                        ::MakeRRTTimeoutTerminationFunction(rrt_timeout))
+                        .Path();
         check_plan(test_env, {start}, {goal}, rrt_extend_path);
         // Plan with RRT-Connect
         std::cout << "RRT-Connect Path (" << print::Print(start) << " to "
@@ -517,11 +528,12 @@ TEST(PlanningTest, allPlannersTest)
             simple_rrt_planner::SimpleRRTPlannerState<Waypoint>(start));
         const auto rrt_connect_path
             = simple_rrt_planner::RRTPlanSinglePath<
-                Waypoint, Waypoint, std::allocator<Waypoint>>(
+                Waypoint, Waypoint, WaypointVector>(
                     rrt_connect_tree, rrt_sample_fn, rrt_nearest_neighbors_fn,
                     rrt_connect_fn, {}, rrt_goal_reached_fn, {},
                     simple_rrt_planner
-                        ::MakeRRTTimeoutTerminationFunction(rrt_timeout)).first;
+                        ::MakeRRTTimeoutTerminationFunction(rrt_timeout))
+                        .Path();
         check_plan(test_env, {start}, {goal}, rrt_connect_path);
         // Plan with BiRRT-Extend
         std::cout << "BiRRT-Extend Path (" << print::Print(start) << " to "
@@ -540,14 +552,14 @@ TEST(PlanningTest, allPlannersTest)
             simple_rrt_planner::SimpleRRTPlannerState<Waypoint>(goal));
         const auto birrt_extent_path
             = simple_rrt_planner::BiRRTPlanSinglePath<
-                std::mt19937_64, Waypoint, std::allocator<Waypoint>>(
+                std::mt19937_64, Waypoint, WaypointVector>(
                     birrt_extend_start_tree, birrt_extend_goal_tree,
                     state_sampling_fn, birrt_nearest_neighbors_fn,
                     birrt_extend_fn, {}, birrt_states_connected_fn, {},
                     birrt_tree_sampling_bias, birrt_p_switch_trees,
                     simple_rrt_planner
                         ::MakeBiRRTTimeoutTerminationFunction(rrt_timeout),
-                    prng).first;
+                    prng).Path();
         check_plan(test_env, {start}, {goal}, birrt_extent_path);
         // Plan with BiRRT-Connect
         std::cout << "BiRRT-Connect Path (" << print::Print(start) << " to "
@@ -560,14 +572,14 @@ TEST(PlanningTest, allPlannersTest)
             simple_rrt_planner::SimpleRRTPlannerState<Waypoint>(goal));
         const auto birrt_connect_path
             = simple_rrt_planner::BiRRTPlanSinglePath<
-                std::mt19937_64, Waypoint, std::allocator<Waypoint>>(
+                std::mt19937_64, Waypoint, WaypointVector>(
                     birrt_connect_start_tree, birrt_connect_goal_tree,
                     state_sampling_fn, birrt_nearest_neighbors_fn,
                     birrt_connect_fn, {}, birrt_states_connected_fn, {},
                     birrt_tree_sampling_bias, birrt_p_switch_trees,
                     simple_rrt_planner
                         ::MakeBiRRTTimeoutTerminationFunction(rrt_timeout),
-                    prng).first;
+                    prng).Path();
         check_plan(test_env, {start}, {goal}, birrt_connect_path);
       }
     }
@@ -580,7 +592,7 @@ TEST(PlanningTest, allPlannersTest)
   const auto path
       = simple_prm_planner::QueryPathMultiStartMultiGoal<Waypoint>(
           starts, goals, loaded_roadmap, WaypointDistance,
-          check_edge_validity_fn, K, false, true, false).first;
+          check_edge_validity_fn, K, false, true, false).Path();
   check_plan(test_env, starts, goals, path);
 }
 }  // namespace planning_test

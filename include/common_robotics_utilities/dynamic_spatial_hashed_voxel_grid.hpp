@@ -32,13 +32,13 @@ public:
     return serialization::SerializeVector4d(region.Base(), buffer);
   }
 
-  static std::pair<ChunkRegion, uint64_t> Deserialize(
+  static serialization::Deserialized<ChunkRegion> Deserialize(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
   {
-    const std::pair<Eigen::Vector4d, uint64_t> base_deserialized
+    const auto base_deserialized
         = serialization::DeserializeVector4d(buffer, starting_offset);
-    return std::make_pair(
-        ChunkRegion(base_deserialized.first), base_deserialized.second);
+    return serialization::MakeDeserialized(
+        ChunkRegion(base_deserialized.Value()), base_deserialized.BytesRead());
   }
 
   ChunkRegion() : base_(Eigen::Vector4d(0.0, 0.0, 0.0, 1.0)) {}
@@ -239,23 +239,21 @@ public:
   static uint64_t Serialize(
       const DynamicSpatialHashedVoxelGridChunk<T, BackingStore>& chunk,
       std::vector<uint8_t>& buffer,
-      const std::function<uint64_t(
-        const T&, std::vector<uint8_t>&)>& value_serializer)
+      const serialization::Serializer<T>& value_serializer)
   {
     return chunk.SerializeSelf(buffer, value_serializer);
   }
 
-  static std::pair<DynamicSpatialHashedVoxelGridChunk<T, BackingStore>,
-                   uint64_t> Deserialize(
-      const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const std::function<std::pair<T, uint64_t>(
-        const std::vector<uint8_t>&, const uint64_t)>& value_deserializer)
+  static serialization::Deserialized<
+      DynamicSpatialHashedVoxelGridChunk<T, BackingStore>> Deserialize(
+          const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
+          const serialization::Deserializer<T>& value_deserializer)
   {
     DynamicSpatialHashedVoxelGridChunk<T, BackingStore> temp_chunk;
     const uint64_t bytes_read
         = temp_chunk.DeserializeSelf(buffer, starting_offset,
                                     value_deserializer);
-    return std::make_pair(temp_chunk, bytes_read);
+    return serialization::MakeDeserialized(temp_chunk, bytes_read);
   }
 
   DynamicSpatialHashedVoxelGridChunk(const ChunkRegion& region,
@@ -290,8 +288,7 @@ public:
 
   uint64_t SerializeSelf(
       std::vector<uint8_t>& buffer,
-      const std::function<uint64_t(
-        const T&, std::vector<uint8_t>&)>& value_serializer) const
+      const serialization::Serializer<T>& value_serializer) const
   {
     const uint64_t start_buffer_size = buffer.size();
     // Serialize the transform
@@ -312,32 +309,32 @@ public:
 
   uint64_t DeserializeSelf(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const std::function<std::pair<T, uint64_t>(
-        const std::vector<uint8_t>&, const uint64_t)>& value_deserializer)
+      const serialization::Deserializer<T>& value_deserializer)
   {
     uint64_t current_position = starting_offset;
     // Deserialize the transforms
-    const std::pair<ChunkRegion, uint64_t> region_deserialized
+    const auto region_deserialized
         = ChunkRegion::Deserialize(buffer, current_position);
-    region_ = region_deserialized.first;
-    current_position += region_deserialized.second;
+    region_ = region_deserialized.Value();
+    current_position += region_deserialized.BytesRead();
     // Deserialize the cell sizes
-    const std::pair<GridSizes, uint64_t> sizes_deserialized
+    const auto sizes_deserialized
         = GridSizes::Deserialize(buffer, current_position);
-    sizes_ = sizes_deserialized.first;
-    current_position += sizes_deserialized.second;
+    sizes_ = sizes_deserialized.Value();
+    current_position += sizes_deserialized.BytesRead();
     // Deserialize the data
-    const std::pair<BackingStore, uint64_t> data_deserialized
+    const auto data_deserialized
         = serialization::DeserializeVectorLike<T, BackingStore>(
               buffer, current_position, value_deserializer);
-    data_ = data_deserialized.first;
-    current_position += data_deserialized.second;
+    data_ = data_deserialized.Value();
+    current_position += data_deserialized.BytesRead();
     // Deserialize the fill status
-    const std::pair<uint8_t, uint64_t> fill_status_deserialized
+    const auto fill_status_deserialized
         = serialization::DeserializeMemcpyable<uint8_t>(buffer,
                                                         current_position);
-    fill_status_ = static_cast<DSHVGFillStatus>(fill_status_deserialized.first);
-    current_position += fill_status_deserialized.second;
+    fill_status_ =
+        static_cast<DSHVGFillStatus>(fill_status_deserialized.Value());
+    current_position += fill_status_deserialized.BytesRead();
     // Safety checks
     if (fill_status_ == DSHVGFillStatus::CELL_FILLED)
     {
@@ -617,8 +614,7 @@ private:
 
   uint64_t BaseSerializeSelf(
       std::vector<uint8_t>& buffer,
-      const std::function<uint64_t(
-        const T&, std::vector<uint8_t>&)>& value_serializer) const
+      const serialization::Serializer<T>& value_serializer) const
   {
     const uint64_t start_buffer_size = buffer.size();
     // Serialize the transform
@@ -633,10 +629,8 @@ private:
     {
       return GridChunk::Serialize(chunk, serialize_buffer, value_serializer);
     };
-    serialization::SerializeUnorderedMap<
-        ChunkRegion, GridChunk, std::hash<ChunkRegion>,
-        std::equal_to<ChunkRegion>, ChunkMapAllocator>(
-            chunks_, buffer, ChunkRegion::Serialize, chunk_serializer);
+    serialization::SerializeMapLike<ChunkRegion, GridChunk, ChunkMap>(
+        chunks_, buffer, ChunkRegion::Serialize, chunk_serializer);
     // Serialize the initialized
     serialization::SerializeMemcpyable<uint8_t>(
         static_cast<uint8_t>(initialized_), buffer);
@@ -648,26 +642,25 @@ private:
 
   uint64_t BaseDeserializeSelf(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const std::function<std::pair<T, uint64_t>(
-        const std::vector<uint8_t>&, const uint64_t)>& value_deserializer)
+      const serialization::Deserializer<T>& value_deserializer)
   {
     uint64_t current_position = starting_offset;
     // Deserialize the transforms
-    const std::pair<Eigen::Isometry3d, uint64_t> origin_transform_deserialized
+    const auto origin_transform_deserialized
         = serialization::DeserializeIsometry3d(buffer, current_position);
-    origin_transform_ = origin_transform_deserialized.first;
-    current_position += origin_transform_deserialized.second;
+    origin_transform_ = origin_transform_deserialized.Value();
+    current_position += origin_transform_deserialized.BytesRead();
     inverse_origin_transform_ = origin_transform_.inverse();
     // Deserialize the default value
-    const std::pair<T, uint64_t> default_value_deserialized
+    const auto default_value_deserialized
         = value_deserializer(buffer, current_position);
-    default_value_ = default_value_deserialized.first;
-    current_position += default_value_deserialized.second;
+    default_value_ = default_value_deserialized.Value();
+    current_position += default_value_deserialized.BytesRead();
     // Deserialize the chunk sizes
-    const std::pair<GridSizes, uint64_t> chunk_sizes_deserialized
+    const auto chunk_sizes_deserialized
         = GridSizes::Deserialize(buffer, current_position);
-    chunk_sizes_ = chunk_sizes_deserialized.first;
-    current_position += chunk_sizes_deserialized.second;
+    chunk_sizes_ = chunk_sizes_deserialized.Value();
+    current_position += chunk_sizes_deserialized.BytesRead();
     // Deserialize the data
     const auto chunk_deserializer
         = [&] (const std::vector<uint8_t>& deserialize_buffer,
@@ -676,20 +669,18 @@ private:
       return GridChunk::Deserialize(
           deserialize_buffer, offset, value_deserializer);
     };
-    const std::pair<ChunkMap, uint64_t> chunks_deserialized
-        = serialization::DeserializeUnorderedMap<
-            ChunkRegion, GridChunk, std::hash<ChunkRegion>,
-            std::equal_to<ChunkRegion>, ChunkMapAllocator>(
-                buffer, current_position, ChunkRegion::Deserialize,
-                chunk_deserializer);
-    chunks_ = chunks_deserialized.first;
-    current_position += chunks_deserialized.second;
+    const auto chunks_deserialized
+        = serialization::DeserializeMapLike<ChunkRegion, GridChunk, ChunkMap>(
+            buffer, current_position, ChunkRegion::Deserialize,
+            chunk_deserializer);
+    chunks_ = chunks_deserialized.Value();
+    current_position += chunks_deserialized.BytesRead();
     // Deserialize the initialized
-    const std::pair<uint8_t, uint64_t> initialized_deserialized
+    const auto initialized_deserialized
         = serialization::DeserializeMemcpyable<uint8_t>(buffer,
                                                         current_position);
-    initialized_ = static_cast<bool>(initialized_deserialized.first);
-    current_position += initialized_deserialized.second;
+    initialized_ = static_cast<bool>(initialized_deserialized.Value());
+    current_position += initialized_deserialized.BytesRead();
     // Safety checks
     if (chunk_sizes_.Valid() != initialized_)
     {
@@ -752,15 +743,12 @@ protected:
   /// Serialize any derived-specific members into the provided buffer.
   virtual uint64_t DerivedSerializeSelf(
       std::vector<uint8_t>& buffer,
-      const std::function<uint64_t(
-        const T&, std::vector<uint8_t>&)>& value_serializer) const = 0;
+      const serialization::Serializer<T>& value_serializer) const = 0;
 
   /// Deserialize any derived-specific members from the provided buffer.
   virtual uint64_t DerivedDeserializeSelf(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const std::function<std::pair<T, uint64_t>(
-        const std::vector<uint8_t>&,
-        const uint64_t)>& value_deserializer) = 0;
+      const serialization::Deserializer<T>& value_deserializer) = 0;
 
   /// Callback on any mutable access to the grid. Return true/false to allow or
   /// disallow access to the grid. For example, this can be used to prohibit
@@ -814,8 +802,7 @@ public:
 
   uint64_t SerializeSelf(
       std::vector<uint8_t>& buffer,
-      const std::function<uint64_t(
-        const T&, std::vector<uint8_t>&)>& value_serializer) const
+      const serialization::Serializer<T>& value_serializer) const
   {
     return BaseSerializeSelf(buffer, value_serializer)
         + DerivedSerializeSelf(buffer, value_serializer);
@@ -823,8 +810,7 @@ public:
 
   uint64_t DeserializeSelf(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const std::function<std::pair<T, uint64_t>(
-        const std::vector<uint8_t>&, const uint64_t)>& value_deserializer)
+      const serialization::Deserializer<T>& value_deserializer)
   {
     uint64_t current_position = starting_offset;
     current_position
@@ -1064,8 +1050,7 @@ private:
 
   uint64_t DerivedSerializeSelf(
       std::vector<uint8_t>& buffer,
-      const std::function<uint64_t(
-        const T&, std::vector<uint8_t>&)>& value_serializer) const override
+      const serialization::Serializer<T>& value_serializer) const override
   {
     UNUSED(buffer);
     UNUSED(value_serializer);
@@ -1074,9 +1059,7 @@ private:
 
   uint64_t DerivedDeserializeSelf(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const std::function<std::pair<T, uint64_t>(
-        const std::vector<uint8_t>&,
-        const uint64_t)>& value_deserializer) override
+      const serialization::Deserializer<T>& value_deserializer) override
   {
     UNUSED(buffer);
     UNUSED(starting_offset);
@@ -1094,23 +1077,21 @@ public:
   static uint64_t Serialize(
       const DynamicSpatialHashedVoxelGrid<T, BackingStore>& grid,
       std::vector<uint8_t>& buffer,
-      const std::function<uint64_t(
-        const T&, std::vector<uint8_t>&)>& value_serializer)
+      const serialization::Serializer<T>& value_serializer)
   {
     return grid.SerializeSelf(buffer, value_serializer);
   }
 
-  static std::pair<DynamicSpatialHashedVoxelGrid<T, BackingStore>, uint64_t>
-  Deserialize(
-      const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const std::function<std::pair<T, uint64_t>(
-        const std::vector<uint8_t>&, const uint64_t)>& value_deserializer)
+  static serialization::Deserialized<
+      DynamicSpatialHashedVoxelGrid<T, BackingStore>> Deserialize(
+          const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
+          const serialization::Deserializer<T>& value_deserializer)
   {
     DynamicSpatialHashedVoxelGrid<T, BackingStore> temp_grid;
     const uint64_t bytes_read
         = temp_grid.DeserializeSelf(buffer, starting_offset,
                                     value_deserializer);
-    return std::make_pair(temp_grid, bytes_read);
+    return serialization::MakeDeserialized(temp_grid, bytes_read);
   }
 
   DynamicSpatialHashedVoxelGrid(const GridSizes& chunk_sizes,

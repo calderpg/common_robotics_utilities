@@ -3,7 +3,7 @@
 #include <cstdlib>
 #include <string>
 #include <map>
-#include <unordered_map>
+#include <set>
 #include <utility>
 #include <vector>
 #include <iostream>
@@ -186,8 +186,8 @@ inline bool CheckAlignment(const T& item,
                            const uint64_t desired_alignment,
                            bool verbose=false)
 {
-  const T* item_ptr = &item;
-  const uintptr_t item_ptr_val = (uintptr_t)item_ptr;
+  const T* item_ptr = std::addressof(item);
+  const uintptr_t item_ptr_val = reinterpret_cast<uintptr_t>(item_ptr);
   if ((item_ptr_val % desired_alignment) == 0)
   {
     if (verbose)
@@ -215,8 +215,8 @@ inline bool CheckAlignment(const T& item,
 template<typename T>
 inline void RequireAlignment(const T& item, const uint64_t desired_alignment)
 {
-  const T* item_ptr = &item;
-  const uintptr_t item_ptr_val = (uintptr_t)item_ptr;
+  const T* item_ptr = std::addressof(item);
+  const uintptr_t item_ptr_val = reinterpret_cast<uintptr_t>(item_ptr);
   if ((item_ptr_val % desired_alignment) != 0)
   {
     throw std::runtime_error("Item @ " + std::to_string(item_ptr_val)
@@ -254,7 +254,7 @@ template <typename T>
 inline bool GetBit(const T current, const uint32_t bit_position)
 {
   // Type safety checks are performed in the SetBit() function
-  const uint32_t mask = SetBit((T)0, bit_position, true);
+  const uint32_t mask = SetBit(static_cast<T>(0), bit_position, true);
   if ((mask & current) > 0)
   {
     return true;
@@ -265,33 +265,9 @@ inline bool GetBit(const T current, const uint32_t bit_position)
   }
 }
 
-template <typename Key, typename Value,
-          typename Compare=std::less<Key>,
-          typename Allocator=std::allocator<std::pair<const Key, Value>>>
+template <typename Key, typename Value, typename MapLike=std::map<Key, Value>>
 inline Value RetrieveOrDefault(
-    const std::map<Key, Value, Compare, Allocator>& map,
-    const Key& key,
-    const Value& default_val)
-{
-  const auto found_itr = map.find(key);
-  if (found_itr != map.end())
-  {
-    return found_itr->second;
-  }
-  else
-  {
-    return default_val;
-  }
-}
-
-template <typename Key, typename Value,
-          typename Hash=std::hash<Key>,
-          typename Predicate=std::equal_to<Key>,
-          typename Allocator=std::allocator<std::pair<const Key, Value>>>
-inline Value RetrieveOrDefault(
-    const std::unordered_map<Key, Value, Hash, Predicate, Allocator>& map,
-    const Key& key,
-    const Value& default_val)
+    const MapLike& map, const Key& key, const Value& default_val)
 {
   const auto found_itr = map.find(key);
   if (found_itr != map.end())
@@ -355,33 +331,45 @@ inline bool SetsEqual(const std::vector<T, Alloc>& set1,
   }
 }
 
-template <typename Key, typename Value,
-          typename Compare=std::less<Key>,
-          typename Allocator=std::allocator<std::pair<const Key, Value>>>
-inline std::vector<Key> GetKeys(
-    const std::map<Key, Value, Compare, Allocator>& map)
+template <typename Key, typename Value, typename MapLike=std::map<Key, Value>,
+          typename KeyContainer=std::vector<Key>>
+inline KeyContainer GetKeysFromMapLike(const MapLike& map)
 {
-  std::vector<Key> keys;
+  KeyContainer keys;
   keys.reserve(map.size());
-  typename std::map<Key, Value, Compare, Allocator>::const_iterator itr;
+  typename MapLike::const_iterator itr;
   for (itr = map.begin(); itr != map.end(); ++itr)
   {
-    const Key cur_key = itr->first;
+    const Key& cur_key = itr->first;
     keys.push_back(cur_key);
   }
   keys.shrink_to_fit();
   return keys;
 }
 
-template <typename Key, typename Value,
-          typename Compare=std::less<Key>,
-          typename Allocator=std::allocator<std::pair<const Key, Value>>>
-inline std::vector<std::pair<const Key, Value>, Allocator> GetKeysAndValues(
-    const std::map<Key, Value, Compare, Allocator>& map)
+template <typename Key, typename SetLike=std::set<Key>,
+          typename KeyContainer=std::vector<Key>>
+inline KeyContainer GetKeysFromSetLike(const SetLike& set)
 {
-  std::vector<std::pair<const Key, Value>, Allocator> keys_and_values;
+  KeyContainer keys;
+  keys.reserve(set.size());
+  typename SetLike::const_iterator itr;
+  for (itr = set.begin(); itr != set.end(); ++itr)
+  {
+    const Key& cur_key = *itr;
+    keys.push_back(cur_key);
+  }
+  keys.shrink_to_fit();
+  return keys;
+}
+
+template <typename Key, typename Value, typename MapLike=std::map<Key, Value>,
+          typename KeyValuePairContainer=std::vector<std::pair<Key, Value>>>
+inline KeyValuePairContainer GetKeysAndValues(const MapLike& map)
+{
+  KeyValuePairContainer keys_and_values;
   keys_and_values.reserve(map.size());
-  typename std::map<Key, Value, Compare, Allocator>::const_iterator itr;
+  typename MapLike::const_iterator itr;
   for (itr = map.begin(); itr != map.end(); ++itr)
   {
     const std::pair<Key, Value> cur_pair(itr->first, itr->second);
@@ -391,13 +379,12 @@ inline std::vector<std::pair<const Key, Value>, Allocator> GetKeysAndValues(
   return keys_and_values;
 }
 
-template <typename Key, typename Value,
-          typename Compare=std::less<Key>,
-          typename Allocator=std::allocator<std::pair<const Key, Value>>>
-inline std::map<Key, Value, Compare, Allocator> MakeFromKeysAndValues(
-    const std::vector<std::pair<const Key, Value>, Allocator>& keys_and_values)
+template <typename Key, typename Value, typename MapLike=std::map<Key, Value>,
+          typename KeyValuePairContainer=std::vector<std::pair<Key, Value>>>
+inline MapLike MakeFromKeysAndValues(
+    const KeyValuePairContainer& keys_and_values)
 {
-  std::map<Key, Value, Compare, Allocator> map;
+  MapLike map;
   for (size_t idx = 0; idx < keys_and_values.size(); idx++)
   {
     const std::pair<Key, Value>& cur_pair = keys_and_values[idx];
@@ -406,18 +393,15 @@ inline std::map<Key, Value, Compare, Allocator> MakeFromKeysAndValues(
   return map;
 }
 
-template <typename Key, typename Value,
-          typename Compare=std::less<Key>,
-          typename KeyVectorAllocator=std::allocator<Key>,
-          typename ValueVectorAllocator=std::allocator<Value>,
-          typename PairAllocator=std::allocator<std::pair<const Key, Value>>>
-inline std::map<Key, Value, Compare, PairAllocator> MakeFromKeysAndValues(
-    const std::vector<Key, KeyVectorAllocator>& keys,
-    const std::vector<Value, ValueVectorAllocator>& values)
+template <typename Key, typename Value, typename MapLike=std::map<Key, Value>,
+          typename KeyContainer=std::vector<Key>,
+          typename ValueContainer=std::vector<Value>>
+inline MapLike MakeFromKeysAndValues(
+    const KeyContainer& keys, const ValueContainer& values)
 {
   if (keys.size() == values.size())
   {
-    std::map<Key, Value, Compare, PairAllocator> map;
+    MapLike map;
     for (size_t idx = 0; idx < keys.size(); idx++)
     {
       const Key& cur_key = keys[idx];

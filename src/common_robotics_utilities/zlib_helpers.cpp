@@ -16,7 +16,7 @@ namespace zlib_helpers
 {
 std::vector<uint8_t> DecompressBytes(const std::vector<uint8_t>& compressed)
 {
-  if (compressed.size() <= std::numeric_limits<unsigned int>::max())
+  if (compressed.size() <= std::numeric_limits<uint32_t>::max())
   {
     z_stream strm;
     std::vector<uint8_t> buffer;
@@ -32,7 +32,7 @@ std::vector<uint8_t> DecompressBytes(const std::vector<uint8_t>& compressed)
       std::cerr << "ZLIB can't init inflate stream ret=" << ret << std::endl;
       throw std::invalid_argument("ZLIB can't init inflate stream");
     }
-    strm.avail_in = (uint32_t)compressed.size();
+    strm.avail_in = static_cast<uint32_t>(compressed.size());
     strm.next_in = const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(
                        compressed.data()));
     do
@@ -65,7 +65,7 @@ std::vector<uint8_t> DecompressBytes(const std::vector<uint8_t>& compressed)
 
 std::vector<uint8_t> CompressBytes(const std::vector<uint8_t>& uncompressed)
 {
-  if (uncompressed.size() <= std::numeric_limits<unsigned int>::max())
+  if (uncompressed.size() <= std::numeric_limits<uint32_t>::max())
   {
     z_stream strm;
     std::vector<uint8_t> buffer;
@@ -74,7 +74,7 @@ std::vector<uint8_t> CompressBytes(const std::vector<uint8_t>& uncompressed)
     strm.zalloc = Z_NULL;
     strm.zfree = Z_NULL;
     strm.opaque = Z_NULL;
-    strm.avail_in = (uint32_t)uncompressed.size();
+    strm.avail_in = static_cast<uint32_t>(uncompressed.size());
     strm.next_in = const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(
                        uncompressed.data()));
     strm.next_out = temp_buffer;

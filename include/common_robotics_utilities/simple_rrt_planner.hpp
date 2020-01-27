@@ -39,22 +39,21 @@ public:
   static uint64_t Serialize(
       const SimpleRRTPlannerState<StateType>& state,
       std::vector<uint8_t>& buffer,
-      const std::function<uint64_t(
-          const StateType&, std::vector<uint8_t>&)>& value_serializer)
+      const serialization::Serializer<StateType>& value_serializer)
   {
     return state.SerializeSelf(buffer, value_serializer);
   }
 
-  static std::pair<SimpleRRTPlannerState<StateType>, uint64_t> Deserialize(
+  static serialization::Deserialized<SimpleRRTPlannerState<StateType>>
+  Deserialize(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const std::function<std::pair<StateType, uint64_t>(
-          const std::vector<uint8_t>&, const uint64_t)>& value_deserializer)
+      const serialization::Deserializer<StateType>& value_deserializer)
   {
     SimpleRRTPlannerState<StateType> temp_state;
     const uint64_t bytes_read
         = temp_state.DeserializeSelf(buffer, starting_offset,
                                      value_deserializer);
-    return std::make_pair(temp_state, bytes_read);
+    return serialization::MakeDeserialized(temp_state, bytes_read);
   }
 
   SimpleRRTPlannerState() : parent_index_(-1), initialized_(false) {}
@@ -73,8 +72,7 @@ public:
 
   uint64_t SerializeSelf(
       std::vector<uint8_t>& buffer,
-      const std::function<uint64_t(
-          const StateType&, std::vector<uint8_t>&)>& value_serializer) const
+      const serialization::Serializer<StateType>& value_serializer) const
   {
     const uint64_t start_buffer_size = buffer.size();
     // Serialize the value
@@ -95,33 +93,32 @@ public:
 
   uint64_t DeserializeSelf(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const std::function<std::pair<StateType, uint64_t>(
-          const std::vector<uint8_t>&, const uint64_t)>& value_deserializer)
+      const serialization::Deserializer<StateType>& value_deserializer)
   {
     uint64_t current_position = starting_offset;
     // Deserialize the value
-    const std::pair<StateType, uint64_t> value_deserialized
+    const auto value_deserialized
         = value_deserializer(buffer, current_position);
-    value_ = value_deserialized.first;
-    current_position += value_deserialized.second;
+    value_ = value_deserialized.Value();
+    current_position += value_deserialized.BytesRead();
     // Deserialize the child indices
-    const std::pair<std::vector<int64_t>, uint64_t> child_indices_deserialized
+    const auto child_indices_deserialized
         = serialization::DeserializeMemcpyableVectorLike<int64_t>(
             buffer, current_position);
-    child_indices_ = child_indices_deserialized.first;
-    current_position += child_indices_deserialized.second;
+    child_indices_ = child_indices_deserialized.Value();
+    current_position += child_indices_deserialized.BytesRead();
     // Deserialize the parent index
-    const std::pair<int64_t, uint64_t> parent_index_deserialized
+    const auto parent_index_deserialized
         = serialization::DeserializeMemcpyable<int64_t>(buffer,
                                                         current_position);
-    parent_index_ = parent_index_deserialized.first;
-    current_position += parent_index_deserialized.second;
+    parent_index_ = parent_index_deserialized.Value();
+    current_position += parent_index_deserialized.BytesRead();
     // Deserialize the initialized
-    const std::pair<uint8_t, uint64_t> initialized_deserialized
+    const auto initialized_deserialized
         = serialization::DeserializeMemcpyable<uint8_t>(buffer,
                                                         current_position);
-    initialized_ = static_cast<bool>(initialized_deserialized.first);
-    current_position += initialized_deserialized.second;
+    initialized_ = static_cast<bool>(initialized_deserialized.Value());
+    current_position += initialized_deserialized.BytesRead();
     // Figure out how many bytes were read
     const uint64_t bytes_read = current_position - starting_offset;
     return bytes_read;
@@ -193,7 +190,40 @@ using RRTNearestNeighborFunction =
         const SampleType&)>;  // Sampled state
 
 template<typename StateType>
-using ForwardPropagation = std::vector<std::pair<StateType, int64_t>>;
+class PropagatedState
+{
+private:
+  StateType state_;
+  int64_t relative_parent_index_ = -1;
+
+public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+  PropagatedState(const StateType& state, const int64_t relative_parent_index)
+      : state_(state), relative_parent_index_(relative_parent_index) {}
+
+  PropagatedState(StateType&& state, const int64_t relative_parent_index)
+      : state_(state), relative_parent_index_(relative_parent_index) {}
+
+  const StateType& State() const { return state_; }
+
+  StateType& MutableState() { return state_; }
+
+  int64_t RelativeParentIndex() const { return relative_parent_index_; }
+
+  void SetRelativeParentIndex(const int64_t relative_parent_index)
+  {
+    relative_parent_index_ = relative_parent_index;
+  }
+};
+
+template<typename StateType>
+using PropagatedStateAllocator =
+    Eigen::aligned_allocator<PropagatedState<StateType>>;
+
+template<typename StateType>
+using ForwardPropagation = std::vector<PropagatedState<StateType>,
+                                       PropagatedStateAllocator<StateType>>;
 
 template<typename StateType, typename SampleType=StateType>
 using RRTForwardPropagationFunction =
@@ -219,21 +249,55 @@ using GoalReachedCallbackFunction =
 using RRTTerminationCheckFunction =
     std::function<bool(const int64_t)>;  // Size of planner tree
 
-template<typename StateType, typename StateAllocator=std::allocator<StateType>>
-using PlannedPath = std::vector<StateType, StateAllocator>;
-
-template<typename StateType, typename StateAllocator=std::allocator<StateType>>
-using PlannedPaths = std::vector<PlannedPath<StateType, StateAllocator>>;
+template<typename StateType, typename Container=std::vector<StateType>>
+using PlannedPaths = std::vector<Container>;
 
 using PlanningStatistics = std::map<std::string, double>;
 
-template<typename StateType, typename StateAllocator=std::allocator<StateType>>
-using MultipleSolutionPlanningResults =
-    std::pair<PlannedPaths<StateType, StateAllocator>, PlanningStatistics>;
+template<typename StateType, typename Container=std::vector<StateType>>
+class MultipleSolutionPlanningResults
+{
+private:
+  PlannedPaths<StateType, Container> paths_;
+  PlanningStatistics statistics_;
 
-template<typename StateType, typename StateAllocator=std::allocator<StateType>>
-using SingleSolutionPlanningResults =
-    std::pair<PlannedPath<StateType, StateAllocator>, PlanningStatistics>;
+public:
+  MultipleSolutionPlanningResults() {}
+
+  explicit MultipleSolutionPlanningResults(
+      const PlanningStatistics& statistics) : statistics_(statistics) {}
+
+  MultipleSolutionPlanningResults(
+      const PlannedPaths<StateType, Container>& paths,
+      const PlanningStatistics& statistics)
+      : paths_(paths), statistics_(statistics) {}
+
+  const PlannedPaths<StateType, Container>& Paths() const { return paths_; }
+
+  const PlanningStatistics& Statistics() const { return statistics_; }
+};
+
+template<typename StateType, typename Container=std::vector<StateType>>
+class SingleSolutionPlanningResults
+{
+private:
+  Container path_;
+  PlanningStatistics statistics_;
+
+public:
+  SingleSolutionPlanningResults() {}
+
+  explicit SingleSolutionPlanningResults(
+      const PlanningStatistics& statistics) : statistics_(statistics) {}
+
+  SingleSolutionPlanningResults(
+      const Container& path, const PlanningStatistics& statistics)
+      : path_(path), statistics_(statistics) {}
+
+  const Container& Path() const { return path_; }
+
+  const PlanningStatistics& Statistics() const { return statistics_; }
+};
 
 template<typename StateType>
 using BiRRTNearestNeighborFunction =
@@ -369,7 +433,7 @@ inline bool CheckTreeLinkage(const PlanningTree<StateType>& nodes)
           }
           // Make sure the child node points to us as the parent index
           const int64_t child_parent_index = child_state.GetParentIndex();
-          if (child_parent_index != (int64_t)current_index)
+          if (child_parent_index != static_cast<int64_t>(current_index))
           {
             std::cerr << "Parent index " << child_parent_index
                       << " for current child state " << current_child_index
@@ -408,11 +472,11 @@ inline bool CheckTreeLinkage(const PlanningTree<StateType>& nodes)
 /// Extracts a single solution path corresponding to the provided goal state.
 /// @param nodes tree produced by RRT planner.
 /// @param goal_state_index index of goal state in @param nodes.
-template<typename StateType, typename StateAllocator=std::allocator<StateType>>
-inline PlannedPath<StateType, StateAllocator> ExtractSolutionPath(
+template<typename StateType, typename Container=std::vector<StateType>>
+inline Container ExtractSolutionPath(
     const PlanningTree<StateType>& nodes, const int64_t goal_state_index)
 {
-  PlannedPath<StateType, StateAllocator> solution_path;
+  Container solution_path;
   const SimpleRRTPlannerState<StateType>& goal_state =
       nodes.at(goal_state_index);
   solution_path.push_back(goal_state.GetValueImmutable());
@@ -434,18 +498,17 @@ inline PlannedPath<StateType, StateAllocator> ExtractSolutionPath(
 /// states.
 /// @param nodes tree produced by RRT planner.
 /// @param goal_state_indices indices of goal states in @param nodes.
-template<typename StateType, typename StateAllocator=std::allocator<StateType>>
-inline PlannedPaths<StateType, StateAllocator> ExtractSolutionPaths(
+template<typename StateType, typename Container=std::vector<StateType>>
+inline PlannedPaths<StateType, Container> ExtractSolutionPaths(
     const PlanningTree<StateType>& nodes,
     const std::vector<int64_t>& goal_state_indices)
 {
-  PlannedPaths<StateType, StateAllocator> solution_paths(
+  PlannedPaths<StateType, Container> solution_paths(
       goal_state_indices.size());
   for (size_t idx = 0; idx < goal_state_indices.size(); idx++)
   {
-    PlannedPath<StateType, StateAllocator> solution_path
-        = ExtractSolutionPath<StateType, StateAllocator>(
-            nodes, goal_state_indices.at(idx));
+    const Container solution_path = ExtractSolutionPath<StateType, Container>(
+        nodes, goal_state_indices.at(idx));
     solution_paths.at(idx) = solution_path;
   }
   return solution_paths;
@@ -491,13 +554,13 @@ inline PlannedPaths<StateType, StateAllocator> ExtractSolutionPaths(
 /// @param termination_check_fn Returns true if planning has been
 ///     terminated. The provided int64_t is the current size of the planner
 ///     tree, which may be useful for a size-limited planning problem.
-/// @return pair<paths, statistics> where paths is the vector of solution paths
+/// @return paths + statistics where paths is the vector of solution paths
 ///     and statistics is a map<string, double> of useful statistics collected
 ///     while planning.
 template<typename StateType,
          typename SampleType=StateType,
-         typename StateAllocator=std::allocator<StateType>>
-inline MultipleSolutionPlanningResults<StateType, StateAllocator>
+         typename Container=std::vector<StateType>>
+inline MultipleSolutionPlanningResults<StateType, Container>
 RRTPlanMultiPath(
     PlanningTree<StateType>& tree,
     const SamplingFunction<SampleType>& sampling_fn,
@@ -562,7 +625,7 @@ RRTPlanMultiPath(
       statistics["successful_samples"] += 1.0;
       for (size_t idx = 0; idx < propagated.size(); idx++)
       {
-        const std::pair<StateType, int64_t>& current_propagation
+        const PropagatedState<StateType>& current_propagation
             = propagated.at(idx);
         // Determine the parent index of the new state
         // This process deserves some explanation
@@ -573,7 +636,7 @@ RRTPlanMultiPath(
         // index in the list of prograted nodes i.e. the first node must have a
         // negative value, and so on.
         const int64_t& current_relative_parent_index
-            = current_propagation.second;
+            = current_propagation.RelativeParentIndex();
         int64_t node_parent_index = nearest_neighbor_index;
         if (current_relative_parent_index >= 0)
         {
@@ -597,7 +660,7 @@ RRTPlanMultiPath(
           node_parent_index = nearest_neighbor_index;
         }
         // Build the new state
-        const StateType& current_propagated = current_propagation.first;
+        const StateType& current_propagated = current_propagation.State();
         // Add the state to the tree
         tree.emplace_back(
             SimpleRRTPlannerState<StateType>(current_propagated,
@@ -626,16 +689,16 @@ RRTPlanMultiPath(
     }
   }
   // Put together the results
-  const PlannedPaths<StateType, StateAllocator> planned_paths
-      = ExtractSolutionPaths<StateType, StateAllocator>(
-          tree, goal_state_indices);
+  const PlannedPaths<StateType, Container> planned_paths
+      = ExtractSolutionPaths<StateType, Container>(tree, goal_state_indices);
   const std::chrono::time_point<std::chrono::steady_clock> cur_time
       = std::chrono::steady_clock::now();
   const std::chrono::duration<double> planning_time(cur_time - start_time);
   statistics["planning_time"] = planning_time.count();
   statistics["total_states"] = static_cast<double>(tree.size());
   statistics["solutions"] = static_cast<double>(planned_paths.size());
-  return std::make_pair(planned_paths, statistics);
+  return MultipleSolutionPlanningResults<StateType, Container>(
+      planned_paths, statistics);
 }
 
 /// Plan multiple paths using a bidirectional RRT planner. This planner will
@@ -690,12 +753,12 @@ RRTPlanMultiPath(
 ///     start and goal tree, respectively. These may be useful for a
 ///     size-limited planning problem.
 /// @param rng a PRNG for use in internal sampling and tree swaps.
-/// @return pair<paths, statistics> where paths is the vector of solution paths
+/// @return paths + statistics where paths is the vector of solution paths
 ///     and statistics is a map<string, double> of useful statistics collected
 ///     while planning.
 template<typename RNG, typename StateType,
-         typename StateAllocator=std::allocator<StateType>>
-inline MultipleSolutionPlanningResults<StateType, StateAllocator>
+         typename Container=std::vector<StateType>>
+inline MultipleSolutionPlanningResults<StateType, Container>
 BiRRTPlanMultiPath(
     PlanningTree<StateType>& start_tree,
     PlanningTree<StateType>& goal_tree,
@@ -731,7 +794,35 @@ BiRRTPlanMultiPath(
         "Must be called with at least one node in goal tree");
   }
   // Keep track of the "goal bridges" between the trees
-  std::vector<std::pair<int64_t, int64_t>> goal_bridges;
+  class GoalBridge
+  {
+  private:
+    int64_t start_tree_index_ = -1;
+    int64_t goal_tree_index_ = -1;
+
+  public:
+    GoalBridge(const int64_t start_tree_index, const int64_t goal_tree_index)
+        : start_tree_index_(start_tree_index), goal_tree_index_(goal_tree_index)
+    {
+      if (start_tree_index_ < 0)
+      {
+        throw std::invalid_argument("start_tree_index_ < 0");
+      }
+      if (goal_tree_index_ < 0)
+      {
+        throw std::invalid_argument("goal_tree_index_ < 0");
+      }
+    }
+
+    GoalBridge(const size_t start_tree_index, const size_t goal_tree_index)
+        : start_tree_index_(static_cast<int64_t>(start_tree_index)),
+          goal_tree_index_(static_cast<int64_t>(goal_tree_index)) {}
+
+    int64_t StartTreeIndex() const { return start_tree_index_; }
+
+    int64_t GoalTreeIndex() const { return goal_tree_index_; }
+  };
+  std::vector<GoalBridge> goal_bridges;
   // Keep track of the active treee
   bool start_tree_active = true;
   // Distribution to control sampling type
@@ -757,10 +848,7 @@ BiRRTPlanMultiPath(
                   << goal_tree_idx
                   << ") meets goal conditions, adding to goal states"
                   << std::endl;
-        goal_bridges.push_back(
-              std::pair<int64_t, int64_t>(
-                static_cast<int64_t>(start_tree_idx),
-                static_cast<int64_t>(goal_tree_idx)));
+        goal_bridges.emplace_back(start_tree_idx, goal_tree_idx);
         goal_bridge_callback_fn(start_tree,
                                 static_cast<int64_t>(start_tree_idx),
                                 goal_tree,
@@ -815,7 +903,7 @@ BiRRTPlanMultiPath(
       statistics["successful_samples"] += 1.0;
       for (size_t idx = 0; idx < propagated.size(); idx++)
       {
-        const std::pair<StateType, int64_t>& current_propagation
+        const PropagatedState<StateType>& current_propagation
             = propagated.at(idx);
         // Determine the parent index of the new state
         // This process deserves some explanation
@@ -826,7 +914,7 @@ BiRRTPlanMultiPath(
         // index in the list of prograted nodes i.e. the first node must have a
         // negative value, and so on.
         const int64_t& current_relative_parent_index
-            = current_propagation.second;
+            = current_propagation.RelativeParentIndex();
         int64_t node_parent_index = nearest_neighbor_index;
         if (current_relative_parent_index >= 0)
         {
@@ -851,7 +939,7 @@ BiRRTPlanMultiPath(
           node_parent_index = nearest_neighbor_index;
         }
         // Build the new state
-        const StateType& current_propagated = current_propagation.first;
+        const StateType& current_propagated = current_propagation.State();
         // Add the state to the tree
         active_tree.emplace_back(SimpleRRTPlannerState<StateType>(
                                      current_propagated, node_parent_index));
@@ -874,18 +962,14 @@ BiRRTPlanMultiPath(
           {
             if (start_tree_active)
             {
-              goal_bridges.push_back(
-                  std::pair<int64_t, int64_t>(new_node_index,
-                                              target_tree_node_index));
+              goal_bridges.emplace_back(new_node_index, target_tree_node_index);
               goal_bridge_callback_fn(
                   active_tree, new_node_index, target_tree,
                   target_tree_node_index, start_tree_active);
             }
             else
             {
-              goal_bridges.push_back(
-                  std::pair<int64_t, int64_t>(target_tree_node_index,
-                                              new_node_index));
+              goal_bridges.emplace_back(target_tree_node_index, new_node_index);
               if (goal_bridge_callback_fn)
               {
                 goal_bridge_callback_fn(
@@ -909,18 +993,16 @@ BiRRTPlanMultiPath(
     }
   }
   // Put together the results
-  PlannedPaths<StateType, StateAllocator> planned_paths;
+  PlannedPaths<StateType, Container> planned_paths;
   // Extract the solution paths
-  for (const std::pair<int64_t, int64_t>& goal_bridge : goal_bridges)
+  for (const GoalBridge& goal_bridge : goal_bridges)
   {
     // Extract the portion in the start tree
-    PlannedPath<StateType, StateAllocator> start_path
-        = ExtractSolutionPath<StateType, StateAllocator>(
-            start_tree, goal_bridge.first);
+    Container start_path = ExtractSolutionPath<StateType, Container>(
+        start_tree, goal_bridge.StartTreeIndex());
     // Extract the portion in the goal tree
-    PlannedPath<StateType, StateAllocator> goal_path
-        = ExtractSolutionPath<StateType, StateAllocator>(
-            goal_tree, goal_bridge.second);
+    Container goal_path = ExtractSolutionPath<StateType, Container>(
+        goal_tree, goal_bridge.GoalTreeIndex());
     // Reverse the goal tree part
     std::reverse(goal_path.begin(), goal_path.end());
     // Combine
@@ -934,7 +1016,8 @@ BiRRTPlanMultiPath(
   statistics["total_states"]
       = static_cast<double>(start_tree.size() + goal_tree.size());
   statistics["solutions"] = static_cast<double>(planned_paths.size());
-  return std::make_pair(planned_paths, statistics);
+  return MultipleSolutionPlanningResults<StateType, Container>(
+      planned_paths, statistics);
 }
 
 /// Plan a single path using a single-direction RRT planner. Note that
@@ -976,13 +1059,13 @@ BiRRTPlanMultiPath(
 /// @param termination_check_fn Returns true if planning has been
 ///     terminated. The provided int64_t is the current size of the planner
 ///     tree, which may be useful for a size-limited planning problem.
-/// @return pair<path, statistics> where path is the solution path and
+/// @return path + statistics where path is the solution path and
 ///     statistics is a map<string, double> of useful statistics collected while
 ///     planning.
 template<typename StateType,
          typename SampleType=StateType,
-         typename StateAllocator=std::allocator<StateType>>
-inline SingleSolutionPlanningResults<StateType, StateAllocator>
+         typename Container=std::vector<StateType>>
+inline SingleSolutionPlanningResults<StateType, Container>
 RRTPlanSinglePath(
     PlanningTree<StateType>& tree,
     const SamplingFunction<SampleType>& sampling_fn,
@@ -1012,18 +1095,19 @@ RRTPlanSinglePath(
     return (solution_found || termination_check_fn(current_tree_size));
   };
   const auto rrt_result =
-      RRTPlanMultiPath<StateType, SampleType, StateAllocator>(
+      RRTPlanMultiPath<StateType, SampleType, Container>(
           tree, sampling_fn, nearest_neighbor_fn, forward_propagation_fn,
           state_added_callback_fn, check_goal_reached_fn,
           internal_goal_reached_callback_fn, internal_termination_check_fn);
-  if (rrt_result.first.size() > 0)
+  if (rrt_result.Paths().size() > 0)
   {
-    return std::make_pair(rrt_result.first.at(0), rrt_result.second);
+    return SingleSolutionPlanningResults<StateType, Container>(
+        rrt_result.Paths().at(0), rrt_result.Statistics());
   }
   else
   {
-    return std::make_pair(
-        PlannedPath<StateType, StateAllocator>(), rrt_result.second);
+    return SingleSolutionPlanningResults<StateType, Container>(
+        rrt_result.Statistics());
   }
 }
 
@@ -1078,12 +1162,12 @@ RRTPlanSinglePath(
 ///     start and goal tree, respectively. These may be useful for a
 ///     size-limited planning problem.
 /// @param rng a PRNG for use in internal sampling and tree swaps.
-/// @return pair<path, statistics> where path is the solution path and
+/// @return path + statistics where path is the solution path and
 ///     statistics is a map<string, double> of useful statistics collected while
 ///     planning.
 template<typename RNG, typename StateType,
-         typename StateAllocator=std::allocator<StateType>>
-inline SingleSolutionPlanningResults<StateType, StateAllocator>
+         typename Container=std::vector<StateType>>
+inline SingleSolutionPlanningResults<StateType, Container>
 BiRRTPlanSinglePath(
     PlanningTree<StateType>& start_tree,
     PlanningTree<StateType>& goal_tree,
@@ -1121,19 +1205,20 @@ BiRRTPlanSinglePath(
                                                    current_goal_tree_size));
   };
   const auto birrt_result =
-      BiRRTPlanMultiPath<RNG, StateType, StateAllocator>(
+      BiRRTPlanMultiPath<RNG, StateType, Container>(
           start_tree, goal_tree, state_sampling_fn, nearest_neighbor_fn,
           propagation_fn, state_added_callback_fn, states_connected_fn,
           internal_goal_bridge_callback_fn, tree_sampling_bias, p_switch_tree,
           internal_termination_check_fn, rng);
-  if (birrt_result.first.size() > 0)
+  if (birrt_result.Paths().size() > 0)
   {
-    return std::make_pair(birrt_result.first.at(0), birrt_result.second);
+    return SingleSolutionPlanningResults<StateType, Container>(
+        birrt_result.Paths().at(0), birrt_result.Statistics());
   }
   else
   {
-    return std::make_pair(
-        PlannedPath<StateType, StateAllocator>(), birrt_result.second);
+    return SingleSolutionPlanningResults<StateType, Container>(
+        birrt_result.Statistics());
   }
 }
 
@@ -1239,16 +1324,16 @@ inline BiRRTTerminationCheckFunction MakeBiRRTTimeoutTerminationFunction(
 /// passes @param rng by reference. Thus, the lifetime of @param rng must cover
 /// the entire lifetime of the std::function this returns!
 template<typename SampleType, typename PRNG,
-         typename SampleAllocator=std::allocator<SampleType>>
+         typename Container=std::vector<SampleType>>
 inline SamplingFunction<SampleType> MakeStateAndGoalsSamplingFunction(
     const std::function<SampleType(void)>& state_sampling_fn,
-    const std::vector<SampleType, SampleAllocator>& goal_states,
+    const Container& goal_states,
     const double goal_bias, PRNG& rng)
 {
   class StateAndGoalsSamplingFunction
   {
   private:
-    std::vector<SampleType, SampleAllocator> goal_samples_;
+    Container goal_samples_;
     const double goal_bias_ = 0.0;
     std::uniform_real_distribution<double> unit_real_dist_;
     std::uniform_int_distribution<size_t> goal_sampling_dist_;
@@ -1256,7 +1341,7 @@ inline SamplingFunction<SampleType> MakeStateAndGoalsSamplingFunction(
 
   public:
     StateAndGoalsSamplingFunction(
-          const std::vector<SampleType, SampleAllocator>& goal_samples,
+          const Container& goal_samples,
           const double goal_bias,
           const std::function<SampleType(void)>& state_sampling_fn)
         : goal_samples_(goal_samples), goal_bias_(goal_bias),
@@ -1326,13 +1411,12 @@ MakeLinearRRTNearestNeighborsFunction(
               const StateType& candidate_q = tree_state.GetValueImmutable();
               return distance_fn(candidate_q, sample);
             };
-    const std::vector<std::pair<int64_t, double>> neighbors =
-        simple_knearest_neighbors::GetKNearestNeighbors(
-            tree, sampled, real_distance_fn, 1, use_parallel);
+    const auto neighbors = simple_knearest_neighbors::GetKNearestNeighbors(
+        tree, sampled, real_distance_fn, 1, use_parallel);
     if (neighbors.size() > 0)
     {
-      const std::pair<int64_t, double>& nearest_neighbor = neighbors.front();
-      return nearest_neighbor.first;
+      const auto& nearest_neighbor = neighbors.at(0);
+      return nearest_neighbor.Index();
     }
     else
     {
@@ -1384,13 +1468,12 @@ MakeKinematicLinearBiRRTNearestNeighborsFunction(
               const StateType& candidate_q = tree_state.GetValueImmutable();
               return distance_fn(candidate_q, sample);
             };
-    const std::vector<std::pair<int64_t, double>> neighbors =
-        simple_knearest_neighbors::GetKNearestNeighbors(
-            tree, sampled, real_distance_fn, 1, use_parallel);
+    const auto neighbors = simple_knearest_neighbors::GetKNearestNeighbors(
+        tree, sampled, real_distance_fn, 1, use_parallel);
     if (neighbors.size() > 0)
     {
-      const std::pair<int64_t, double>& nearest_neighbor = neighbors.front();
-      return nearest_neighbor.first;
+      const auto& nearest_neighbor = neighbors.at(0);
+      return nearest_neighbor.Index();
     }
     else
     {
@@ -1434,15 +1517,13 @@ MakeKinematicRRTExtendPropagationFunction(
     const StateType extend_state =
         (ratio < 1.0) ? state_interpolation_fn(nearest, sampled, ratio)
                       : sampled;
+    ForwardPropagation<StateType> forward_propagation;
     if (edge_validity_check_fn(nearest, extend_state))
     {
       // -1 is the parent offset used in adding the new node to the tree.
-      return ForwardPropagation<StateType>{std::make_pair(extend_state, -1)};
+      forward_propagation.emplace_back(extend_state, -1);
     }
-    else
-    {
-      return ForwardPropagation<StateType>();
-    }
+    return forward_propagation;
   };
   return forward_propagation_fn;
 }
@@ -1481,15 +1562,13 @@ MakeKinematicBiRRTExtendPropagationFunction(
     const StateType extend_state =
         (ratio < 1.0) ? state_interpolation_fn(nearest, sampled, ratio)
                       : sampled;
+    ForwardPropagation<StateType> forward_propagation;
     if (edge_validity_check_fn(nearest, extend_state))
     {
       // -1 is the parent offset used in adding the new node to the tree.
-      return ForwardPropagation<StateType>{std::make_pair(extend_state, -1)};
+      forward_propagation.emplace_back(extend_state, -1);
     }
-    else
-    {
-      return ForwardPropagation<StateType>();
-    }
+    return forward_propagation;
   };
   return forward_propagation_fn;
 }
@@ -1560,8 +1639,7 @@ MakeKinematicRRTConnectPropagationFunction(
       // If the current edge is valid, we keep going
       if (edge_validity_check_fn(current, current_target))
       {
-        propagated_states.emplace_back(
-            std::make_pair(current_target, parent_offset));
+        propagated_states.emplace_back(current_target, parent_offset);
         current = current_target;
         parent_offset++;
         steps++;
@@ -1642,8 +1720,7 @@ MakeKinematicBiRRTConnectPropagationFunction(
       // If the current edge is valid, we keep going
       if (edge_validity_check_fn(current, current_target))
       {
-        propagated_states.emplace_back(
-            std::make_pair(current_target, parent_offset));
+        propagated_states.emplace_back(current_target, parent_offset);
         current = current_target;
         parent_offset++;
         steps++;

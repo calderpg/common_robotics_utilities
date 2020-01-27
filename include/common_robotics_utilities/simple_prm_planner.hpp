@@ -75,7 +75,7 @@ inline int64_t AddNodeToRoadmap(
     };
   }
   // Call KNN with the distance function
-  const std::vector<std::pair<int64_t, double>> nearest_neighbors =
+  const auto nearest_neighbors =
       simple_knearest_neighbors::GetKNearestNeighbors(
           roadmap.GetNodesImmutable(), state, graph_distance_fn, K,
           use_parallel);
@@ -85,9 +85,9 @@ inline int64_t AddNodeToRoadmap(
   {
     for (const auto& neighbor : nearest_neighbors)
     {
-      if (neighbor.second == 0.0)
+      if (neighbor.Distance() == 0.0)
       {
-        return neighbor.first;
+        return neighbor.Index();
       }
     }
   }
@@ -100,9 +100,9 @@ inline int64_t AddNodeToRoadmap(
       nearest_neighbors.size());
   auto collision_check_and_distance_fn = [&] (const size_t idx)
   {
-    const std::pair<int64_t, double>& nearest_neighbor = nearest_neighbors[idx];
-    const int64_t nearest_neighbor_index = nearest_neighbor.first;
-    const double graph_to_node_distance = nearest_neighbor.second;
+    const auto& nearest_neighbor = nearest_neighbors.at(idx);
+    const int64_t nearest_neighbor_index = nearest_neighbor.Index();
+    const double graph_to_node_distance = nearest_neighbor.Distance();
     const T& nearest_neighbor_state
         = roadmap.GetNodeImmutable(nearest_neighbor_index).GetValueImmutable();
     const bool graph_to_node_edge_validity
@@ -110,7 +110,7 @@ inline int64_t AddNodeToRoadmap(
     if (graph_to_node_edge_validity && distance_is_symmetric)
     {
       // Distance is symmetric and the edge is valid
-      nearest_neighbors_distances[idx]
+      nearest_neighbors_distances.at(idx)
           = std::make_pair(graph_to_node_distance,
                            graph_to_node_distance);
     }
@@ -130,13 +130,13 @@ inline int64_t AddNodeToRoadmap(
       // Set the distance values depending on direction
       if (nn_distance_direction == NNDistanceDirection::ROADMAP_TO_NEW_STATE)
       {
-        nearest_neighbors_distances[idx]
+        nearest_neighbors_distances.at(idx)
             = std::make_pair(real_graph_to_node_distance,
                              real_node_to_graph_distance);
       }
       else
       {
-        nearest_neighbors_distances[idx]
+        nearest_neighbors_distances.at(idx)
             = std::make_pair(real_node_to_graph_distance,
                              real_graph_to_node_distance);
       }
@@ -144,7 +144,7 @@ inline int64_t AddNodeToRoadmap(
     else
     {
       // Distance is symmetric, but the edge is not valid!
-      nearest_neighbors_distances[idx] = std::make_pair(-1.0, -1.0);
+      nearest_neighbors_distances.at(idx) = std::make_pair(-1.0, -1.0);
     }
   };
   if (use_parallel)
@@ -167,10 +167,10 @@ inline int64_t AddNodeToRoadmap(
   // THIS MUST BE SERIAL - add edges to roadmap
   for (size_t idx = 0; idx < nearest_neighbors.size(); idx++)
   {
-    const std::pair<int64_t, double>& nearest_neighbor = nearest_neighbors[idx];
-    const int64_t nearest_neighbor_index = nearest_neighbor.first;
+    const auto& nearest_neighbor = nearest_neighbors.at(idx);
+    const int64_t nearest_neighbor_index = nearest_neighbor.Index();
     const std::pair<double, double>& nearest_neighbor_distances
-        = nearest_neighbors_distances[idx];
+        = nearest_neighbors_distances.at(idx);
     if (nearest_neighbor_distances.first >= 0.0
         && nearest_neighbor_distances.second >= 0.0)
     {
@@ -339,23 +339,24 @@ inline void UpdateRoadMapEdges(
 
 /// Extracts the solution path from the roadmap.
 /// @param roadmap roadmap used to find solution path.
-/// @param solution_path_indices indices of the solution nodes in the graph, in
-/// order of the solution path.
-template<typename T, typename Allocator=std::allocator<T>>
-inline std::vector<T, Allocator> ExtractSolutionPath(
+/// @param astar_index_solution A* planned path, in terms of node indices in the
+/// provided roadmap.
+template<typename T, typename Container=std::vector<T>>
+inline simple_astar_search::AstarResult<T, Container> ExtractSolution(
     const simple_graph::Graph<T>& roadmap,
-    const std::vector<int64_t>& solution_path_indices)
+    const simple_astar_search::AstarIndexResult& astar_index_solution)
 {
-  std::vector<T, Allocator> solution_path;
-  solution_path.reserve(solution_path_indices.size());
-  for (const int64_t solution_path_index : solution_path_indices)
+  Container solution_path;
+  solution_path.reserve(astar_index_solution.Path().size());
+  for (const int64_t solution_path_index : astar_index_solution.Path())
   {
     const T& solution_path_state
         = roadmap.GetNodeImmutable(solution_path_index).GetValueImmutable();
     solution_path.push_back(solution_path_state);
   }
   solution_path.shrink_to_fit();
-  return solution_path;
+  return simple_astar_search::AstarResult<T, Container>(
+      solution_path, astar_index_solution.PathCost());
 }
 
 /// Find the best path from one of a set of starting states to a single goal.
@@ -381,12 +382,12 @@ inline std::vector<T, Allocator> ExtractSolutionPath(
 /// it is a duplicate of an existing state? @param state is considered a
 /// duplicate if one of the K neighboring states has distance zero from @param
 /// state.
-/// @return pair<path, length> of the best path from a single start to the goal.
+/// @return path + length of the best path from a single start to the goal.
 /// If no solution exists, path is empty and length is infinity.
-template<typename T, typename Allocator=std::allocator<T>>
-inline std::pair<std::vector<T, Allocator>, double>
+template<typename T, typename Container=std::vector<T>>
+inline simple_astar_search::AstarResult<T, Container>
 QueryPathAndAddNodesMultiStartSingleGoal(
-    const std::vector<T, Allocator>& starts, const T& goal,
+    const Container& starts, const T& goal,
     simple_graph::Graph<T>& roadmap,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
@@ -402,8 +403,8 @@ QueryPathAndAddNodesMultiStartSingleGoal(
   std::vector<int64_t> start_node_indices(starts.size());
   for (size_t start_idx = 0; start_idx < starts.size(); start_idx++)
   {
-    const T& start = starts[start_idx];
-    start_node_indices[start_idx]
+    const T& start = starts.at(start_idx);
+    start_node_indices.at(start_idx)
         = AddNodeToRoadmap<T>(start, NNDistanceDirection::NEW_STATE_TO_ROADMAP,
                               roadmap, distance_fn, edge_validity_check_fn, K,
                               use_parallel, distance_is_symmetric,
@@ -437,8 +438,7 @@ QueryPathAndAddNodesMultiStartSingleGoal(
   // Extract solution path
   if (std::isinf(start_node_distance))
   {
-    return std::make_pair(std::vector<T, Allocator>(),
-                          std::numeric_limits<double>::infinity());
+    return simple_astar_search::AstarResult<T, Container>();
   }
   else
   {
@@ -459,8 +459,10 @@ QueryPathAndAddNodesMultiStartSingleGoal(
         previous_index = dijkstras_solution.GetPreviousIndex(current_index);
       }
     }
-    return std::make_pair(ExtractSolutionPath<T, Allocator>(
-        roadmap, solution_path_indices), start_node_distance);
+    return ExtractSolution<T, Container>(
+        roadmap,
+        simple_astar_search::AstarIndexResult(
+            solution_path_indices, start_node_distance));
   }
 }
 
@@ -482,12 +484,12 @@ QueryPathAndAddNodesMultiStartSingleGoal(
 /// it is a duplicate of an existing state? @param state is considered a
 /// duplicate if one of the K neighboring states has distance zero from @param
 /// state.
-/// @return pair<path, length> of the best path from a single start to the goal.
+/// @return path + length of the best path from a single start to the goal.
 /// If no solution exists, path is empty and length is infinity.
-template<typename T, typename Allocator=std::allocator<T>>
-inline std::pair<std::vector<T, Allocator>, double>
+template<typename T, typename Container=std::vector<T>>
+inline simple_astar_search::AstarResult<T, Container>
 QueryPathMultiStartSingleGoal(
-    const std::vector<T, Allocator>& starts, const T& goal,
+    const Container& starts, const T& goal,
     const simple_graph::Graph<T>& roadmap,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
@@ -496,7 +498,7 @@ QueryPathMultiStartSingleGoal(
     const bool add_duplicate_states = false)
 {
   auto working_copy = roadmap;
-  return QueryPathAndAddNodesMultiStartSingleGoal<T, Allocator>(
+  return QueryPathAndAddNodesMultiStartSingleGoal<T, Container>(
       starts, goal, working_copy, distance_fn, edge_validity_check_fn, K,
       use_parallel, distance_is_symmetric, add_duplicate_states);
 }
@@ -520,10 +522,10 @@ QueryPathMultiStartSingleGoal(
 /// it is a duplicate of an existing state? @param state is considered a
 /// duplicate if one of the K neighboring states has distance zero from @param
 /// state.
-/// @return pair<path, length> of the best path from start to goal.
+/// @return path + length of the best path from start to goal.
 /// If no solution exists, path is empty and length is infinity.
-template<typename T, typename Allocator=std::allocator<T>>
-inline std::pair<std::vector<T, Allocator>, double>
+template<typename T, typename Container=std::vector<T>>
+inline simple_astar_search::AstarResult<T, Container>
 QueryPathAndAddNodesSingleStartSingleGoal(
     const T& start, const T& goal, simple_graph::Graph<T>& roadmap,
     const std::function<double(const T&, const T&)>& distance_fn,
@@ -546,13 +548,11 @@ QueryPathAndAddNodesSingleStartSingleGoal(
                             use_parallel, distance_is_symmetric,
                             add_duplicate_states);
   // Call graph A*
-  const std::pair<std::vector<int64_t>, double> astar_result
-      = simple_graph_search::PerformAstarSearch<T>(
-          roadmap, start_node_index, goal_node_index, distance_fn,
-          limit_astar_pqueue_duplicates);
+  const auto astar_result = simple_graph_search::PerformAstarSearch<T>(
+      roadmap, start_node_index, goal_node_index, distance_fn,
+      limit_astar_pqueue_duplicates);
   // Convert the solution path from A* provided as indices into real states
-  return std::make_pair(ExtractSolutionPath<T, Allocator>(
-      roadmap, astar_result.first), astar_result.second);
+  return ExtractSolution<T, Container>(roadmap, astar_result);
 }
 
 /// Find the best path from start state to goal state.
@@ -573,10 +573,10 @@ QueryPathAndAddNodesSingleStartSingleGoal(
 /// it is a duplicate of an existing state? @param state is considered a
 /// duplicate if one of the K neighboring states has distance zero from @param
 /// state.
-/// @return pair<path, length> of the best path from start to goal.
+/// @return path + length of the best path from start to goal.
 /// If no solution exists, path is empty and length is infinity.
-template<typename T, typename Allocator=std::allocator<T>>
-inline std::pair<std::vector<T, Allocator>, double>
+template<typename T, typename Container=std::vector<T>>
+inline simple_astar_search::AstarResult<T, Container>
 QueryPathSingleStartSingleGoal(
     const T& start, const T& goal, const simple_graph::Graph<T>& roadmap,
     const std::function<double(const T&, const T&)>& distance_fn,
@@ -587,7 +587,7 @@ QueryPathSingleStartSingleGoal(
     const bool limit_astar_pqueue_duplicates=true)
 {
   auto working_copy = roadmap;
-  return QueryPathAndAddNodesSingleStartSingleGoal<T, Allocator>(
+  return QueryPathAndAddNodesSingleStartSingleGoal<T, Container>(
       start, goal, working_copy, distance_fn, edge_validity_check_fn, K,
       use_parallel, distance_is_symmetric, add_duplicate_states,
         limit_astar_pqueue_duplicates);
@@ -618,10 +618,10 @@ QueryPathSingleStartSingleGoal(
 /// it is a duplicate of an existing state? @param state is considered a
 /// duplicate if one of the K neighboring states has distance zero from @param
 /// state.
-/// @return pair<path, length> of the best path from start to goal.
+/// @return path + length of the best path from start to goal.
 /// If no solution exists, path is empty and length is infinity.
-template<typename T, typename Allocator=std::allocator<T>>
-inline std::pair<std::vector<T, Allocator>, double>
+template<typename T, typename Container=std::vector<T>>
+inline simple_astar_search::AstarResult<T, Container>
 LazyQueryPathAndAddNodesSingleStartSingleGoal(
     const T& start, const T& goal, simple_graph::Graph<T>& roadmap,
     const std::function<double(const T&, const T&)>& distance_fn,
@@ -644,13 +644,11 @@ LazyQueryPathAndAddNodesSingleStartSingleGoal(
                             use_parallel, distance_is_symmetric,
                             add_duplicate_states);
   // Call graph A*
-  const std::pair<std::vector<int64_t>, double> astar_result
-      = simple_graph_search::PerformLazyAstarSearch<T>(
-          roadmap, start_node_index, goal_node_index, edge_validity_check_fn,
-          distance_fn, distance_fn, limit_astar_pqueue_duplicates);
+  const auto astar_result = simple_graph_search::PerformLazyAstarSearch<T>(
+      roadmap, start_node_index, goal_node_index, edge_validity_check_fn,
+      distance_fn, distance_fn, limit_astar_pqueue_duplicates);
   // Convert the solution path from A* provided as indices into real states
-  return std::make_pair(ExtractSolutionPath<T, Allocator>(
-      roadmap, astar_result.first), astar_result.second);
+  return ExtractSolution<T, Container>(roadmap, astar_result);
 }
 
 /// Find the best path from start state to goal state in a lazy manner, i.e.
@@ -677,10 +675,10 @@ LazyQueryPathAndAddNodesSingleStartSingleGoal(
 /// it is a duplicate of an existing state? @param state is considered a
 /// duplicate if one of the K neighboring states has distance zero from @param
 /// state.
-/// @return pair<path, length> of the best path from start to goal.
+/// @return path + length of the best path from start to goal.
 /// If no solution exists, path is empty and length is infinity.
-template<typename T, typename Allocator=std::allocator<T>>
-inline std::pair<std::vector<T, Allocator>, double>
+template<typename T, typename Container=std::vector<T>>
+inline simple_astar_search::AstarResult<T, Container>
 LazyQueryPathSingleStartSingleGoal(
     const T& start, const T& goal, const simple_graph::Graph<T>& roadmap,
     const std::function<double(const T&, const T&)>& distance_fn,
@@ -691,10 +689,10 @@ LazyQueryPathSingleStartSingleGoal(
     const bool limit_astar_pqueue_duplicates=true)
 {
   auto working_copy = roadmap;
-  return LazyQueryPathAndAddNodesSingleStartSingleGoal<T, Allocator>(
+  return LazyQueryPathAndAddNodesSingleStartSingleGoal<T, Container>(
       start, goal, working_copy, distance_fn, edge_validity_check_fn, K,
       use_parallel, distance_is_symmetric, add_duplicate_states,
-        limit_astar_pqueue_duplicates);
+      limit_astar_pqueue_duplicates);
 }
 
 /// Find the best path from one of a set of starting states to one of a set of
@@ -719,13 +717,13 @@ LazyQueryPathSingleStartSingleGoal(
 /// it is a duplicate of an existing state? @param state is considered a
 /// duplicate if one of the K neighboring states has distance zero from @param
 /// state.
-/// @return pair<path, length> of the best path from a single start to a single
+/// @return path + length of the best path from a single start to a single
 /// goal. If no solution exists, path is empty and length is infinity.
-template<typename T, typename Allocator=std::allocator<T>>
-inline std::pair<std::vector<T, Allocator>, double>
+template<typename T, typename Container=std::vector<T>>
+inline simple_astar_search::AstarResult<T, Container>
 QueryPathMultiStartMultiGoal(
-    const std::vector<T, Allocator>& starts,
-    const std::vector<T, Allocator>& goals,
+    const Container& starts,
+    const Container& goals,
     const simple_graph::Graph<T>& roadmap,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
@@ -733,12 +731,12 @@ QueryPathMultiStartMultiGoal(
     const bool distance_is_symmetric = true,
     const bool add_duplicate_states = false)
 {
-  std::vector<std::pair<std::vector<T, Allocator>, double>>
+  std::vector<simple_astar_search::AstarResult<T, Container>>
       possible_solutions(goals.size());
   for (size_t goal_idx = 0; goal_idx < goals.size(); goal_idx++)
   {
     possible_solutions.at(goal_idx)
-        = QueryPathMultiStartSingleGoal<T, Allocator>(
+        = QueryPathMultiStartSingleGoal<T, Container>(
             starts, goals.at(goal_idx), roadmap, distance_fn,
             edge_validity_check_fn, K, use_parallel, distance_is_symmetric,
             add_duplicate_states);
@@ -747,7 +745,7 @@ QueryPathMultiStartMultiGoal(
   int64_t best_solution_index = -1;
   for (size_t goal_idx = 0; goal_idx < goals.size(); goal_idx++)
   {
-    const double solution_distance = possible_solutions[goal_idx].second;
+    const double solution_distance = possible_solutions.at(goal_idx).PathCost();
     if (solution_distance < best_solution_distance)
     {
       best_solution_distance = solution_distance;
@@ -757,12 +755,11 @@ QueryPathMultiStartMultiGoal(
   if ((best_solution_index >= 0)
       && (best_solution_distance < std::numeric_limits<double>::infinity()))
   {
-    return possible_solutions[best_solution_index];
+    return possible_solutions.at(best_solution_index);
   }
   else
   {
-    return std::make_pair(std::vector<T, Allocator>(),
-                          std::numeric_limits<double>::infinity());
+    return simple_astar_search::AstarResult<T, Container>();
   }
 }
 }  // namespace simple_prm_planner

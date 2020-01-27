@@ -12,27 +12,27 @@ namespace serialization
 {
 constexpr uint64_t SerializedSizeVector2d()
 {
-  return (uint64_t)(sizeof(double) * 2);
+  return static_cast<uint64_t>(sizeof(double) * 2);
 }
 
 constexpr uint64_t SerializedSizeVector3d()
 {
-  return (uint64_t)(sizeof(double) * 3);
+  return static_cast<uint64_t>(sizeof(double) * 3);
 }
 
 constexpr uint64_t SerializedSizeVector4d()
 {
-  return (uint64_t)(sizeof(double) * 4);
+  return static_cast<uint64_t>(sizeof(double) * 4);
 }
 
 constexpr uint64_t SerializedSizeQuaterniond()
 {
-  return (uint64_t)(sizeof(double) * 4);
+  return static_cast<uint64_t>(sizeof(double) * 4);
 }
 
 constexpr uint64_t SerializedSizeIsometry3d()
 {
-  return (uint64_t)(sizeof(double) * 16);
+  return static_cast<uint64_t>(sizeof(double) * 16);
 }
 
 uint64_t SerializeVectorXd(const Eigen::VectorXd& value,
@@ -41,8 +41,8 @@ uint64_t SerializeVectorXd(const Eigen::VectorXd& value,
   return SerializeMemcpyableVectorLike<double, Eigen::VectorXd>(value, buffer);
 }
 
-uint64_t SerializeVector2d(const Eigen::Vector2d& value,
-                           std::vector<uint8_t>& buffer)
+uint64_t SerializeVector2d(
+    const Eigen::Vector2d& value, std::vector<uint8_t>& buffer)
 {
   // Takes a state to serialize and a buffer to serialize into
   // Return number of bytes written to buffer
@@ -52,8 +52,8 @@ uint64_t SerializeVector2d(const Eigen::Vector2d& value,
   return SerializedSizeVector2d();
 }
 
-uint64_t SerializeVector3d(const Eigen::Vector3d& value,
-                           std::vector<uint8_t>& buffer)
+uint64_t SerializeVector3d(
+    const Eigen::Vector3d& value, std::vector<uint8_t>& buffer)
 {
   // Takes a state to serialize and a buffer to serialize into
   // Return number of bytes written to buffer
@@ -63,8 +63,8 @@ uint64_t SerializeVector3d(const Eigen::Vector3d& value,
   return SerializedSizeVector3d();
 }
 
-uint64_t SerializeVector4d(const Eigen::Vector4d& value,
-                           std::vector<uint8_t>& buffer)
+uint64_t SerializeVector4d(
+    const Eigen::Vector4d& value, std::vector<uint8_t>& buffer)
 {
   // Takes a state to serialize and a buffer to serialize into
   // Return number of bytes written to buffer
@@ -74,8 +74,8 @@ uint64_t SerializeVector4d(const Eigen::Vector4d& value,
   return SerializedSizeVector4d();
 }
 
-uint64_t SerializeQuaterniond(const Eigen::Quaterniond& value,
-                              std::vector<uint8_t>& buffer)
+uint64_t SerializeQuaterniond(
+    const Eigen::Quaterniond& value, std::vector<uint8_t>& buffer)
 {
   // Takes a state to serialize and a buffer to serialize into
   // Return number of bytes written to buffer
@@ -87,8 +87,8 @@ uint64_t SerializeQuaterniond(const Eigen::Quaterniond& value,
   return SerializedSizeQuaterniond();
 }
 
-uint64_t SerializeIsometry3d(const Eigen::Isometry3d& value,
-                             std::vector<uint8_t>& buffer)
+uint64_t SerializeIsometry3d(
+    const Eigen::Isometry3d& value, std::vector<uint8_t>& buffer)
 {
   // Takes a state to serialize and a buffer to serialize into
   // Return number of bytes written to buffer
@@ -100,14 +100,14 @@ uint64_t SerializeIsometry3d(const Eigen::Isometry3d& value,
   return SerializedSizeIsometry3d();
 }
 
-std::pair<Eigen::VectorXd, uint64_t> DeserializeVectorXd(
+Deserialized<Eigen::VectorXd> DeserializeVectorXd(
     const std::vector<uint8_t>& buffer, const uint64_t current)
 {
   return DeserializeMemcpyableVectorLike<double, Eigen::VectorXd>(
       buffer, current);
 }
 
-std::pair<Eigen::Vector2d, uint64_t> DeserializeVector2d(
+Deserialized<Eigen::Vector2d> DeserializeVector2d(
     const std::vector<uint8_t>& buffer, const uint64_t current)
 {
   if (current >= buffer.size())
@@ -122,10 +122,10 @@ std::pair<Eigen::Vector2d, uint64_t> DeserializeVector2d(
   // Return the loaded state and how many bytes we read from the buffer
   Eigen::Vector2d temp_value;
   memcpy(temp_value.data(), &buffer[current], SerializedSizeVector2d());
-  return std::make_pair(temp_value, SerializedSizeVector2d());
+  return MakeDeserialized(temp_value, SerializedSizeVector2d());
 }
 
-std::pair<Eigen::Vector3d, uint64_t> DeserializeVector3d(
+Deserialized<Eigen::Vector3d> DeserializeVector3d(
     const std::vector<uint8_t>& buffer, const uint64_t current)
 {
   if (current >= buffer.size())
@@ -140,10 +140,10 @@ std::pair<Eigen::Vector3d, uint64_t> DeserializeVector3d(
   // Return the loaded state and how many bytes we read from the buffer
   Eigen::Vector3d temp_value;
   memcpy(temp_value.data(), &buffer[current], SerializedSizeVector3d());
-  return std::make_pair(temp_value, SerializedSizeVector3d());
+  return MakeDeserialized(temp_value, SerializedSizeVector3d());
 }
 
-std::pair<Eigen::Vector4d, uint64_t> DeserializeVector4d(
+Deserialized<Eigen::Vector4d> DeserializeVector4d(
     const std::vector<uint8_t>& buffer, const uint64_t current)
 {
   if (current >= buffer.size())
@@ -158,10 +158,10 @@ std::pair<Eigen::Vector4d, uint64_t> DeserializeVector4d(
   // Return the loaded state and how many bytes we read from the buffer
   Eigen::Vector4d temp_value;
   memcpy(temp_value.data(), &buffer[current], SerializedSizeVector4d());
-  return std::make_pair(temp_value, SerializedSizeVector4d());
+  return MakeDeserialized(temp_value, SerializedSizeVector4d());
 }
 
-std::pair<Eigen::Quaterniond, uint64_t> DeserializeQuaterniond(
+Deserialized<Eigen::Quaterniond> DeserializeQuaterniond(
     const std::vector<uint8_t>& buffer, const uint64_t current)
 {
   if (current >= buffer.size())
@@ -178,10 +178,10 @@ std::pair<Eigen::Quaterniond, uint64_t> DeserializeQuaterniond(
   memcpy(temp_value.coeffs().data(),
          &buffer[current],
          SerializedSizeQuaterniond());
-  return std::make_pair(temp_value, SerializedSizeQuaterniond());
+  return MakeDeserialized(temp_value, SerializedSizeQuaterniond());
 }
 
-std::pair<Eigen::Isometry3d, uint64_t> DeserializeIsometry3d(
+Deserialized<Eigen::Isometry3d> DeserializeIsometry3d(
     const std::vector<uint8_t>& buffer, const uint64_t current)
 {
   if (current >= buffer.size())
@@ -198,7 +198,7 @@ std::pair<Eigen::Isometry3d, uint64_t> DeserializeIsometry3d(
   memcpy(temp_value.matrix().data(),
          &buffer[current],
          SerializedSizeIsometry3d());
-  return std::make_pair(temp_value, SerializedSizeIsometry3d());
+  return MakeDeserialized(temp_value, SerializedSizeIsometry3d());
 }
 }  // namespace serialization
 }  // namespace common_robotics_utilities

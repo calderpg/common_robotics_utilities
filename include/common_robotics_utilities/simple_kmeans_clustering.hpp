@@ -36,7 +36,7 @@ inline std::vector<int32_t> PerformSingleClusteringIteration(
     const DataType& datapoint = data.at(idx);
     const int64_t closest_cluster_index
         = simple_knearest_neighbors::GetKNearestNeighborsSerial(
-            current_cluster_centers, datapoint, distance_fn, 1).at(0).first;
+            current_cluster_centers, datapoint, distance_fn, 1).at(0).Index();
     new_cluster_labels.at(idx) = static_cast<int32_t>(closest_cluster_index);
   };
   if (use_parallel)

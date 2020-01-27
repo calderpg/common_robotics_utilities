@@ -478,13 +478,33 @@ inline ClosestPair GetClosestPair(
   }
 }
 
+template<typename DataType, typename Container=std::vector<DataType>>
+class ClusteringResult
+{
+private:
+  std::vector<Container> clusters_;
+  double final_closest_distance_ = 0.0;
+
+public:
+  ClusteringResult() {}
+
+  ClusteringResult(const std::vector<Container>& clusters,
+                   const double final_closest_distance)
+      : clusters_(clusters), final_closest_distance_(final_closest_distance) {}
+
+  const std::vector<Container>& Clusters() const { return clusters_; }
+
+  double FinalClosestDistance() const { return final_closest_distance_; }
+};
+
+using IndexClusteringResult = ClusteringResult<int64_t, std::vector<int64_t>>;
+
 /// Perform hierarchical index clustering of @param data up to @param
 /// max_cluster_distance, using @param distance_matrix to provide pairwise
 /// value-to-value distance for values in @param data. Strategy to use is
 /// specified by @param strategy, and @param use_parallel selects if parallel
 /// search should be used internally.
-inline std::pair<std::vector<std::vector<int64_t>>, double>
-IndexClusterWithDistanceMatrix(
+inline IndexClusteringResult IndexClusterWithDistanceMatrix(
     const Eigen::MatrixXd& distance_matrix, const double max_cluster_distance,
     const ClusterStrategy strategy, const bool use_parallel = false)
 {
@@ -579,19 +599,20 @@ IndexClusterWithDistanceMatrix(
     }
   }
   index_clusters.shrink_to_fit();
-  return std::pair<std::vector<std::vector<int64_t>>, double>(
-      index_clusters, closest_distance);
+  return IndexClusteringResult(index_clusters, closest_distance);
 }
 
 template<typename DataType, typename Container=std::vector<DataType>>
-inline std::vector<Container> MakeElementClustersFromIndexClusters(
+inline ClusteringResult<DataType, Container>
+MakeElementClusteringFromIndexClustering(
     const Container& data,
-    const std::vector<std::vector<int64_t>>& index_clusters)
+    const IndexClusteringResult& index_clustering)
 {
-  std::vector<Container> clusters(index_clusters.size());
-  for (size_t idx = 0; idx < index_clusters.size(); idx++)
+  std::vector<Container> clusters(index_clustering.Clusters().size());
+  for (size_t idx = 0; idx < clusters.size(); idx++)
   {
-    const std::vector<int64_t>& current_index_cluster = index_clusters.at(idx);
+    const std::vector<int64_t>& current_index_cluster
+        = index_clustering.Clusters().at(idx);
     Container& current_cluster = clusters.at(idx);
     // Use reserve + shrink_to_fit for cases where DataType is not
     // default-constructible.
@@ -602,7 +623,8 @@ inline std::vector<Container> MakeElementClustersFromIndexClusters(
     }
     current_cluster.shrink_to_fit();
   }
-  return clusters;
+  return ClusteringResult<DataType, Container>(
+      clusters, index_clustering.FinalClosestDistance());
 }
 
 /// Perform hierarchical clustering of @param data up to @param
@@ -611,7 +633,7 @@ inline std::vector<Container> MakeElementClustersFromIndexClusters(
 /// specified by @param strategy, and @param use_parallel selects if parallel
 /// search should be used internally.
 template<typename DataType, typename Container=std::vector<DataType>>
-inline std::pair<std::vector<Container>, double> ClusterWithDistanceMatrix(
+inline ClusteringResult<DataType, Container> ClusterWithDistanceMatrix(
     const Container& data, const Eigen::MatrixXd& distance_matrix,
     const double max_cluster_distance, const ClusterStrategy strategy,
     const bool use_parallel = false)
@@ -629,13 +651,9 @@ inline std::pair<std::vector<Container>, double> ClusterWithDistanceMatrix(
   // Perform index clustering
   const auto index_clustering = IndexClusterWithDistanceMatrix(
       distance_matrix, max_cluster_distance, strategy, use_parallel);
-  const std::vector<std::vector<int64_t>>& index_clusters =
-      index_clustering.first;
   // Extract the actual cluster data from index clusters
-  return std::pair<std::vector<Container>, double>(
-      MakeElementClustersFromIndexClusters<DataType, Container>(
-          data, index_clusters),
-      index_clustering.second);
+  return MakeElementClusteringFromIndexClustering<DataType, Container>(
+      data, index_clustering);
 }
 
 /// Perform hierarchical index clustering of @param data up to @param
@@ -644,7 +662,7 @@ inline std::pair<std::vector<Container>, double> ClusterWithDistanceMatrix(
 /// specified by @param strategy, and @param use_parallel selects if parallel
 /// search should be used internally.
 template<typename DataType, typename Container=std::vector<DataType>>
-inline std::pair<std::vector<std::vector<int64_t>>, double> IndexCluster(
+inline IndexClusteringResult IndexCluster(
     const Container& data,
     const std::function<double(const DataType&, const DataType&)>& distance_fn,
     const double max_cluster_distance, const ClusterStrategy strategy,
@@ -663,7 +681,7 @@ inline std::pair<std::vector<std::vector<int64_t>>, double> IndexCluster(
 /// specified by @param strategy, and @param use_parallel selects if parallel
 /// search should be used internally.
 template<typename DataType, typename Container=std::vector<DataType>>
-inline std::pair<std::vector<Container>, double> Cluster(
+inline ClusteringResult<DataType, Container> Cluster(
     const Container& data,
     const std::function<double(const DataType&, const DataType&)>& distance_fn,
     const double max_cluster_distance, const ClusterStrategy strategy,

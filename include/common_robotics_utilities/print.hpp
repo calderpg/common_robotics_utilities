@@ -204,7 +204,7 @@ inline std::string Print(const uint8_t& byte_to_print,
 {
   UNUSED(add_delimiters);
   UNUSED(separator);
-  return std::to_string((int32_t)byte_to_print);
+  return std::to_string(static_cast<int32_t>(byte_to_print));
 }
 
 template<>

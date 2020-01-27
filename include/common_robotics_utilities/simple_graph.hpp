@@ -1,11 +1,14 @@
 #pragma once
 
+#include <algorithm>
 #include <cstdint>
+#include <unordered_set>
 #include <vector>
 
 #include <Eigen/Geometry>
 #include <common_robotics_utilities/print.hpp>
 #include <common_robotics_utilities/serialization.hpp>
+#include <common_robotics_utilities/utility.hpp>
 
 namespace common_robotics_utilities
 {
@@ -28,13 +31,13 @@ public:
     return edge.SerializeSelf(buffer);
   }
 
-  static std::pair<GraphEdge, uint64_t> Deserialize(
+  static serialization::Deserialized<GraphEdge> Deserialize(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
   {
     GraphEdge temp_edge;
     const uint64_t bytes_read
         = temp_edge.DeserializeSelf(buffer, starting_offset);
-    return std::make_pair(temp_edge, bytes_read);
+    return serialization::MakeDeserialized(temp_edge, bytes_read);
   }
 
   GraphEdge(
@@ -69,26 +72,26 @@ public:
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
   {
     uint64_t current_position = starting_offset;
-    const std::pair<int64_t, uint64_t> deserialized_from_index
+    const auto deserialized_from_index
         = serialization::DeserializeMemcpyable<int64_t>(buffer,
                                                         current_position);
-    from_index_ = deserialized_from_index.first;
-    current_position += deserialized_from_index.second;
-    const std::pair<int64_t, uint64_t> deserialized_to_index
+    from_index_ = deserialized_from_index.Value();
+    current_position += deserialized_from_index.BytesRead();
+    const auto deserialized_to_index
         = serialization::DeserializeMemcpyable<int64_t>(buffer,
                                                         current_position);
-    to_index_ = deserialized_to_index.first;
-    current_position += deserialized_to_index.second;
-    const std::pair<double, uint64_t> deserialized_weight
+    to_index_ = deserialized_to_index.Value();
+    current_position += deserialized_to_index.BytesRead();
+    const auto deserialized_weight
         = serialization::DeserializeMemcpyable<double>(buffer,
                                                        current_position);
-    weight_ = deserialized_weight.first;
-    current_position += deserialized_weight.second;
-    const std::pair<uint64_t, uint64_t> deserialized_scratchpad
+    weight_ = deserialized_weight.Value();
+    current_position += deserialized_weight.BytesRead();
+    const auto deserialized_scratchpad
         = serialization::DeserializeMemcpyable<uint64_t>(buffer,
                                                          current_position);
-    scratchpad_ = deserialized_scratchpad.first;
-    current_position += deserialized_scratchpad.second;
+    scratchpad_ = deserialized_scratchpad.Value();
+    current_position += deserialized_scratchpad.BytesRead();
     // Figure out how many bytes were read
     const uint64_t bytes_read = current_position - starting_offset;
     return bytes_read;
@@ -148,22 +151,20 @@ public:
 
   static uint64_t Serialize(
       const GraphNodeType& node, std::vector<uint8_t>& buffer,
-      const std::function<uint64_t(
-          const NodeValueType&, std::vector<uint8_t>&)>& value_serializer)
+      const serialization::Serializer<NodeValueType>& value_serializer)
   {
     return node.SerializeSelf(buffer, value_serializer);
   }
 
-  static std::pair<GraphNodeType, uint64_t> Deserialize(
+  static serialization::Deserialized<GraphNodeType> Deserialize(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const std::function<std::pair<NodeValueType, uint64_t>(
-          const std::vector<uint8_t>&, const uint64_t)>& value_deserializer)
+      const serialization::Deserializer<NodeValueType>& value_deserializer)
   {
     GraphNodeType temp_node;
     const uint64_t bytes_read
         = temp_node.DeserializeSelf(buffer, starting_offset,
                                     value_deserializer);
-    return std::make_pair(temp_node, bytes_read);
+    return serialization::MakeDeserialized(temp_node, bytes_read);
   }
 
   GraphNode(const NodeValueType& value,
@@ -177,8 +178,7 @@ public:
 
   uint64_t SerializeSelf(
       std::vector<uint8_t>& buffer,
-      const std::function<uint64_t(
-          const NodeValueType&, std::vector<uint8_t>&)>& value_serializer) const
+      const serialization::Serializer<NodeValueType>& value_serializer) const
   {
     const uint64_t start_buffer_size = buffer.size();
     // Serialize the value
@@ -197,27 +197,26 @@ public:
 
   uint64_t DeserializeSelf(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const std::function<std::pair<NodeValueType, uint64_t>(
-          const std::vector<uint8_t>&, const uint64_t)>& value_deserializer)
+      const serialization::Deserializer<NodeValueType>& value_deserializer)
   {
     uint64_t current_position = starting_offset;
     // Deserialize the value
-    const std::pair<NodeValueType, uint64_t> value_deserialized
+    const auto value_deserialized
         = value_deserializer(buffer, current_position);
-    value_ = value_deserialized.first;
-    current_position += value_deserialized.second;
+    value_ = value_deserialized.Value();
+    current_position += value_deserialized.BytesRead();
     // Deserialize the in edges
-    const std::pair<std::vector<GraphEdge>, uint64_t> in_edges_deserialized
+    const auto in_edges_deserialized
         = serialization::DeserializeVectorLike<GraphEdge>(
             buffer, current_position, GraphEdge::Deserialize);
-    in_edges_ = in_edges_deserialized.first;
-    current_position += in_edges_deserialized.second;
+    in_edges_ = in_edges_deserialized.Value();
+    current_position += in_edges_deserialized.BytesRead();
     // Deserialize the out edges
-    const std::pair<std::vector<GraphEdge>, uint64_t> out_edges_deserialized
+    const auto out_edges_deserialized
         = serialization::DeserializeVectorLike<GraphEdge>(
             buffer, current_position, GraphEdge::Deserialize);
-    out_edges_ = out_edges_deserialized.first;
-    current_position += out_edges_deserialized.second;
+    out_edges_ = out_edges_deserialized.Value();
+    current_position += out_edges_deserialized.BytesRead();
     // Figure out how many bytes were read
     const uint64_t bytes_read = current_position - starting_offset;
     return bytes_read;
@@ -306,6 +305,7 @@ template<typename NodeValueType>
 class Graph
 {
 private:
+  using GraphType = Graph<NodeValueType>;
   using GraphNodeType = GraphNode<NodeValueType>;
   using GraphNodeAllocatorType = GraphNodeAllocator<NodeValueType>;
   using GraphNodeVector = std::vector<GraphNodeType, GraphNodeAllocatorType>;
@@ -315,22 +315,157 @@ private:
 public:
   static uint64_t Serialize(
       const Graph<NodeValueType>& graph, std::vector<uint8_t>& buffer,
-      const std::function<uint64_t(
-          const NodeValueType&, std::vector<uint8_t>&)>& value_serializer)
+      const serialization::Serializer<NodeValueType>& value_serializer)
   {
     return graph.SerializeSelf(buffer, value_serializer);
   }
 
-  static std::pair<Graph<NodeValueType>, uint64_t> Deserialize(
+  static serialization::Deserialized<GraphType> Deserialize(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const std::function<std::pair<NodeValueType, uint64_t>(
-          const std::vector<uint8_t>&, const uint64_t)>& value_deserializer)
+      const serialization::Deserializer<NodeValueType>& value_deserializer)
   {
     Graph<NodeValueType> temp_graph;
     const uint64_t bytes_read
         = temp_graph.DeserializeSelf(
             buffer, starting_offset, value_deserializer);
-    return std::make_pair(temp_graph, bytes_read);
+    return serialization::MakeDeserialized(temp_graph, bytes_read);
+  }
+
+  static GraphType PruneGraph(
+      const GraphType& graph, const std::unordered_set<int64_t>& nodes_to_prune,
+      const bool use_parallel)
+  {
+    // By making a sorted copy of the indices in nodes_to_prune, the two
+    // for-loops that update edge to/from indices can terminate early once the
+    // node_to_prune is greater than the original to/from index.
+    std::vector<int64_t> vector_nodes_to_prune
+        = utility::GetKeysFromSetLike<int64_t>(nodes_to_prune);
+    std::sort(vector_nodes_to_prune.begin(), vector_nodes_to_prune.end());
+    // Make the pruned graph, initialized with the number of nodes we expect it
+    // to contain.
+    GraphType pruned_graph(graph.Size() - nodes_to_prune.size());
+    // First, serial pass through to copy nodes to be kept
+    for (int64_t node_index = 0;
+         node_index < static_cast<int64_t>(graph.Size());
+         node_index++)
+    {
+      if (nodes_to_prune.count(node_index) == 0)
+      {
+        // Copy the node to the new graph
+        pruned_graph.AddNode(graph.GetNodeImmutable(node_index));
+      }
+    }
+    pruned_graph.ShrinkToFit();
+    // Loop body for second pass to update edges for the kept nodes
+    const auto update_edge_fn = [&] (const int64_t kept_node_index)
+    {
+      GraphNodeType& kept_graph_node
+          = pruned_graph.GetNodeMutable(kept_node_index);
+      // Make space for the updated in edges
+      std::vector<GraphEdge> new_in_edges;
+      new_in_edges.reserve(kept_graph_node.GetInEdgesImmutable().size());
+      // Go through the in edges
+      for (const auto& in_edge : kept_graph_node.GetInEdgesImmutable())
+      {
+        const int64_t original_from_index = in_edge.GetFromIndex();
+        // Only update edges we keep
+        if (nodes_to_prune.count(original_from_index) == 0)
+        {
+          // Make a copy of the existing edge
+          GraphEdge new_in_edge = in_edge;
+          // Update the "to index" to our node's index
+          new_in_edge.SetToIndex(kept_node_index);
+          // Update the "from index" to account for pruned nodes
+          int64_t new_from_index = original_from_index;
+          for (const int64_t index_to_prune : vector_nodes_to_prune)
+          {
+            // For each pruned node before the "from node", decrement the index
+            if (index_to_prune < original_from_index)
+            {
+              new_from_index--;
+            }
+            // We can terminate early because we know the indices are sorted
+            else if (index_to_prune > original_from_index)
+            {
+              break;
+            }
+            else
+            {
+              throw std::runtime_error(
+                  "index_to_prune cannot equal original_from_index");
+            }
+          }
+          new_in_edge.SetFromIndex(new_from_index);
+          // Copy the new edge
+          new_in_edges.push_back(new_in_edge);
+        }
+      }
+      new_in_edges.shrink_to_fit();
+      // Make space for the updated out edges
+      std::vector<GraphEdge> new_out_edges;
+      new_out_edges.reserve(kept_graph_node.GetOutEdgesImmutable().size());
+      // Go through the out edges
+      for (const auto& out_edge : kept_graph_node.GetOutEdgesImmutable())
+      {
+        const int64_t original_to_index = out_edge.GetToIndex();
+        // Only update edges we keep
+        if (nodes_to_prune.count(original_to_index) == 0)
+        {
+          // Make a copy of the existing edge
+          GraphEdge new_out_edge = out_edge;
+          // Update the "from index" to our node's index
+          new_out_edge.SetFromIndex(kept_node_index);
+          // Update the "from index" to account for pruned nodes
+          int64_t new_to_index = original_to_index;
+          for (const int64_t index_to_prune : vector_nodes_to_prune)
+          {
+            // For each pruned node before the "from node", decrement the index
+            if (index_to_prune < original_to_index)
+            {
+              new_to_index--;
+            }
+            // We can terminate early because we know the indices are sorted
+            else if (index_to_prune > original_to_index)
+            {
+              break;
+            }
+            else
+            {
+              throw std::runtime_error(
+                  "index_to_prune cannot equal original_to_index");
+            }
+          }
+          new_out_edge.SetToIndex(new_to_index);
+          // Copy the new edge
+          new_out_edges.push_back(new_out_edge);
+        }
+      }
+      new_out_edges.shrink_to_fit();
+      // Copy in the updated edges
+      kept_graph_node.SetInEdges(new_in_edges);
+      kept_graph_node.SetOutEdges(new_out_edges);
+    };
+    // Second, optionally parallel pass to update edges for the kept nodes
+    if (use_parallel)
+    {
+#pragma omp parallel for
+      for (int64_t kept_node_index = 0;
+          kept_node_index < static_cast<int64_t>(pruned_graph.Size());
+          kept_node_index++)
+      {
+        update_edge_fn(kept_node_index);
+      }
+    }
+    else
+    {
+      for (int64_t kept_node_index = 0;
+          kept_node_index < static_cast<int64_t>(pruned_graph.Size());
+          kept_node_index++)
+      {
+        update_edge_fn(kept_node_index);
+      }
+    }
+    return pruned_graph;
   }
 
   Graph(const GraphNodeVector& nodes)
@@ -351,12 +486,10 @@ public:
 
   uint64_t SerializeSelf(
       std::vector<uint8_t>& buffer,
-      const std::function<uint64_t(
-          const NodeValueType&, std::vector<uint8_t>&)>& value_serializer) const
+      const serialization::Serializer<NodeValueType>& value_serializer) const
   {
     const uint64_t start_buffer_size = buffer.size();
-    std::function<uint64_t(const GraphNodeType&,
-                           std::vector<uint8_t>&)> graph_state_serializer =
+    const serialization::Serializer<GraphNodeType> graph_node_serializer =
         [&] (const GraphNodeType& node,
              std::vector<uint8_t>& serialize_buffer)
     {
@@ -364,7 +497,7 @@ public:
           node, serialize_buffer, value_serializer);
     };
     serialization::SerializeVectorLike<GraphNodeType, GraphNodeVector>(
-        nodes_, buffer, graph_state_serializer);
+        nodes_, buffer, graph_node_serializer);
     // Figure out how many bytes were written
     const uint64_t end_buffer_size = buffer.size();
     const uint64_t bytes_written = end_buffer_size - start_buffer_size;
@@ -373,27 +506,27 @@ public:
 
   uint64_t DeserializeSelf(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const std::function<std::pair<NodeValueType, uint64_t>(
-          const std::vector<uint8_t>&, const uint64_t)>& value_deserializer)
+      const serialization::Deserializer<NodeValueType>& value_deserializer)
   {
-    const std::function<std::pair<GraphNodeType, uint64_t>(
-        const std::vector<uint8_t>&, const uint64_t)> graph_state_deserializer =
+    const serialization::Deserializer<GraphNodeType> graph_node_deserializer =
         [&] (const std::vector<uint8_t>& deserialize_buffer,
              const uint64_t offset)
     {
       return GraphNodeType::Deserialize(
           deserialize_buffer, offset, value_deserializer);
     };
-    const std::pair<GraphNodeVector, uint64_t>
-        deserialized_nodes
+    const auto deserialized_nodes
         = serialization::DeserializeVectorLike<GraphNodeType, GraphNodeVector>(
-            buffer, starting_offset, graph_state_deserializer);
-    nodes_ = deserialized_nodes.first;
-    if (!CheckGraphLinkage())
+            buffer, starting_offset, graph_node_deserializer);
+    if (CheckGraphLinkage(deserialized_nodes.Value()))
+    {
+      nodes_ = deserialized_nodes.Value();
+    }
+    else
     {
       throw std::invalid_argument("Deserialized invalid graph linkage");
     }
-    return deserialized_nodes.second;
+    return deserialized_nodes.BytesRead();
   }
 
   std::string Print() const
@@ -409,6 +542,13 @@ public:
       }
     }
     return strm.str();
+  }
+
+  GraphType MakePrunedCopy(
+      const std::unordered_set<int64_t>& nodes_to_prune,
+      const bool use_parallel) const
+  {
+    return PruneGraph(*this, nodes_to_prune, use_parallel);
   }
 
   void ShrinkToFit()
@@ -456,17 +596,20 @@ public:
         const int64_t from_index = current_edge.GetFromIndex();
         if (from_index < 0 || from_index >= static_cast<int64_t>(nodes.size()))
         {
+          std::cerr << "From index out of bounds" << std::endl;
           return false;
         }
         // Check to index to make sure it matches our own index
         const int64_t to_index = current_edge.GetToIndex();
         if (to_index != static_cast<int64_t>(idx))
         {
+          std::cerr << "To index does not point to current node" << std::endl;
           return false;
         }
         // Check edge validity (edges to ourself are not allowed)
         if (from_index == to_index)
         {
+          std::cerr << "From index == to index not allowed" << std::endl;
           return false;
         }
         // Check to make sure that the from index node is linked to us
@@ -487,6 +630,7 @@ public:
         }
         if (from_node_connection_valid == false)
         {
+          std::cerr << "From index connection is invalid" << std::endl;
           return false;
         }
       }
@@ -499,17 +643,20 @@ public:
         const int64_t from_index = current_edge.GetFromIndex();
         if (from_index != static_cast<int64_t>(idx))
         {
+          std::cerr << "From index does not point to current node" << std::endl;
           return false;
         }
         // Check to index to make sure it's in bounds
         const int64_t to_index = current_edge.GetToIndex();
         if (to_index < 0 || to_index >= static_cast<int64_t>(nodes.size()))
         {
+          std::cerr << "To index out of bounds" << std::endl;
           return false;
         }
         // Check edge validity (edges to ourself are not allowed)
         if (from_index == to_index)
         {
+          std::cerr << "From index == to index not allowed" << std::endl;
           return false;
         }
         // Check to make sure that the to index node is linked to us
@@ -530,6 +677,7 @@ public:
         }
         if (to_node_connection_valid == false)
         {
+          std::cerr << "To index connection is invalid" << std::endl;
           return false;
         }
       }
@@ -537,10 +685,7 @@ public:
     return true;
   }
 
-  const GraphNodeVector& GetNodesImmutable() const
-  {
-    return nodes_;
-  }
+  const GraphNodeVector& GetNodesImmutable() const { return nodes_; }
 
   GraphNodeVector& GetNodesMutable() { return nodes_; }
 

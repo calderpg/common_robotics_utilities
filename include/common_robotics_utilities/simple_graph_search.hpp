@@ -34,13 +34,13 @@ public:
     return result.SerializeSelf(buffer);
   }
 
-  static std::pair<DijkstrasResult, uint64_t> Deserialize(
+  static serialization::Deserialized<DijkstrasResult> Deserialize(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
   {
     DijkstrasResult temp_result;
     const uint64_t bytes_read
         = temp_result.DeserializeSelf(buffer, starting_offset);
-    return std::make_pair(temp_result, bytes_read);
+    return serialization::MakeDeserialized(temp_result, bytes_read);
   }
 
   DijkstrasResult() {}
@@ -79,14 +79,14 @@ public:
     const auto previous_index_map_deserialized
         = serialization::DeserializeMemcpyableVectorLike<int64_t>(
             buffer, current_position);
-    previous_index_map_ = previous_index_map_deserialized.first;
-    current_position += previous_index_map_deserialized.second;
+    previous_index_map_ = previous_index_map_deserialized.Value();
+    current_position += previous_index_map_deserialized.BytesRead();
     // Deserialize the node distances
     const auto node_distances_deserialized
         = serialization::DeserializeMemcpyableVectorLike<double>(
             buffer, current_position);
-    node_distances_ = node_distances_deserialized.first;
-    current_position += node_distances_deserialized.second;
+    node_distances_ = node_distances_deserialized.Value();
+    current_position += node_distances_deserialized.BytesRead();
     if (previous_index_map_.size() != node_distances_.size())
     {
       throw std::invalid_argument(
@@ -110,13 +110,30 @@ public:
   }
 };
 
+class IndexAndDistance
+{
+private:
+  int64_t index_ = -1;
+  double distance_ = std::numeric_limits<double>::infinity();
+
+public:
+  IndexAndDistance() {}
+
+  IndexAndDistance(const int64_t index, const double distance)
+      : index_(index), distance_(distance) {}
+
+  int64_t Index() const { return index_; }
+
+  double Distance() const { return distance_; }
+};
+
 class CompareIndexDistancePairFn
 {
 public:
-  constexpr bool operator()(const std::pair<int64_t, double>& lhs,
-                            const std::pair<int64_t, double>& rhs) const
+  bool operator()(const IndexAndDistance& lhs,
+                  const IndexAndDistance& rhs) const
   {
-    return lhs.second > rhs.second;
+    return lhs.Distance() > rhs.Distance();
   }
 };
 
@@ -132,20 +149,18 @@ inline DijkstrasResult PerformDijkstrasAlgorithm(
   std::vector<int64_t> previous_index_map(graph.Size(), -1);
   std::vector<double> distances(
       graph.Size(), std::numeric_limits<double>::infinity());
-  std::priority_queue<std::pair<int64_t, double>,
-                      std::vector<std::pair<int64_t, double>>,
+  std::priority_queue<IndexAndDistance,
+                      std::vector<IndexAndDistance>,
                       CompareIndexDistancePairFn> queue;
   std::unordered_map<int64_t, uint32_t> explored(graph.Size());
-  previous_index_map[static_cast<size_t>(start_index)] = start_index;
-  distances[static_cast<size_t>(start_index)] = 0.0;
-  queue.push(std::make_pair(start_index, 0.0));
+  previous_index_map.at(static_cast<size_t>(start_index)) = start_index;
+  distances.at(static_cast<size_t>(start_index)) = 0.0;
+  queue.push(IndexAndDistance(start_index, 0.0));
   while (queue.size() > 0)
   {
-    const std::pair<int64_t, double> top_node = queue.top();
-    const int64_t& top_node_index = top_node.first;
-    const double& top_node_distance = top_node.second;
+    const IndexAndDistance top_node = queue.top();
     queue.pop();
-    if (explored[top_node.first] > 0)
+    if (explored[top_node.Index()] > 0)
     {
       // We've already been here
       continue;
@@ -153,17 +168,17 @@ inline DijkstrasResult PerformDijkstrasAlgorithm(
     else
     {
       // Note that we've been here
-      explored[top_node_index] = 1;
+      explored[top_node.Index()] = 1;
       // Get our neighbors
       const std::vector<simple_graph::GraphEdge>& neighbor_edges
-          = graph.GetNodeImmutable(top_node_index).GetInEdgesImmutable();
+          = graph.GetNodeImmutable(top_node.Index()).GetInEdgesImmutable();
       // Go through our neighbors
       for (const simple_graph::GraphEdge& neighbor_edge : neighbor_edges)
       {
         const int64_t neighbor_index = neighbor_edge.GetFromIndex();
         const double neighbor_edge_weight = neighbor_edge.GetWeight();
         const double new_neighbor_distance
-            = top_node_distance + neighbor_edge_weight;
+            = top_node.Distance() + neighbor_edge_weight;
         // Check against the neighbor
         const double stored_neighbor_distance
             = distances.at(static_cast<size_t>(neighbor_index));
@@ -176,11 +191,11 @@ inline DijkstrasResult PerformDijkstrasAlgorithm(
             // If it hasn't been explored, we need to add it to the queue
             // even though it may already be in the queue, we have found it with
             // a lower distance.
-            queue.push(std::make_pair(neighbor_index, new_neighbor_distance));
+            queue.push(IndexAndDistance(neighbor_index, new_neighbor_distance));
           }
           // Update that we're the best previous node
           previous_index_map.at(static_cast<size_t>(neighbor_index))
-              = top_node_index;
+              = top_node.Index();
           distances.at(static_cast<size_t>(neighbor_index))
               = new_neighbor_distance;
         }
@@ -196,7 +211,7 @@ inline DijkstrasResult PerformDijkstrasAlgorithm(
 }
 
 template<typename NodeValueType>
-inline simple_astar_search::AstarResult PerformLazyAstarSearch(
+inline simple_astar_search::AstarIndexResult PerformLazyAstarSearch(
     const simple_graph::Graph<NodeValueType>& graph, const int64_t start_index,
     const int64_t goal_index,
     const std::function<bool(
@@ -236,9 +251,9 @@ inline simple_astar_search::AstarResult PerformLazyAstarSearch(
   // Value is cost-to-come
   std::unordered_map<int64_t, double> queue_members_map;
   // Key is the node index in the provided graph
-  // Value is a pair<backpointer, cost-to-come>
+  // Value is backpointer + cost-to-come
   // backpointer is the parent index in the provided graph
-  std::unordered_map<int64_t, std::pair<int64_t, double>> explored;
+  simple_astar_search::ExploredList explored;
   // Initialize
   queue.push(simple_astar_search::AstarPQueueElement(
       start_index, -1, 0.0, heuristic_function(start_index)));
@@ -263,13 +278,15 @@ inline simple_astar_search::AstarResult PerformLazyAstarSearch(
     const bool node_in_explored = (node_explored_find_itr != explored.end());
     const bool explored_node_is_better
         = (node_in_explored)
-          ? (top_node.CostToCome() >= node_explored_find_itr->second.second)
+          ? (top_node.CostToCome()
+              >= node_explored_find_itr->second.CostToCome())
           : false;
     if (!explored_node_is_better)
     {
       // Add to the explored list
       explored[top_node.NodeID()]
-          = std::make_pair(top_node.Backpointer(), top_node.CostToCome());
+          = simple_astar_search::BackPointerAndCostToCome(
+              top_node.Backpointer(), top_node.CostToCome());
       // Check if we have reached the goal
       if (top_node.NodeID() == goal_index)
       {
@@ -278,12 +295,9 @@ inline simple_astar_search::AstarResult PerformLazyAstarSearch(
       // Explore and add the children
       const std::vector<simple_graph::GraphEdge>& out_edges
           = graph.GetNodeImmutable(top_node.NodeID()).GetOutEdgesImmutable();
-      for (size_t out_edge_idx = 0; out_edge_idx < out_edges.size();
-           out_edge_idx++)
+      for (const auto& current_out_edge : out_edges)
       {
         // Get the next potential child node
-        const simple_graph::GraphEdge& current_out_edge
-            = out_edges[out_edge_idx];
         const int64_t child_node_index = current_out_edge.GetToIndex();
         // Check if the top node->child edge is valid
         if (edge_validity_check_fn(graph, current_out_edge))
@@ -302,7 +316,8 @@ inline simple_astar_search::AstarResult PerformLazyAstarSearch(
               = (child_explored_find_itr != explored.end());
           const bool explored_child_is_better
               = (child_in_explored)
-                ? (child_cost_to_come >= child_explored_find_itr->second.second)
+                ? (child_cost_to_come
+                    >= child_explored_find_itr->second.CostToCome())
                 : false;
           // Check if the child state is already in the queue
           bool queue_is_better = false;
@@ -324,9 +339,11 @@ inline simple_astar_search::AstarResult PerformLazyAstarSearch(
             const double child_heuristic = heuristic_function(child_node_index);
             // Compute the child value
             const double child_value = child_cost_to_come + child_heuristic;
+            // Push onto the pqueue
             queue.push(simple_astar_search::AstarPQueueElement(
                 child_node_index, top_node.NodeID(), child_cost_to_come,
                          child_value));
+            // Add to the queue member map
             if (limit_pqueue_duplicates)
             {
               queue_members_map[child_node_index] = child_cost_to_come;
@@ -341,7 +358,7 @@ inline simple_astar_search::AstarResult PerformLazyAstarSearch(
 }
 
 template<typename NodeValueType>
-inline simple_astar_search::AstarResult PerformLazyAstarSearch(
+inline simple_astar_search::AstarIndexResult PerformLazyAstarSearch(
     const simple_graph::Graph<NodeValueType>& graph, const int64_t start_index,
     const int64_t goal_index,
     const std::function<bool(const NodeValueType&,
@@ -383,7 +400,7 @@ inline simple_astar_search::AstarResult PerformLazyAstarSearch(
 }
 
 template<typename NodeValueType>
-inline simple_astar_search::AstarResult PerformAstarSearch(
+inline simple_astar_search::AstarIndexResult PerformAstarSearch(
     const simple_graph::Graph<NodeValueType>& graph, const int64_t start_index,
     const int64_t goal_index,
     const std::function<double(const NodeValueType&,

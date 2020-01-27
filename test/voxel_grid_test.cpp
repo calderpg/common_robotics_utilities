@@ -35,7 +35,7 @@ TEST(VoxelGridTest, indexLookup)
       test_grid, buffer, serialization::SerializeMemcpyable<int32_t>);
   const voxel_grid::VoxelGrid<int32_t> read_grid
       = voxel_grid::VoxelGrid<int32_t>::Deserialize(
-          buffer, 0, serialization::DeserializeMemcpyable<int32_t>).first;
+          buffer, 0, serialization::DeserializeMemcpyable<int32_t>).Value();
   // Check the values
   int32_t check_index = 0;
   for (int64_t x_index = 0; x_index < read_grid.GetNumXCells(); x_index++)
@@ -85,7 +85,7 @@ TEST(VoxelGridTest, locationLookup)
       test_grid, buffer, serialization::SerializeMemcpyable<int32_t>);
   const voxel_grid::VoxelGrid<int32_t> read_grid
       = voxel_grid::VoxelGrid<int32_t>::Deserialize(
-          buffer, 0, serialization::DeserializeMemcpyable<int32_t>).first;
+          buffer, 0, serialization::DeserializeMemcpyable<int32_t>).Value();
   // Check the values
   int32_t check_index = 0;
   for (double x_pos = -9.5; x_pos <= 9.5; x_pos += 1.0)
@@ -157,7 +157,7 @@ TEST(VoxelGridTest, dshvgLookup)
       test_grid, buffer, serialization::SerializeMemcpyable<int32_t>);
   const voxel_grid::DynamicSpatialHashedVoxelGrid<int32_t> read_grid
       = voxel_grid::DynamicSpatialHashedVoxelGrid<int32_t>::Deserialize(
-          buffer, 0, serialization::DeserializeMemcpyable<int32_t>).first;
+          buffer, 0, serialization::DeserializeMemcpyable<int32_t>).Value();
   // Check the values
   int32_t check_index = 0;
   for (double x_pos = -9.5; x_pos <= 9.5; x_pos += 1.0)

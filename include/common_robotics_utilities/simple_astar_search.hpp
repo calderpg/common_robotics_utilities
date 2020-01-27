@@ -51,25 +51,73 @@ public:
   }
 };
 
-/// Search result is a pair<path, cost>.
+/// Search result is both path and path cost.
+/// Path is a vector of values, and cost is the computed cost-to-come of the
+/// goal node.
+template<typename T, typename Container=std::vector<T>>
+class AstarResult
+{
+private:
+  Container path_;
+  double path_cost_ = std::numeric_limits<double>::infinity();
+
+public:
+  AstarResult() {}
+
+  AstarResult(const Container& path, const double path_cost)
+      : path_(path), path_cost_(path_cost)
+  {
+    if (path_.size() > 0 && std::isinf(path_cost_))
+    {
+      throw std::invalid_argument(
+          "Cannot create AstarResult with non-empty path and infinite cost");
+    }
+  }
+
+  const Container& Path() const { return path_; }
+
+  double PathCost() const { return path_cost_; }
+};
+
+/// Internally, A* plans over node ids, rather than node values.
+/// Search result is both path and path cost.
 /// Path is a vector of node_ids, and cost is the computed cost-to-come of the
 /// goal node.
-using AstarResult = std::pair<std::vector<int64_t>, double>;
+using AstarIndexResult = AstarResult<int64_t, std::vector<int64_t>>;
+
+/// Class to wrap the backpointer and cost-to-come, as used in the explored
+/// list in A*.
+class BackPointerAndCostToCome
+{
+private:
+  int64_t backpointer_ = -1;
+  double cost_to_come_ = std::numeric_limits<double>::infinity();
+
+public:
+  BackPointerAndCostToCome() {}
+
+  BackPointerAndCostToCome(const int64_t backpointer, const double cost_to_come)
+      : backpointer_(backpointer), cost_to_come_(cost_to_come) {}
+
+  int64_t BackPointer() const { return backpointer_; }
+
+  double CostToCome() const { return cost_to_come_; }
+};
+
+using ExploredList = std::unordered_map<int64_t, BackPointerAndCostToCome>;
 
 /// Extract the result from the explored node map @param explored produced by A*
 /// search, with @param start_id the node_id of the start node and @param
 /// goal_id the node_id of the goal node.
-inline AstarResult ExtractAstarResult(
-    const std::unordered_map<int64_t, std::pair<int64_t, double>>& explored,
-    const int64_t start_id, const int64_t goal_id)
+inline AstarIndexResult ExtractAstarResult(
+    const ExploredList& explored, const int64_t start_id, const int64_t goal_id)
 {
   // Check if a solution was found
   const auto goal_index_itr = explored.find(goal_id);
   // If no solution found
   if (goal_index_itr == explored.end())
   {
-    return std::make_pair(std::vector<int64_t>(),
-                          std::numeric_limits<double>::infinity());
+    return AstarIndexResult();
   }
   // If a solution was found
   else
@@ -77,7 +125,7 @@ inline AstarResult ExtractAstarResult(
     // Extract the path node ids in reverse order
     std::vector<int64_t> solution_path_ids;
     solution_path_ids.push_back(goal_id);
-    int64_t backpointer = goal_index_itr->second.first;
+    int64_t backpointer = goal_index_itr->second.BackPointer();
     // Any backpointer >= 0 is a valid node id
     // The backpointer for start_index is -1 (since it has no parent)
     while (backpointer >= 0)
@@ -93,14 +141,14 @@ inline AstarResult ExtractAstarResult(
         // Using map.at(key) throws an exception if key not found
         // This provides bounds safety check
         const auto current_index_data = explored.at(current_id);
-        backpointer = current_index_data.first;
+        backpointer = current_index_data.BackPointer();
       }
     }
     // Reverse
     std::reverse(solution_path_ids.begin(), solution_path_ids.end());
     // Get the cost of the path
-    const double solution_path_cost = goal_index_itr->second.second;
-    return std::make_pair(solution_path_ids, solution_path_cost);
+    const double solution_path_cost = goal_index_itr->second.CostToCome();
+    return AstarIndexResult(solution_path_ids, solution_path_cost);
   }
 }
 
@@ -124,7 +172,7 @@ inline AstarResult ExtractAstarResult(
 /// Note that @param generate_children_fn and @param edge_validity_check overlap
 /// in functionality and that @param edge_validity_check can always return true
 /// if @param generate_children_fn always generates valid children.
-inline AstarResult PerformGenericAstarSearch(
+inline AstarIndexResult PerformGenericAstarSearch(
     const int64_t start_id, const int64_t goal_id,
     const std::function<std::vector<int64_t>(
       const int64_t)>& generate_children_fn,
@@ -153,9 +201,9 @@ inline AstarResult PerformGenericAstarSearch(
   // Value is cost-to-come
   std::unordered_map<int64_t, double> queue_members_map;
   // Key is the node ID
-  // Value is a pair<backpointer, cost-to-come>
+  // Value is backpointer + cost-to-come
   // backpointer is the parent node ID
-  std::unordered_map<int64_t, std::pair<int64_t, double>> explored;
+  ExploredList explored;
   // Initialize
   queue.push(
       AstarPQueueElement(start_id, -1, 0.0, heuristic_function(start_id)));
@@ -180,13 +228,14 @@ inline AstarResult PerformGenericAstarSearch(
     const bool node_in_explored = (node_explored_find_itr != explored.end());
     const bool node_explored_is_better
         = (node_in_explored)
-          ? (top_node.CostToCome() >= node_explored_find_itr->second.second)
+          ? (top_node.CostToCome()
+              >= node_explored_find_itr->second.CostToCome())
           : false;
     if (!node_explored_is_better)
     {
       // Add to the explored list
-      explored[top_node.NodeID()]
-          = std::make_pair(top_node.Backpointer(), top_node.CostToCome());
+      explored[top_node.NodeID()] = BackPointerAndCostToCome(
+          top_node.Backpointer(), top_node.CostToCome());
       // Check if we have reached the goal
       if (top_node.NodeID() == goal_id)
       {
@@ -214,7 +263,8 @@ inline AstarResult PerformGenericAstarSearch(
               = (child_explored_find_itr != explored.end());
           const bool explored_child_is_better
               = (child_in_explored)
-                ? (child_cost_to_come >= child_explored_find_itr->second.second)
+                ? (child_cost_to_come
+                    >= child_explored_find_itr->second.CostToCome())
                 : false;
           // Check if the child state is already in the queue
           bool queue_is_better = false;
@@ -236,8 +286,10 @@ inline AstarResult PerformGenericAstarSearch(
             const double child_heuristic = heuristic_function(child_node_id);
             // Compute the child value
             const double child_value = child_cost_to_come + child_heuristic;
+            // Push onto the pqueue
             queue.push(AstarPQueueElement(child_node_id, top_node.NodeID(),
                                           child_cost_to_come, child_value));
+            // Add to the queue member map
             if (limit_pqueue_duplicates)
             {
               queue_members_map[child_node_id] = child_cost_to_come;
@@ -266,7 +318,7 @@ inline AstarResult PerformGenericAstarSearch(
 /// in functionality and that @param edge_validity_check can always return true
 /// if @param generate_children_fn always generates valid children.
 template<typename T, typename Container=std::vector<T>>
-inline std::pair<Container, double> PerformAstarSearch(
+inline AstarResult<T, Container> PerformAstarSearch(
     const T& start, const T& goal,
     const std::function<Container(const T&)>& generate_children_fn,
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
@@ -327,14 +379,14 @@ inline std::pair<Container, double> PerformAstarSearch(
           limit_pqueue_duplicates);
   // Extract the solution path
   Container solution_path;
-  solution_path.reserve(astar_solution.first.size());
-  for (const int64_t state_id : astar_solution.first)
+  solution_path.reserve(astar_solution.Path().size());
+  for (const int64_t state_id : astar_solution.Path())
   {
     const T& solution_path_state = state_map.at(state_id);
     solution_path.push_back(solution_path_state);
   }
   solution_path.shrink_to_fit();
-  return std::make_pair(solution_path, astar_solution.second);
+  return AstarResult<T, Container>(solution_path, astar_solution.PathCost());
 }
 }  // namespace simple_astar_search
 }  // namespace common_robotics_utilities

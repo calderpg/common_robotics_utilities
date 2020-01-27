@@ -59,6 +59,9 @@ public:
   explicit operator bool() const { return HasValue(); }
 };
 
+template<typename T>
+using OwningMaybeAllocator = Eigen::aligned_allocator<OwningMaybe<T>>;
+
 /// An implementation of the Maybe/Optional pattern, in which a
 /// ReferencingMaybe<T> wraps a reference to an instance of T or no value. This
 /// is similar to std::optional<T> in C++17; however, it *does not own* the item

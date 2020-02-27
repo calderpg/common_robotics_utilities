@@ -254,7 +254,7 @@ template <typename T>
 inline bool GetBit(const T current, const uint32_t bit_position)
 {
   // Type safety checks are performed in the SetBit() function
-  const uint32_t mask = SetBit(static_cast<T>(0), bit_position, true);
+  const T mask = SetBit(static_cast<T>(0), bit_position, true);
   if ((mask & current) > 0)
   {
     return true;

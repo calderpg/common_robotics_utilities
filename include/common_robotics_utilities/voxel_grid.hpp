@@ -400,6 +400,21 @@ public:
           1.0);
     return point_in_grid_frame;
   }
+
+  bool operator==(const GridSizes& other) const
+  {
+    return (NumXCells() == other.NumXCells()
+            && NumYCells() == other.NumYCells()
+            && NumZCells() == other.NumZCells()
+            && CellXSize() == other.CellXSize()
+            && CellYSize() == other.CellYSize()
+            && CellZSize() == other.CellZSize());
+  }
+
+  bool operator!=(const GridSizes& other) const
+  {
+    return !(*this == other);
+  }
 };
 
 // Forward-declare for use in GridQuery.

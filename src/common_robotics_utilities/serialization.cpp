@@ -35,8 +35,29 @@ constexpr uint64_t SerializedSizeIsometry3d()
   return static_cast<uint64_t>(sizeof(double) * 16);
 }
 
-uint64_t SerializeVectorXd(const Eigen::VectorXd& value,
-                           std::vector<uint8_t>& buffer)
+uint64_t SerializeMatrixXd(
+    const Eigen::MatrixXd& value, std::vector<uint8_t>& buffer)
+{
+  const uint64_t start_buffer_size = buffer.size();
+  // First, write uint64_t rows and cols headers
+  const uint64_t rows = static_cast<uint64_t>(value.rows());
+  SerializeMemcpyable<uint64_t>(rows, buffer);
+  const uint64_t cols = static_cast<uint64_t>(value.cols());
+  SerializeMemcpyable<uint64_t>(cols, buffer);
+  // Expand the buffer to handle everything
+  const size_t serialized_length = sizeof(double) * rows * cols;
+  const size_t previous_buffer_size = buffer.size();
+  buffer.resize(previous_buffer_size + serialized_length, 0x00);
+  // Serialize the contained items
+  memcpy(&buffer[previous_buffer_size], value.data(), serialized_length);
+  // Figure out how many bytes were written
+  const uint64_t end_buffer_size = buffer.size();
+  const uint64_t bytes_written = end_buffer_size - start_buffer_size;
+  return bytes_written;
+}
+
+uint64_t SerializeVectorXd(
+    const Eigen::VectorXd& value, std::vector<uint8_t>& buffer)
 {
   return SerializeMemcpyableVectorLike<double, Eigen::VectorXd>(value, buffer);
 }
@@ -100,75 +121,106 @@ uint64_t SerializeIsometry3d(
   return SerializedSizeIsometry3d();
 }
 
+Deserialized<Eigen::MatrixXd> DeserializeMatrixXd(
+    const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
+{
+  uint64_t current_position = starting_offset;
+  // Load the rows and cols header
+  const Deserialized<uint64_t> deserialized_rows
+      = DeserializeMemcpyable<uint64_t>(buffer, current_position);
+  const uint64_t rows = deserialized_rows.Value();
+  current_position += deserialized_rows.BytesRead();
+  const Deserialized<uint64_t> deserialized_cols
+      = DeserializeMemcpyable<uint64_t>(buffer, current_position);
+  const uint64_t cols = deserialized_cols.Value();
+  current_position += deserialized_cols.BytesRead();
+  // Deserialize the items
+  const size_t serialized_length = sizeof(double) * rows * cols;
+  if ((current_position + serialized_length) > buffer.size())
+  {
+    throw std::invalid_argument("Not enough room in the provided buffer");
+  }
+  Eigen::MatrixXd deserialized = Eigen::MatrixXd::Zero(rows, cols);
+  memcpy(deserialized.data(), &buffer[current_position], serialized_length);
+  current_position += serialized_length;
+  // Figure out how many bytes were read
+  const uint64_t bytes_read = current_position - starting_offset;
+  return MakeDeserialized(deserialized, bytes_read);
+}
+
 Deserialized<Eigen::VectorXd> DeserializeVectorXd(
-    const std::vector<uint8_t>& buffer, const uint64_t current)
+    const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
 {
   return DeserializeMemcpyableVectorLike<double, Eigen::VectorXd>(
-      buffer, current);
+      buffer, starting_offset);
 }
 
 Deserialized<Eigen::Vector2d> DeserializeVector2d(
-    const std::vector<uint8_t>& buffer, const uint64_t current)
+    const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
 {
-  if (current >= buffer.size())
+  if (starting_offset >= buffer.size())
   {
-    throw std::invalid_argument("current is outside the provided buffer");
+    throw std::invalid_argument(
+        "starting_offset is outside the provided buffer");
   }
-  if ((current + SerializedSizeVector2d()) > buffer.size())
+  if ((starting_offset + SerializedSizeVector2d()) > buffer.size())
   {
     throw std::invalid_argument("Not enough room in the provided buffer");
   }
   // Takes a buffer to read from and the starting index in the buffer
   // Return the loaded state and how many bytes we read from the buffer
   Eigen::Vector2d temp_value;
-  memcpy(temp_value.data(), &buffer[current], SerializedSizeVector2d());
+  memcpy(temp_value.data(), &buffer[starting_offset], SerializedSizeVector2d());
   return MakeDeserialized(temp_value, SerializedSizeVector2d());
 }
 
 Deserialized<Eigen::Vector3d> DeserializeVector3d(
-    const std::vector<uint8_t>& buffer, const uint64_t current)
+    const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
 {
-  if (current >= buffer.size())
+  if (starting_offset >= buffer.size())
   {
-    throw std::invalid_argument("current is outside the provided buffer");
+    throw std::invalid_argument(
+        "starting_offset is outside the provided buffer");
   }
-  if ((current + SerializedSizeVector3d()) > buffer.size())
+  if ((starting_offset + SerializedSizeVector3d()) > buffer.size())
   {
     throw std::invalid_argument("Not enough room in the provided buffer");
   }
   // Takes a buffer to read from and the starting index in the buffer
   // Return the loaded state and how many bytes we read from the buffer
   Eigen::Vector3d temp_value;
-  memcpy(temp_value.data(), &buffer[current], SerializedSizeVector3d());
+  memcpy(temp_value.data(), &buffer[starting_offset], SerializedSizeVector3d());
   return MakeDeserialized(temp_value, SerializedSizeVector3d());
 }
 
 Deserialized<Eigen::Vector4d> DeserializeVector4d(
-    const std::vector<uint8_t>& buffer, const uint64_t current)
+    const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
 {
-  if (current >= buffer.size())
+  if (starting_offset >= buffer.size())
   {
-    throw std::invalid_argument("current is outside the provided buffer");
+    throw std::invalid_argument(
+        "starting_offset is outside the provided buffer");
   }
-  if ((current + SerializedSizeVector4d()) > buffer.size())
+  if ((starting_offset + SerializedSizeVector4d()) > buffer.size())
   {
     throw std::invalid_argument("Not enough room in the provided buffer");
   }
   // Takes a buffer to read from and the starting index in the buffer
   // Return the loaded state and how many bytes we read from the buffer
   Eigen::Vector4d temp_value;
-  memcpy(temp_value.data(), &buffer[current], SerializedSizeVector4d());
+  memcpy(temp_value.data(), &buffer[starting_offset], SerializedSizeVector4d());
   return MakeDeserialized(temp_value, SerializedSizeVector4d());
 }
 
 Deserialized<Eigen::Quaterniond> DeserializeQuaterniond(
-    const std::vector<uint8_t>& buffer, const uint64_t current)
+    const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
 {
-  if (current >= buffer.size())
+  if (starting_offset >= buffer.size())
   {
-    throw std::invalid_argument("current is outside the provided buffer");
+    throw std::invalid_argument(
+        "starting_offset is outside the provided buffer");
   }
-  if ((current + SerializedSizeQuaterniond()) > buffer.size())
+  if ((starting_offset + SerializedSizeQuaterniond()) > buffer.size())
   {
     throw std::invalid_argument("Not enough room in the provided buffer");
   }
@@ -176,19 +228,20 @@ Deserialized<Eigen::Quaterniond> DeserializeQuaterniond(
   // Return the loaded state and how many bytes we read from the buffer
   Eigen::Quaterniond temp_value;
   memcpy(temp_value.coeffs().data(),
-         &buffer[current],
+         &buffer[starting_offset],
          SerializedSizeQuaterniond());
   return MakeDeserialized(temp_value, SerializedSizeQuaterniond());
 }
 
 Deserialized<Eigen::Isometry3d> DeserializeIsometry3d(
-    const std::vector<uint8_t>& buffer, const uint64_t current)
+    const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
 {
-  if (current >= buffer.size())
+  if (starting_offset >= buffer.size())
   {
-    throw std::invalid_argument("current is outside the provided buffer");
+    throw std::invalid_argument(
+        "starting_offset is outside the provided buffer");
   }
-  if ((current + SerializedSizeIsometry3d()) > buffer.size())
+  if ((starting_offset + SerializedSizeIsometry3d()) > buffer.size())
   {
     throw std::invalid_argument("Not enough room in the provided buffer");
   }
@@ -196,7 +249,7 @@ Deserialized<Eigen::Isometry3d> DeserializeIsometry3d(
   // Return the loaded state and how many bytes we read from the buffer
   Eigen::Isometry3d temp_value;
   memcpy(temp_value.matrix().data(),
-         &buffer[current],
+         &buffer[starting_offset],
          SerializedSizeIsometry3d());
   return MakeDeserialized(temp_value, SerializedSizeIsometry3d());
 }

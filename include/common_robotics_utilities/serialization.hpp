@@ -97,6 +97,9 @@ using Deserializer =
 
 /// Eigen types
 
+uint64_t SerializeMatrixXd(
+    const Eigen::MatrixXd& value, std::vector<uint8_t>& buffer);
+
 uint64_t SerializeVectorXd(
     const Eigen::VectorXd& value, std::vector<uint8_t>& buffer);
 
@@ -114,6 +117,9 @@ uint64_t SerializeQuaterniond(
 
 uint64_t SerializeIsometry3d(
     const Eigen::Isometry3d& value, std::vector<uint8_t>& buffer);
+
+Deserialized<Eigen::MatrixXd> DeserializeMatrixXd(
+    const std::vector<uint8_t>& buffer, const uint64_t starting_offset);
 
 Deserialized<Eigen::VectorXd> DeserializeVectorXd(
     const std::vector<uint8_t>& buffer, const uint64_t starting_offset);

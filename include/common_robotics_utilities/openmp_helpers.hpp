@@ -116,27 +116,32 @@ inline int32_t GetOmpThreadLimit()
 #endif
 }
 
-/// RAII wrapper for disabling OpenMP temporarily.
+/// RAII wrapper for changing the number of OpenMP threads temporarily.
 /// This wrapper changes OpenMP settings for *all* of the current program!
 /// It will throw an exception if called from within an existing OpenMP parallel
 /// context.
-class DisableOmpWrapper
+class ChangeOmpNumThreadsWrapper
 {
 public:
-  DisableOmpWrapper()
+  ChangeOmpNumThreadsWrapper(const int32_t num_threads)
   {
     if (GetContextNumOmpThreads() > 1)
     {
       throw std::runtime_error(
-          "Cannot create DisableOmpWrapper inside an OpenMP parallel context");
+          "Cannot create ChangeOmpNumThreadsWrapper inside an OpenMP parallel "
+          "context");
+    }
+    if (num_threads <= 0)
+    {
+      throw std::invalid_argument("num_threads must be greater than zero");
     }
     starting_num_omp_threads_ = GetNumOmpThreads();
 #if defined(_OPENMP)
-    omp_set_num_threads(1);
+    omp_set_num_threads(num_threads);
 #endif
   }
 
-  ~DisableOmpWrapper()
+  virtual ~ChangeOmpNumThreadsWrapper()
   {
 #if defined(_OPENMP)
     omp_set_num_threads(starting_num_omp_threads_);
@@ -145,6 +150,16 @@ public:
 
 private:
   int32_t starting_num_omp_threads_ = 0;
+};
+
+/// RAII wrapper for disabling OpenMP temporarily.
+/// This wrapper changes OpenMP settings for *all* of the current program!
+/// It will throw an exception if called from within an existing OpenMP parallel
+/// context.
+class DisableOmpWrapper : public ChangeOmpNumThreadsWrapper
+{
+public:
+  DisableOmpWrapper() : ChangeOmpNumThreadsWrapper(1) {}
 };
 
 }  // namespace openmp_helpers

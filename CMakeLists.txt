@@ -106,6 +106,10 @@ add_executable(clustering_example example/clustering_example.cpp)
 add_dependencies(clustering_example ${PROJECT_NAME})
 target_link_libraries(clustering_example ${PROJECT_NAME})
 
+add_executable(dtw_example example/dtw_example.cpp)
+add_dependencies(dtw_example ${PROJECT_NAME})
+target_link_libraries(dtw_example ${PROJECT_NAME})
+
 if(CATKIN_ENABLE_TESTING)
   # Tests
   catkin_add_gtest(planning_test test/planning_test.cpp)

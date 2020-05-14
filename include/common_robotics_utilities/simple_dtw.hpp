@@ -73,21 +73,21 @@ public:
     const ssize_t second_sequence_size
         = static_cast<ssize_t>(second_sequence.size());
     InitializeMatrix(first_sequence_size, second_sequence_size);
-    //Compute DTW cost for the two sequences
+    // Compute DTW cost for the two sequences
     for (ssize_t i = 1; i <= first_sequence_size; i++)
     {
       const FirstDatatype& first_item
-          = first_sequence[static_cast<size_t>(i) - 1];
+          = first_sequence[static_cast<size_t>(i - 1)];
       for (ssize_t j = 1; j <= second_sequence_size; j++)
       {
         const SecondDatatype& second_item
-            = second_sequence[static_cast<size_t>(j) - 1];
+            = second_sequence[static_cast<size_t>(j - 1)];
         const double index_cost = distance_fn(first_item, second_item);
         double prev_cost = 0.0;
         // Get the next neighboring values from the matrix to use for the update
-        double im1j = dtw_matrix_(i - 1, j);
-        double im1jm1 = dtw_matrix_(i - 1, j - 1);
-        double ijm1 = dtw_matrix_(i, j - 1);
+        const double im1j = dtw_matrix_(i - 1, j);
+        const double im1jm1 = dtw_matrix_(i - 1, j - 1);
+        const double ijm1 = dtw_matrix_(i, j - 1);
         // Start the update step
         if (im1j < im1jm1 && im1j < ijm1)
         {

@@ -8,6 +8,8 @@
 #include <utility>
 #include <vector>
 
+#include <common_robotics_utilities/maybe.hpp>
+
 namespace common_robotics_utilities
 {
 namespace simple_astar_search
@@ -18,21 +20,28 @@ class AstarPQueueElement
 {
 protected:
 
-  int64_t node_id_ = -1;
-  int64_t backpointer_ = -1;
+  int64_t node_id_ = 0;
   double cost_to_come_ = 0.0;
   double value_ = 0.0;
+  OwningMaybe<int64_t> back_pointer_;
 
 public:
 
-  AstarPQueueElement(const int64_t node_id,const int64_t backpointer,
+  AstarPQueueElement(const int64_t node_id, const int64_t back_pointer,
                      const double cost_to_come, const double value)
-    : node_id_(node_id), backpointer_(backpointer),
-      cost_to_come_(cost_to_come), value_(value) {}
+      : node_id_(node_id), cost_to_come_(cost_to_come), value_(value),
+        back_pointer_(OwningMaybe<int64_t>(back_pointer)) {}
+
+  AstarPQueueElement(const int64_t node_id, const double value)
+      : node_id_(node_id), cost_to_come_(0.0), value_(value) {}
 
   int64_t NodeID() const { return node_id_; }
 
-  int64_t Backpointer() const { return backpointer_; }
+  int64_t BackPointer() const { return back_pointer_.Value(); }
+
+  bool HasBackPointer() const { return back_pointer_.HasValue(); }
+
+  const OwningMaybe<int64_t>& RawBackPointer() const { return back_pointer_; }
 
   double CostToCome() const { return cost_to_come_; }
 
@@ -90,16 +99,23 @@ using AstarIndexResult = AstarResult<int64_t, std::vector<int64_t>>;
 class BackPointerAndCostToCome
 {
 private:
-  int64_t backpointer_ = -1;
   double cost_to_come_ = std::numeric_limits<double>::infinity();
+  OwningMaybe<int64_t> back_pointer_;
 
 public:
+  // TODO(calderpg) Once C++17 is required, remove the default constructor and
+  // replace map[] with map.insert_or_assign().
   BackPointerAndCostToCome() {}
 
-  BackPointerAndCostToCome(const int64_t backpointer, const double cost_to_come)
-      : backpointer_(backpointer), cost_to_come_(cost_to_come) {}
+  explicit BackPointerAndCostToCome(const AstarPQueueElement& pqueue_element)
+      : cost_to_come_(pqueue_element.CostToCome()),
+        back_pointer_(pqueue_element.RawBackPointer()) {}
 
-  int64_t BackPointer() const { return backpointer_; }
+  int64_t BackPointer() const { return back_pointer_.Value(); }
+
+  bool HasBackPointer() const { return back_pointer_.HasValue(); }
+
+  const OwningMaybe<int64_t>& RawBackPointer() const { return back_pointer_; }
 
   double CostToCome() const { return cost_to_come_; }
 };
@@ -113,9 +129,9 @@ inline AstarIndexResult ExtractAstarResult(
     const ExploredList& explored, const int64_t start_id, const int64_t goal_id)
 {
   // Check if a solution was found
-  const auto goal_index_itr = explored.find(goal_id);
+  const auto goal_state_itr = explored.find(goal_id);
   // If no solution found
-  if (goal_index_itr == explored.end())
+  if (goal_state_itr == explored.end())
   {
     return AstarIndexResult();
   }
@@ -125,12 +141,14 @@ inline AstarIndexResult ExtractAstarResult(
     // Extract the path node ids in reverse order
     std::vector<int64_t> solution_path_ids;
     solution_path_ids.push_back(goal_id);
-    int64_t backpointer = goal_index_itr->second.BackPointer();
-    // Any backpointer >= 0 is a valid node id
-    // The backpointer for start_index is -1 (since it has no parent)
-    while (backpointer >= 0)
+    OwningMaybe<int64_t> current_back_pointer =
+        goal_state_itr->second.RawBackPointer();
+    while (current_back_pointer)
     {
-      const int64_t current_id = backpointer;
+      const int64_t current_id = current_back_pointer.Value();
+      // Using map.at(key) throws an exception if key not found
+      // This provides bounds safety check
+      const auto& current_state = explored.at(current_id);
       solution_path_ids.push_back(current_id);
       if (current_id == start_id)
       {
@@ -138,16 +156,13 @@ inline AstarIndexResult ExtractAstarResult(
       }
       else
       {
-        // Using map.at(key) throws an exception if key not found
-        // This provides bounds safety check
-        const auto current_index_data = explored.at(current_id);
-        backpointer = current_index_data.BackPointer();
+        current_back_pointer = current_state.RawBackPointer();
       }
     }
     // Reverse
     std::reverse(solution_path_ids.begin(), solution_path_ids.end());
     // Get the cost of the path
-    const double solution_path_cost = goal_index_itr->second.CostToCome();
+    const double solution_path_cost = goal_state_itr->second.CostToCome();
     return AstarIndexResult(solution_path_ids, solution_path_cost);
   }
 }
@@ -159,39 +174,35 @@ inline AstarIndexResult ExtractAstarResult(
 /// states and their hashes, we only refer to them by their IDs. This means you,
 /// the caller, need to maintain a mapping between IDs and values so that you
 /// can translate the IDs used here with the real values of the state. See the
-/// implementation below in PerformAstarSearch to see how this is performed.
-/// @return Solution path between @param start_id and @param goal_id, if one
-/// exists, or an empty path. @param generate_children_fn returns the node IDs
-/// of child states for the provided node ID, @param edge_validity_check_fn
-/// returns true if the edge between provided node IDs is valid, @param
-/// distance_fn returns the distance between provided node IDs, and @param
-/// heuristic_fn returns the heuristic value between provided node IDs.
-/// @param limit_pqueue_duplicates selects whether to use a second hashtable to
-/// track elements in the pqueue and reduce duplicates added to the pqueue. This
-/// usually improves performance.
+/// implementation below in PerformAstarSearch to see how this may be performed.
+/// @return Solution path between @param start_id and the goal (as defined by
+/// @goal_check_fn), if one exists, or an empty path.
+/// @param generate_children_fn returns the node IDs of child states for the
+/// provided node ID, @param edge_validity_check_fn returns true if the edge
+/// between provided node IDs is valid, @param distance_fn returns the distance
+/// between provided node IDs, and @param heuristic_fn returns the heuristic
+/// value for the provided node ID. @param limit_pqueue_duplicates selects
+/// whether to use a second hashtable to track elements in the pqueue and reduce
+/// duplicates added to the pqueue. This usually improves performance.
 /// Note that @param generate_children_fn and @param edge_validity_check overlap
 /// in functionality and that @param edge_validity_check can always return true
 /// if @param generate_children_fn always generates valid children.
 inline AstarIndexResult PerformGenericAstarSearch(
-    const int64_t start_id, const int64_t goal_id,
+    const int64_t start_id,
+    const std::function<bool(const int64_t)>& goal_check_fn,
     const std::function<std::vector<int64_t>(
       const int64_t)>& generate_children_fn,
     const std::function<bool(const int64_t,
                              const int64_t)>& edge_validity_check_fn,
     const std::function<double(const int64_t, const int64_t)>& distance_fn,
-    const std::function<double(const int64_t, const int64_t)>& heuristic_fn,
+    const std::function<double(const int64_t)>& heuristic_fn,
     const bool limit_pqueue_duplicates)
 {
   // Enforced sanity checks
-  if (start_id == goal_id)
+  if (goal_check_fn(start_id))
   {
-    throw std::invalid_argument("Start and goal ID must be different");
+    return AstarIndexResult({start_id}, 0.0);
   }
-  // Make helper function
-  const auto heuristic_function = [&] (const int64_t node_index)
-  {
-    return heuristic_fn(node_index, goal_id);
-  };
   // Setup
   std::priority_queue<AstarPQueueElement,
                       std::vector<AstarPQueueElement>,
@@ -205,12 +216,13 @@ inline AstarIndexResult PerformGenericAstarSearch(
   // backpointer is the parent node ID
   ExploredList explored;
   // Initialize
-  queue.push(
-      AstarPQueueElement(start_id, -1, 0.0, heuristic_function(start_id)));
+  queue.push(AstarPQueueElement(start_id, heuristic_fn(start_id)));
   if (limit_pqueue_duplicates)
   {
     queue_members_map[start_id] = 0.0;
   }
+  // Storage for the goal state (once found)
+  OwningMaybe<int64_t> goal_id;
   // Search
   while (queue.size() > 0)
   {
@@ -234,11 +246,11 @@ inline AstarIndexResult PerformGenericAstarSearch(
     if (!node_explored_is_better)
     {
       // Add to the explored list
-      explored[top_node.NodeID()] = BackPointerAndCostToCome(
-          top_node.Backpointer(), top_node.CostToCome());
+      explored[top_node.NodeID()] = BackPointerAndCostToCome(top_node);
       // Check if we have reached the goal
-      if (top_node.NodeID() == goal_id)
+      if (goal_check_fn(top_node.NodeID()))
       {
+        goal_id = OwningMaybe<int64_t>(top_node.NodeID());
         break;
       }
       // Generate possible children
@@ -283,7 +295,7 @@ inline AstarIndexResult PerformGenericAstarSearch(
           if (!explored_child_is_better && !queue_is_better)
           {
             // Compute the heuristic for the child
-            const double child_heuristic = heuristic_function(child_node_id);
+            const double child_heuristic = heuristic_fn(child_node_id);
             // Compute the child value
             const double child_value = child_cost_to_come + child_heuristic;
             // Push onto the pqueue
@@ -299,7 +311,60 @@ inline AstarIndexResult PerformGenericAstarSearch(
       }
     }
   }
-  return ExtractAstarResult(explored, start_id, goal_id);
+  if (goal_id)
+  {
+    return ExtractAstarResult(explored, start_id, goal_id.Value());
+  }
+  else
+  {
+    return AstarIndexResult();
+  }
+}
+
+/// Perform A* search. This implementation is somewhat different structurally
+/// from many implementations - it operates excusively on "node IDs" that
+/// uniquely and reproducibly identify a single state. This is used because A*
+/// needs to insert states into std::unordered_map and instead of refering to
+/// states and their hashes, we only refer to them by their IDs. This means you,
+/// the caller, need to maintain a mapping between IDs and values so that you
+/// can translate the IDs used here with the real values of the state. See the
+/// implementation below in PerformAstarSearch to see how this may be performed.
+/// @return Solution path between @param start_id and @param goal_id, if one
+/// exists, or an empty path. @param generate_children_fn returns the node IDs
+/// of child states for the provided node ID, @param edge_validity_check_fn
+/// returns true if the edge between provided node IDs is valid, @param
+/// distance_fn returns the distance between provided node IDs, and @param
+/// heuristic_fn returns the heuristic value between provided node IDs.
+/// @param limit_pqueue_duplicates selects whether to use a second hashtable to
+/// track elements in the pqueue and reduce duplicates added to the pqueue. This
+/// usually improves performance.
+/// Note that @param generate_children_fn and @param edge_validity_check overlap
+/// in functionality and that @param edge_validity_check can always return true
+/// if @param generate_children_fn always generates valid children.
+inline AstarIndexResult PerformGenericAstarSearch(
+    const int64_t start_id, const int64_t goal_id,
+    const std::function<std::vector<int64_t>(
+      const int64_t)>& generate_children_fn,
+    const std::function<bool(const int64_t,
+                             const int64_t)>& edge_validity_check_fn,
+    const std::function<double(const int64_t, const int64_t)>& distance_fn,
+    const std::function<double(const int64_t, const int64_t)>& heuristic_fn,
+    const bool limit_pqueue_duplicates)
+{
+  // Make goal check function
+  const auto goal_check_function = [&] (const int64_t node_id)
+  {
+    return (node_id == goal_id);
+  };
+  // Make heuristic helper function
+  const auto heuristic_function = [&] (const int64_t node_id)
+  {
+    return heuristic_fn(node_id, goal_id);
+  };
+  return PerformGenericAstarSearch(
+      start_id, goal_check_function, generate_children_fn,
+      edge_validity_check_fn, distance_fn, heuristic_function,
+      limit_pqueue_duplicates);
 }
 
 /// Perform A* search.

@@ -87,6 +87,7 @@ add_library(${PROJECT_NAME}
             include/${PROJECT_NAME}/simple_prngs.hpp
             include/${PROJECT_NAME}/simple_robot_model_interface.hpp
             include/${PROJECT_NAME}/simple_rrt_planner.hpp
+            include/${PROJECT_NAME}/simple_task_planner.hpp
             include/${PROJECT_NAME}/time_optimal_trajectory_parametrization.hpp
             include/${PROJECT_NAME}/utility.hpp
             include/${PROJECT_NAME}/voxel_grid.hpp
@@ -115,6 +116,10 @@ if(CATKIN_ENABLE_TESTING)
   catkin_add_gtest(planning_test test/planning_test.cpp)
   add_dependencies(planning_test ${PROJECT_NAME})
   target_link_libraries(planning_test ${PROJECT_NAME})
+
+  catkin_add_gtest(task_planning_test test/task_planning_test.cpp)
+  add_dependencies(task_planning_test ${PROJECT_NAME})
+  target_link_libraries(task_planning_test ${PROJECT_NAME})
 
   catkin_add_gtest(voxel_grid_test test/voxel_grid_test.cpp)
   add_dependencies(voxel_grid_test ${PROJECT_NAME})

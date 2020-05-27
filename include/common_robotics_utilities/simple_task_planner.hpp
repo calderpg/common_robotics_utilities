@@ -15,6 +15,7 @@
 
 #include <common_robotics_utilities/simple_astar_search.hpp>
 #include <common_robotics_utilities/simple_knearest_neighbors.hpp>
+#include <common_robotics_utilities/utility.hpp>
 
 namespace common_robotics_utilities
 {
@@ -348,6 +349,37 @@ using TaskExecutionCompleteFunction = std::function<bool(const State&)>;
 template<typename State, typename Container=std::vector<State>>
 using TaskStateAStarResult = simple_astar_search::AstarResult<State, Container>;
 
+/// If operator == has been provided, we use it as a sanity check.
+template<typename State>
+void AddStateImpl(
+    std::unordered_map<int64_t, State>& state_map, const int64_t state_id,
+    const State& state, std::true_type)
+{
+  if (state_map.count(state_id) > 0)
+  {
+    if (!(state_map.at(state_id) == state))
+    {
+      throw std::runtime_error("State IDs are not unique");
+    }
+  }
+  else
+  {
+    state_map[state_id] = state;
+  }
+}
+
+/// If operator == has not been provided, don't add the sanity check.
+template<typename State>
+void AddStateImpl(
+    std::unordered_map<int64_t, State>& state_map, const int64_t state_id,
+    const State& state, std::false_type)
+{
+  if (state_map.count(state_id) == 0)
+  {
+    state_map[state_id] = state;
+  }
+}
+
 template<typename State, typename Container=std::vector<State>>
 TaskStateAStarResult<State, Container> PlanTaskStateSequence(
     const ActionPrimitiveCollection<State, Container>& primitive_collection,
@@ -383,7 +415,9 @@ TaskStateAStarResult<State, Container> PlanTaskStateSequence(
         {
           const int64_t outcome_state_id =
               primitive_collection.GetStateIdentifier(outcome_state);
-          state_map[outcome_state_id] = outcome_state;
+          AddStateImpl<State>(
+              state_map, outcome_state_id, outcome_state,
+              utility::HasOperatorEquals<State>());
           child_state_ids.push_back(outcome_state_id);
         }
       }

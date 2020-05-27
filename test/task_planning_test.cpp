@@ -45,6 +45,23 @@ public:
     return rep;
   }
 
+#ifndef NO_OPERATOR_EQUALS
+  bool operator==(const PutInBoxState& other) const
+  {
+    if (ObjectPutAway() == other.ObjectPutAway() &&
+        BoxOpen() == other.BoxOpen())
+    {
+      return ((ObjectsAvailable() > 0 && other.ObjectsAvailable() > 0) ||
+              (ObjectsAvailable() == 0 && other.ObjectsAvailable() == 0) ||
+              (ObjectsAvailable() < 0 && other.ObjectsAvailable() < 0));
+    }
+    else
+    {
+      return false;
+    }
+  }
+#endif
+
 private:
   int32_t objects_available_ = -1;
   bool object_put_away_ = false;

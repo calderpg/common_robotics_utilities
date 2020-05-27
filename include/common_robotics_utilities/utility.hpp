@@ -441,5 +441,22 @@ inline void ConditionalError(const std::string& msg,
     std::cerr << printstr << std::flush;
   }
 }
+
+// Compile-time detection for if operator == is defined for a type.
+typedef char no;
+typedef no (&yes)[2];
+
+no DetectOperatorEquals(...);
+
+template<typename T>
+auto DetectOperatorEquals(const T& item) -> typename std::conditional<
+    false,
+    decltype(item.operator==(std::declval<typename T::value_type>())),
+    yes>::type;
+
+template<typename T>
+struct HasOperatorEquals : std::integral_constant<
+    bool,
+    sizeof(DetectOperatorEquals(std::declval<const T&>())) == sizeof(yes)> {};
 }  // namespace utility
 }  // namespace common_robotics_utilities

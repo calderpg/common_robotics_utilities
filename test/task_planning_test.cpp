@@ -308,7 +308,7 @@ bool IsSingleExecutionComplete(const PutInBoxState& state)
   }
 }
 
-TEST(TaskPlanningTest, Test)
+GTEST_TEST(TaskPlanningTest, Test)
 {
   // Collect the primitives
   PutInBoxStatePrimitiveCollection primitive_collection(GetStateIdentifier);

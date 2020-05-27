@@ -253,7 +253,7 @@ Waypoint SampleWaypoint(const TestMap& map, PRNG& rng)
   return Waypoint(row_dist(rng), col_dist(rng));
 }
 
-TEST(PlanningTest, allPlannersTest)
+GTEST_TEST(PlanningTest, Test)
 {
   const std::string test_env_raw = "####################"
                                    "#                  #"

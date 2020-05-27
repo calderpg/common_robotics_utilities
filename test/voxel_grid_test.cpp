@@ -11,7 +11,7 @@ namespace common_robotics_utilities
 {
 namespace voxel_grid_test
 {
-TEST(VoxelGridTest, indexLookup)
+GTEST_TEST(VoxelGridTest, indexLookup)
 {
   const voxel_grid::GridSizes grid_sizes(1.0, 20.0, 20.0, 20.0);
   voxel_grid::VoxelGrid<int32_t> test_grid(grid_sizes, 0);
@@ -61,7 +61,7 @@ TEST(VoxelGridTest, indexLookup)
   }
 }
 
-TEST(VoxelGridTest, locationLookup)
+GTEST_TEST(VoxelGridTest, locationLookup)
 {
   const voxel_grid::GridSizes grid_sizes(1.0, 20.0, 20.0, 20.0);
   voxel_grid::VoxelGrid<int32_t> test_grid(grid_sizes, 0);
@@ -131,7 +131,7 @@ TEST(VoxelGridTest, locationLookup)
   }
 }
 
-TEST(VoxelGridTest, dshvgLookup)
+GTEST_TEST(VoxelGridTest, dshvgLookup)
 {
   const voxel_grid::GridSizes chunk_sizes(1.0, 4.0, 4.0, 4.0);
   voxel_grid::DynamicSpatialHashedVoxelGrid<int32_t> test_grid(

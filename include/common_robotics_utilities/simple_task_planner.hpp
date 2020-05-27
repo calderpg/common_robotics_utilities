@@ -95,7 +95,7 @@ public:
     return is_candidate_fn_(state);
   }
 
-  Container GetOutcomes(const State& state) override
+  Container GetOutcomes(const State& state) const override
   {
     return get_outcomes_fn_(state);
   }

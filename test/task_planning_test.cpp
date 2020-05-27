@@ -259,7 +259,7 @@ int64_t GetStateIdentifier(const PutInBoxState& state)
   const uint64_t OBJECTS_AVAILABLE_NONE = 0x10;
   const uint64_t OBJECTS_AVAILABLE_SOME = 0x20;
 
-  uint64_t state_identifier;
+  uint64_t state_identifier = 0;
 
   if (state.BoxOpen())
   {

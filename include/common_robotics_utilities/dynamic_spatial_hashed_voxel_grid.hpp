@@ -857,13 +857,13 @@ public:
   DynamicSpatialHashedGridQuery<T> GetMutable(
       const double x, const double y, const double z)
   {
-    return GetImmutable4d(Eigen::Vector4d(x, y, z, 1.0));
+    return GetMutable4d(Eigen::Vector4d(x, y, z, 1.0));
   }
 
   DynamicSpatialHashedGridQuery<T> GetMutable3d(
       const Eigen::Vector3d& location)
   {
-    return GetImmutable4d(
+    return GetMutable4d(
         Eigen::Vector4d(location.x(), location.y(), location.z(), 1.0));
   }
 

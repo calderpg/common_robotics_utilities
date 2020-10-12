@@ -128,6 +128,10 @@ if(CATKIN_ENABLE_TESTING)
   add_dependencies(task_planning_test_no_equals ${PROJECT_NAME})
   target_link_libraries(task_planning_test_no_equals ${PROJECT_NAME})
 
+  catkin_add_gtest(utility_test test/utility_test.cpp)
+  add_dependencies(utility_test ${PROJECT_NAME})
+  target_link_libraries(utility_test ${PROJECT_NAME})
+
   catkin_add_gtest(voxel_grid_test test/voxel_grid_test.cpp)
   add_dependencies(voxel_grid_test ${PROJECT_NAME})
   target_link_libraries(voxel_grid_test ${PROJECT_NAME})

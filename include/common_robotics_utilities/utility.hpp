@@ -238,14 +238,14 @@ inline T SetBit(const T current,
           "Type must be a fixed-size unsigned integral type");
   // Do it
   T update_mask = 1;
-  update_mask = update_mask << bit_position;
+  update_mask = static_cast<T>(update_mask << bit_position);
   if (bit_value)
   {
     return (current | update_mask);
   }
   else
   {
-    update_mask = (~update_mask);
+    update_mask = static_cast<T>(~update_mask);
     return (current & update_mask);
   }
 }
@@ -265,6 +265,108 @@ inline bool GetBit(const T current, const uint32_t bit_position)
   }
 }
 
+template<typename Container=std::vector<std::string>>
+inline bool CheckAllStringsForSubstring(
+    const Container& strings, const std::string& substring)
+{
+  for (const std::string& candidate_string : strings)
+  {
+    const size_t found = candidate_string.find(substring);
+    if (found == std::string::npos)
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
+template <typename T, typename Container1=std::vector<T>,
+          typename Container2=std::vector<T>>
+inline bool IsSubset(const Container1& set, const Container2& candidate_subset)
+{
+  std::map<T, size_t> set_members;
+  for (const T& item : set)
+  {
+    set_members[item] += 1;
+  }
+
+  std::map<T, size_t> candidate_subset_members;
+  for (const T& item : candidate_subset)
+  {
+    candidate_subset_members[item] += 1;
+  }
+
+  if (candidate_subset_members.size() > set_members.size())
+  {
+    return false;
+  }
+
+  for (const auto& item_and_count : candidate_subset_members)
+  {
+    const auto found_itr = set_members.find(item_and_count.first);
+    if (found_itr != set_members.end())
+    {
+      const size_t set_count = found_itr->second;
+      const size_t candidate_subset_count = item_and_count.second;
+      if (candidate_subset_count > set_count)
+      {
+        return false;
+      }
+    }
+    else
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
+template <typename T, typename Container1=std::vector<T>,
+          typename Container2=std::vector<T>>
+inline bool CollectionsEqual(const Container1& set1, const Container2& set2)
+{
+  if (set1.size() != set2.size())
+  {
+    return false;
+  }
+
+  std::map<T, size_t> set1_members;
+  for (const T& item : set1)
+  {
+    set1_members[item] += 1;
+  }
+
+  std::map<T, size_t> set2_members;
+  for (const T& item : set2)
+  {
+    set2_members[item] += 1;
+  }
+
+  if (set1_members.size() != set2_members.size())
+  {
+    return false;
+  }
+
+  for (const auto& item_and_count : set1_members)
+  {
+    const auto found_itr = set2_members.find(item_and_count.first);
+    if (found_itr != set2_members.end())
+    {
+      const size_t set2_count = found_itr->second;
+      const size_t set1_count = item_and_count.second;
+      if (set1_count != set2_count)
+      {
+        return false;
+      }
+    }
+    else
+    {
+      return false;
+    }
+  }
+  return true;
+}
+
 template <typename Key, typename Value, typename MapLike=std::map<Key, Value>>
 inline Value RetrieveOrDefault(
     const MapLike& map, const Key& key, const Value& default_val)
@@ -280,57 +382,6 @@ inline Value RetrieveOrDefault(
   }
 }
 
-inline bool CheckAllStringsForSubstring(const std::vector<std::string>& strings,
-                                        const std::string& substring)
-{
-  for (size_t idx = 0; idx < strings.size(); idx++)
-  {
-    const std::string& candidate_string = strings[idx];
-    const size_t found = candidate_string.find(substring);
-    if (found == std::string::npos)
-    {
-      return false;
-    }
-  }
-  return true;
-}
-
-template <typename T, typename Alloc=std::allocator<T>>
-inline bool IsSubset(const std::vector<T, Alloc>& set,
-                     const std::vector<T, Alloc>& candidate_subset)
-{
-  std::map<T, uint8_t> items_map;
-  for (size_t idx = 0; idx < set.size(); idx++)
-  {
-    const T& item = set[idx];
-    items_map[item] = 0x01;
-  }
-  for (size_t idx = 0; idx < candidate_subset.size(); idx++)
-  {
-    const T& item = candidate_subset[idx];
-    const auto found_itr = items_map.find(item);
-    if (found_itr == items_map.end())
-    {
-      return false;
-    }
-  }
-  return true;
-}
-
-template <typename T, typename Alloc=std::allocator<T>>
-inline bool SetsEqual(const std::vector<T, Alloc>& set1,
-                      const std::vector<T, Alloc>& set2)
-{
-  if (IsSubset(set1, set2) && IsSubset(set2, set1))
-  {
-    return true;
-  }
-  else
-  {
-    return false;
-  }
-}
-
 template <typename Key, typename Value, typename MapLike=std::map<Key, Value>,
           typename KeyContainer=std::vector<Key>>
 inline KeyContainer GetKeysFromMapLike(const MapLike& map)
@@ -338,10 +389,9 @@ inline KeyContainer GetKeysFromMapLike(const MapLike& map)
   KeyContainer keys;
   keys.reserve(map.size());
   typename MapLike::const_iterator itr;
-  for (itr = map.begin(); itr != map.end(); ++itr)
+  for (const auto& key_and_value : map)
   {
-    const Key& cur_key = itr->first;
-    keys.push_back(cur_key);
+    keys.push_back(key_and_value.first);
   }
   keys.shrink_to_fit();
   return keys;
@@ -353,10 +403,8 @@ inline KeyContainer GetKeysFromSetLike(const SetLike& set)
 {
   KeyContainer keys;
   keys.reserve(set.size());
-  typename SetLike::const_iterator itr;
-  for (itr = set.begin(); itr != set.end(); ++itr)
+  for (const Key& cur_key : set)
   {
-    const Key& cur_key = *itr;
     keys.push_back(cur_key);
   }
   keys.shrink_to_fit();
@@ -369,11 +417,9 @@ inline KeyValuePairContainer GetKeysAndValues(const MapLike& map)
 {
   KeyValuePairContainer keys_and_values;
   keys_and_values.reserve(map.size());
-  typename MapLike::const_iterator itr;
-  for (itr = map.begin(); itr != map.end(); ++itr)
+  for (const auto& key_and_value : map)
   {
-    const std::pair<Key, Value> cur_pair(itr->first, itr->second);
-    keys_and_values.push_back(cur_pair);
+    keys_and_values.push_back(key_and_value);
   }
   keys_and_values.shrink_to_fit();
   return keys_and_values;
@@ -385,9 +431,8 @@ inline MapLike MakeFromKeysAndValues(
     const KeyValuePairContainer& keys_and_values)
 {
   MapLike map;
-  for (size_t idx = 0; idx < keys_and_values.size(); idx++)
+  for (const std::pair<Key, Value>& cur_pair : keys_and_values)
   {
-    const std::pair<Key, Value>& cur_pair = keys_and_values[idx];
     map[cur_pair.first] = cur_pair.second;
   }
   return map;

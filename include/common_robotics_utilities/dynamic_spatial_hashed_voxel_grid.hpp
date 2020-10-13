@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
@@ -737,8 +738,8 @@ protected:
   // derived classes.
 
   /// Do the work necessary for Clone() to copy the current object.
-  virtual DynamicSpatialHashedVoxelGridBase<
-      T, BackingStore>* DoClone() const = 0;
+  virtual std::unique_ptr<DynamicSpatialHashedVoxelGridBase<
+      T, BackingStore>> DoClone() const = 0;
 
   /// Serialize any derived-specific members into the provided buffer.
   virtual uint64_t DerivedSerializeSelf(
@@ -795,7 +796,8 @@ public:
 
   virtual ~DynamicSpatialHashedVoxelGridBase() {}
 
-  DynamicSpatialHashedVoxelGridBase<T, BackingStore>* Clone() const
+  std::unique_ptr<DynamicSpatialHashedVoxelGridBase<T, BackingStore>>
+  Clone() const
   {
     return DoClone();
   }
@@ -1041,11 +1043,11 @@ class DynamicSpatialHashedVoxelGrid final
     : public DynamicSpatialHashedVoxelGridBase<T, BackingStore>
 {
 private:
-  DynamicSpatialHashedVoxelGridBase<T, BackingStore>* DoClone() const override
+  std::unique_ptr<DynamicSpatialHashedVoxelGridBase<T, BackingStore>>
+  DoClone() const override
   {
-    return new DynamicSpatialHashedVoxelGrid<T, BackingStore>(
-        static_cast<
-            const DynamicSpatialHashedVoxelGrid<T, BackingStore>&>(*this));
+    return std::unique_ptr<DynamicSpatialHashedVoxelGrid<T, BackingStore>>(
+        new DynamicSpatialHashedVoxelGrid<T, BackingStore>(*this));
   }
 
   uint64_t DerivedSerializeSelf(

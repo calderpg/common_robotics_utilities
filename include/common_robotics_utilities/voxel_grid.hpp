@@ -3,6 +3,7 @@
 #include <cmath>
 #include <cstdint>
 #include <iostream>
+#include <memory>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -576,7 +577,7 @@ protected:
   // derived classes.
 
   /// Do the work necessary for Clone() to copy the current object.
-  virtual VoxelGridBase<T, BackingStore>* DoClone() const = 0;
+  virtual std::unique_ptr<VoxelGridBase<T, BackingStore>> DoClone() const = 0;
 
   /// Serialize any derived-specific members into the provided buffer.
   virtual uint64_t DerivedSerializeSelf(
@@ -661,7 +662,7 @@ public:
     Initialize(origin_transform, sizes, default_value, oob_value);
   }
 
-  VoxelGridBase<T, BackingStore>* Clone() const
+  std::unique_ptr<VoxelGridBase<T, BackingStore>> Clone() const
   {
     return DoClone();
   }
@@ -1122,10 +1123,10 @@ template<typename T, typename BackingStore=std::vector<T>>
 class VoxelGrid final : public VoxelGridBase<T, BackingStore>
 {
 private:
-  VoxelGridBase<T, BackingStore>* DoClone() const override
+  std::unique_ptr<VoxelGridBase<T, BackingStore>> DoClone() const override
   {
-    return new VoxelGrid<T, BackingStore>(
-        static_cast<const VoxelGrid<T, BackingStore>&>(*this));
+    return std::unique_ptr<VoxelGrid<T, BackingStore>>(
+        new VoxelGrid<T, BackingStore>(*this));
   }
 
   uint64_t DerivedSerializeSelf(

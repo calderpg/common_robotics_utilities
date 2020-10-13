@@ -78,7 +78,7 @@ public:
 
   ReferencingMaybe() : item_ptr_(nullptr) {}
 
-  T& Value()
+  T& Value() const
   {
     if (HasValue())
     {
@@ -90,7 +90,7 @@ public:
     }
   }
 
-  T& Value() const
+  T& Value()
   {
     if (HasValue())
     {

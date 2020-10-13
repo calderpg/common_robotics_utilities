@@ -196,7 +196,8 @@ Path::Path(const std::list<Eigen::VectorXd>& path, const double max_deviation)
 {
   if (path.size() < 2)
   {
-    return;
+    throw std::runtime_error(
+        "TOTP for paths with fewer than two waypoints is ill-defined");
   }
   std::list<Eigen::VectorXd>::const_iterator config1 = path.begin();
   std::list<Eigen::VectorXd>::const_iterator config2 = config1;

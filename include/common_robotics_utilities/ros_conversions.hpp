@@ -31,9 +31,7 @@ using GeometryQuaternion = geometry_msgs::msg::Quaternion;
 using GeometryTransform = geometry_msgs::msg::Transform;
 using GeometryTransformStamped = geometry_msgs::msg::TransformStamped;
 using GeometryVector3 = geometry_msgs::msg::Vector3;
-#endif
-
-#if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 1
+#elif COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 1
 using GeometryPoint = geometry_msgs::Point;
 using GeometryPointStamped = geometry_msgs::PointStamped;
 using GeometryPose = geometry_msgs::Pose;

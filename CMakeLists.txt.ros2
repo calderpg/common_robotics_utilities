@@ -86,7 +86,7 @@ add_library(${PROJECT_NAME}
             src/${PROJECT_NAME}/time_optimal_trajectory_parametrization.cpp
             src/${PROJECT_NAME}/zlib_helpers.cpp)
 ament_target_dependencies(
-  ${PROJECT_NAME} std_msgs sensor_msgs geometry_msgs
+    ${PROJECT_NAME} std_msgs sensor_msgs geometry_msgs
 )
 target_link_libraries(${PROJECT_NAME} ${ZLIB_LIBRARIES})
 
@@ -98,26 +98,26 @@ add_executable(dtw_example example/dtw_example.cpp)
 target_link_libraries(dtw_example ${PROJECT_NAME})
 
 if(BUILD_TESTING)
-  # Tests
-  find_package(ament_cmake_gtest REQUIRED)
+    # Tests
+    find_package(ament_cmake_gtest REQUIRED)
 
-  ament_add_gtest(planning_test test/planning_test.cpp)
-  target_link_libraries(planning_test ${PROJECT_NAME})
+    ament_add_gtest(planning_test test/planning_test.cpp)
+    target_link_libraries(planning_test ${PROJECT_NAME})
 
-  ament_add_gtest(task_planning_test test/task_planning_test.cpp)
-  target_link_libraries(task_planning_test ${PROJECT_NAME})
+    ament_add_gtest(task_planning_test test/task_planning_test.cpp)
+    target_link_libraries(task_planning_test ${PROJECT_NAME})
 
-  ament_add_gtest(task_planning_test_no_equals test/task_planning_test.cpp)
-  target_compile_definitions(
-    task_planning_test_no_equals PRIVATE NO_OPERATOR_EQUALS)
-  target_link_libraries(task_planning_test_no_equals ${PROJECT_NAME})
+    ament_add_gtest(task_planning_test_no_equals test/task_planning_test.cpp)
+    target_compile_definitions(
+        task_planning_test_no_equals PRIVATE NO_OPERATOR_EQUALS)
+    target_link_libraries(task_planning_test_no_equals ${PROJECT_NAME})
 
-  ament_add_gtest(utility_test test/utility_test.cpp)
-  add_dependencies(utility_test ${PROJECT_NAME})
-  target_link_libraries(utility_test ${PROJECT_NAME})
+    ament_add_gtest(utility_test test/utility_test.cpp)
+    add_dependencies(utility_test ${PROJECT_NAME})
+    target_link_libraries(utility_test ${PROJECT_NAME})
 
-  ament_add_gtest(voxel_grid_test test/voxel_grid_test.cpp)
-  target_link_libraries(voxel_grid_test ${PROJECT_NAME})
+    ament_add_gtest(voxel_grid_test test/voxel_grid_test.cpp)
+    target_link_libraries(voxel_grid_test ${PROJECT_NAME})
 endif()
 
 #############
@@ -131,8 +131,8 @@ install(TARGETS ${PROJECT_NAME}
 )
 
 install(
-  DIRECTORY include/
-  DESTINATION include
+    DIRECTORY include/
+    DESTINATION include
 )
 
 ament_export_definitions(-DCOMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION=2)

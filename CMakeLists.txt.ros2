@@ -4,8 +4,6 @@ project(common_robotics_utilities)
 find_package(ament_cmake_ros REQUIRED)
 
 find_package(geometry_msgs REQUIRED)
-find_package(std_msgs REQUIRED)
-find_package(sensor_msgs REQUIRED)
 
 find_package(Eigen3 REQUIRED)
 set(Eigen3_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIR})
@@ -85,9 +83,7 @@ add_library(${PROJECT_NAME}
             src/${PROJECT_NAME}/serialization.cpp
             src/${PROJECT_NAME}/time_optimal_trajectory_parametrization.cpp
             src/${PROJECT_NAME}/zlib_helpers.cpp)
-ament_target_dependencies(
-    ${PROJECT_NAME} std_msgs sensor_msgs geometry_msgs
-)
+ament_target_dependencies(${PROJECT_NAME} geometry_msgs)
 target_link_libraries(${PROJECT_NAME} ${ZLIB_LIBRARIES})
 
 # Examples

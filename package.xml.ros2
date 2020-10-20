@@ -1,0 +1,16 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>common_robotics_utilities</name>
+  <version>0.1.0</version>
+  <description>C++ utilities used in lab and TRI projects</description>
+  <maintainer email="calder.pg@gmail.com">Calder Phillips-Grafflin</maintainer>
+  <license>BSD</license>
+
+  <buildtool_depend>ament_cmake_ros</buildtool_depend>
+
+  <depend>geometry_msgs</depend>
+
+  <export>
+    <build_type>ament_cmake</build_type>
+  </export>
+</package>

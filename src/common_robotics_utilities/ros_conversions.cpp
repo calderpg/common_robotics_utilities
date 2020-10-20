@@ -4,25 +4,22 @@
 
 #include <Eigen/Geometry>
 #include <common_robotics_utilities/math.hpp>
-#include <geometry_msgs/PointStamped.h>
-#include <geometry_msgs/PoseStamped.h>
-#include <geometry_msgs/TransformStamped.h>
 
 namespace common_robotics_utilities
 {
 namespace ros_conversions
 {
 Eigen::Vector3d GeometryPointToEigenVector3d(
-    const geometry_msgs::Point& point)
+    const GeometryPoint& point)
 {
   Eigen::Vector3d eigen_point(point.x, point.y, point.z);
   return eigen_point;
 }
 
-geometry_msgs::Point EigenVector3dToGeometryPoint(
+GeometryPoint EigenVector3dToGeometryPoint(
     const Eigen::Vector3d& point)
 {
-  geometry_msgs::Point geom_point;
+  GeometryPoint geom_point;
   geom_point.x = point.x();
   geom_point.y = point.y();
   geom_point.z = point.z();
@@ -30,42 +27,42 @@ geometry_msgs::Point EigenVector3dToGeometryPoint(
 }
 
 Eigen::Vector4d GeometryPointToEigenVector4d(
-    const geometry_msgs::Point& point)
+    const GeometryPoint& point)
 {
   Eigen::Vector4d eigen_point(point.x, point.y, point.z, 1.0);
   return eigen_point;
 }
 
-geometry_msgs::Point EigenVector4dToGeometryPoint(
+GeometryPoint EigenVector4dToGeometryPoint(
     const Eigen::Vector4d& point)
 {
-  geometry_msgs::Point geom_point;
+  GeometryPoint geom_point;
   geom_point.x = point(0);
   geom_point.y = point(1);
   geom_point.z = point(2);
   return geom_point;
 }
 
-geometry_msgs::PointStamped EigenVector3dToGeometryPointStamped(
+GeometryPointStamped EigenVector3dToGeometryPointStamped(
     const Eigen::Vector3d& point, const std::string& frame_id)
 {
-  geometry_msgs::PointStamped point_stamped;
+  GeometryPointStamped point_stamped;
   point_stamped.header.frame_id = frame_id;
   point_stamped.point = EigenVector3dToGeometryPoint(point);
   return point_stamped;
 }
 
 Eigen::Vector3d GeometryVector3ToEigenVector3d(
-    const geometry_msgs::Vector3& vector)
+    const GeometryVector3& vector)
 {
   Eigen::Vector3d eigen_vector(vector.x, vector.y, vector.z);
   return eigen_vector;
 }
 
-geometry_msgs::Vector3 EigenVector3dToGeometryVector3(
+GeometryVector3 EigenVector3dToGeometryVector3(
     const Eigen::Vector3d& vector)
 {
-  geometry_msgs::Vector3 geom_vector;
+  GeometryVector3 geom_vector;
   geom_vector.x = vector.x();
   geom_vector.y = vector.y();
   geom_vector.z = vector.z();
@@ -73,16 +70,16 @@ geometry_msgs::Vector3 EigenVector3dToGeometryVector3(
 }
 
 Eigen::Vector4d GeometryVector3ToEigenVector4d(
-    const geometry_msgs::Vector3& vector)
+    const GeometryVector3& vector)
 {
   Eigen::Vector4d eigen_vector(vector.x, vector.y, vector.z, 0.0);
   return eigen_vector;
 }
 
-geometry_msgs::Vector3 EigenVector4dToGeometryVector3(
+GeometryVector3 EigenVector4dToGeometryVector3(
     const Eigen::Vector4d& vector)
 {
-  geometry_msgs::Vector3 geom_vector;
+  GeometryVector3 geom_vector;
   geom_vector.x = vector(0);
   geom_vector.y = vector(1);
   geom_vector.z = vector(2);
@@ -90,16 +87,16 @@ geometry_msgs::Vector3 EigenVector4dToGeometryVector3(
 }
 
 Eigen::Quaterniond GeometryQuaternionToEigenQuaterniond(
-    const geometry_msgs::Quaternion& quat)
+    const GeometryQuaternion& quat)
 {
   Eigen::Quaterniond eigen_quaternion(quat.w, quat.x, quat.y, quat.z);
   return eigen_quaternion;
 }
 
-geometry_msgs::Quaternion EigenQuaterniondToGeometryQuaternion(
+GeometryQuaternion EigenQuaterniondToGeometryQuaternion(
     const Eigen::Quaterniond& quat)
 {
-  geometry_msgs::Quaternion geom_quaternion;
+  GeometryQuaternion geom_quaternion;
   geom_quaternion.w = quat.w();
   geom_quaternion.x = quat.x();
   geom_quaternion.y = quat.y();
@@ -108,7 +105,7 @@ geometry_msgs::Quaternion EigenQuaterniondToGeometryQuaternion(
 }
 
 Eigen::Isometry3d GeometryPoseToEigenIsometry3d(
-    const geometry_msgs::Pose& pose)
+    const GeometryPose& pose)
 {
   const Eigen::Translation3d trans(pose.position.x,
                                    pose.position.y,
@@ -121,12 +118,12 @@ Eigen::Isometry3d GeometryPoseToEigenIsometry3d(
   return eigen_pose;
 }
 
-geometry_msgs::Pose EigenIsometry3dToGeometryPose(
+GeometryPose EigenIsometry3dToGeometryPose(
     const Eigen::Isometry3d& transform)
 {
   const Eigen::Vector3d trans = transform.translation();
   const Eigen::Quaterniond quat(transform.rotation());
-  geometry_msgs::Pose geom_pose;
+  GeometryPose geom_pose;
   geom_pose.position.x = trans.x();
   geom_pose.position.y = trans.y();
   geom_pose.position.z = trans.z();
@@ -137,17 +134,17 @@ geometry_msgs::Pose EigenIsometry3dToGeometryPose(
   return geom_pose;
 }
 
-geometry_msgs::PoseStamped EigenIsometry3dToGeometryPoseStamped(
+GeometryPoseStamped EigenIsometry3dToGeometryPoseStamped(
     const Eigen::Isometry3d& transform, const std::string& frame_id)
 {
-  geometry_msgs::PoseStamped pose_stamped;
+  GeometryPoseStamped pose_stamped;
   pose_stamped.header.frame_id = frame_id;
   pose_stamped.pose = EigenIsometry3dToGeometryPose(transform);
   return pose_stamped;
 }
 
 Eigen::Isometry3d GeometryTransformToEigenIsometry3d(
-    const geometry_msgs::Transform& transform)
+    const GeometryTransform& transform)
 {
   const Eigen::Translation3d trans(transform.translation.x,
                                    transform.translation.y,
@@ -160,12 +157,12 @@ Eigen::Isometry3d GeometryTransformToEigenIsometry3d(
   return eigen_transform;
 }
 
-geometry_msgs::Transform EigenIsometry3dToGeometryTransform(
+GeometryTransform EigenIsometry3dToGeometryTransform(
     const Eigen::Isometry3d& transform)
 {
   const Eigen::Vector3d trans = transform.translation();
   const Eigen::Quaterniond quat(transform.rotation());
-  geometry_msgs::Transform geom_transform;
+  GeometryTransform geom_transform;
   geom_transform.translation.x = trans.x();
   geom_transform.translation.y = trans.y();
   geom_transform.translation.z = trans.z();
@@ -176,11 +173,11 @@ geometry_msgs::Transform EigenIsometry3dToGeometryTransform(
   return geom_transform;
 }
 
-geometry_msgs::TransformStamped EigenIsometry3dToGeometryTransformStamped(
+GeometryTransformStamped EigenIsometry3dToGeometryTransformStamped(
     const Eigen::Isometry3d& transform, const std::string& frame_id,
     const std::string& child_frame_id)
 {
-  geometry_msgs::TransformStamped transform_stamped;
+  GeometryTransformStamped transform_stamped;
   transform_stamped.header.frame_id = frame_id;
   transform_stamped.child_frame_id = child_frame_id;
   transform_stamped.transform = EigenIsometry3dToGeometryTransform(transform);
@@ -188,7 +185,7 @@ geometry_msgs::TransformStamped EigenIsometry3dToGeometryTransformStamped(
 }
 
 Eigen::Matrix3Xd VectorGeometryPointToEigenMatrix3Xd(
-    const std::vector<geometry_msgs::Point>& vector_geom)
+    const std::vector<GeometryPoint>& vector_geom)
 {
   Eigen::Matrix3Xd eigen_matrix = Eigen::MatrixXd(3, vector_geom.size());
   for (size_t idx = 0; idx < vector_geom.size(); idx++)
@@ -199,10 +196,10 @@ Eigen::Matrix3Xd VectorGeometryPointToEigenMatrix3Xd(
   return eigen_matrix;
 }
 
-std::vector<geometry_msgs::Point> EigenMatrix3XdToVectorGeometryPoint(
+std::vector<GeometryPoint> EigenMatrix3XdToVectorGeometryPoint(
     const Eigen::Matrix3Xd& eigen_matrix)
 {
-  std::vector<geometry_msgs::Point> vector_geom(
+  std::vector<GeometryPoint> vector_geom(
       static_cast<size_t>(eigen_matrix.cols()));
   for (size_t idx = 0; idx < vector_geom.size(); idx++)
   {
@@ -213,11 +210,11 @@ std::vector<geometry_msgs::Point> EigenMatrix3XdToVectorGeometryPoint(
   return vector_geom;
 }
 
-std::vector<geometry_msgs::Point>
+std::vector<GeometryPoint>
 VectorEigenVector3dToVectorGeometryPoint(
     const common_robotics_utilities::math::VectorVector3d& vector_eigen)
 {
-  std::vector<geometry_msgs::Point> vector_geom(vector_eigen.size());
+  std::vector<GeometryPoint> vector_geom(vector_eigen.size());
   for (size_t idx = 0; idx < vector_eigen.size(); idx++)
   {
     vector_geom.at(idx) = EigenVector3dToGeometryPoint(vector_eigen.at(idx));
@@ -227,7 +224,7 @@ VectorEigenVector3dToVectorGeometryPoint(
 
 common_robotics_utilities::math::VectorVector3d
 VectorGeometryPointToVectorEigenVector3d(
-    const std::vector<geometry_msgs::Point>& vector_geom)
+    const std::vector<GeometryPoint>& vector_geom)
 {
   common_robotics_utilities::math::VectorVector3d vector_eigen(
       vector_geom.size());
@@ -240,7 +237,7 @@ VectorGeometryPointToVectorEigenVector3d(
 
 common_robotics_utilities::math::VectorVector3d
 VectorGeometryVector3ToEigenVector3d(
-    const std::vector<geometry_msgs::Vector3>& vector_geom)
+    const std::vector<GeometryVector3>& vector_geom)
 {
   common_robotics_utilities::math::VectorVector3d vector_eigen(
       vector_geom.size());
@@ -253,7 +250,7 @@ VectorGeometryVector3ToEigenVector3d(
 
 common_robotics_utilities::math::VectorIsometry3d
 VectorGeometryPoseToVectorIsometry3d(
-    const std::vector<geometry_msgs::Pose>& vector_geom)
+    const std::vector<GeometryPose>& vector_geom)
 {
   common_robotics_utilities::math::VectorIsometry3d vector_eigen(
       vector_geom.size());
@@ -266,7 +263,7 @@ VectorGeometryPoseToVectorIsometry3d(
 
 common_robotics_utilities::math::VectorIsometry3d
 VectorGeometryPoseToVectorIsometry3d(
-    const std::vector<geometry_msgs::Transform>& vector_geom)
+    const std::vector<GeometryTransform>& vector_geom)
 {
   common_robotics_utilities::math::VectorIsometry3d vector_eigen(
       vector_geom.size());
@@ -278,10 +275,10 @@ VectorGeometryPoseToVectorIsometry3d(
   return vector_eigen;
 }
 
-std::vector<geometry_msgs::Pose> VectorIsometry3dToVectorGeometryPose(
+std::vector<GeometryPose> VectorIsometry3dToVectorGeometryPose(
     const common_robotics_utilities::math::VectorIsometry3d& vector_eigen)
 {
-  std::vector<geometry_msgs::Pose> vector_geom(vector_eigen.size());
+  std::vector<GeometryPose> vector_geom(vector_eigen.size());
   for (size_t idx = 0; idx < vector_eigen.size(); idx++)
   {
     vector_geom.at(idx) = EigenIsometry3dToGeometryPose(vector_eigen.at(idx));
@@ -289,10 +286,10 @@ std::vector<geometry_msgs::Pose> VectorIsometry3dToVectorGeometryPose(
   return vector_geom;
 }
 
-std::vector<geometry_msgs::Transform> VectorIsometry3dToVectorGeometryTransform(
+std::vector<GeometryTransform> VectorIsometry3dToVectorGeometryTransform(
     const common_robotics_utilities::math::VectorIsometry3d& vector_eigen)
 {
-  std::vector<geometry_msgs::Transform> vector_geom(vector_eigen.size());
+  std::vector<GeometryTransform> vector_geom(vector_eigen.size());
   for (size_t idx = 0; idx < vector_eigen.size(); idx++)
   {
     vector_geom.at(idx) =

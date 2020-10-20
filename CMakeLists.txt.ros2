@@ -1,32 +1,14 @@
-cmake_minimum_required(VERSION 2.8.3)
+cmake_minimum_required(VERSION 3.5)
 project(common_robotics_utilities)
 
-## Find catkin macros and libraries
-## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
-## is used, also find other catkin packages
-find_package(catkin REQUIRED COMPONENTS std_msgs sensor_msgs geometry_msgs)
+find_package(ament_cmake_ros REQUIRED)
+
+find_package(geometry_msgs REQUIRED)
+
 find_package(Eigen3 REQUIRED)
 set(Eigen3_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIR})
 find_package(OpenMP)
-
-###################################
-## catkin specific configuration ##
-###################################
-## The catkin_package macro generates cmake config files for your package
-## Declare things to be passed to dependent projects
-## LIBRARIES: libraries you create in this project
-## CATKIN_DEPENDS: catkin_packages dependent projects also need
-## DEPENDS: system dependencies of this project
-catkin_package(INCLUDE_DIRS
-               include
-               LIBRARIES
-               ${PROJECT_NAME}
-               CATKIN_DEPENDS
-               std_msgs
-               sensor_msgs
-               geometry_msgs
-               DEPENDS
-               Eigen3)
+find_package(ZLIB REQUIRED)
 
 ###########
 ## Build ##
@@ -34,11 +16,10 @@ catkin_package(INCLUDE_DIRS
 
 ## Specify additional locations of header files
 ## Your package locations should be listed before other locations
-include_directories(include SYSTEM ${catkin_INCLUDE_DIRS}
-                                   ${Eigen3_INCLUDE_DIRS})
+include_directories(include SYSTEM ${Eigen3_INCLUDE_DIRS} ${ZLIB_INCLUDE_DIRS})
 
 ## Build options
-add_compile_options(-std=c++11)
+add_compile_options(-std=c++14)
 add_compile_options(-Wall)
 add_compile_options(-Wextra)
 add_compile_options(-Werror)
@@ -51,6 +32,8 @@ add_compile_options(-Werror=non-virtual-dtor)
 add_compile_options(-Wold-style-cast)
 add_compile_options(-Wmaybe-uninitialized)
 add_compile_options(-march=native)
+
+add_definitions(-DCOMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION=2)
 
 ## It's not clear if add_compile_options does the right things for flags that
 ## may differ between languages and target type.
@@ -100,56 +83,60 @@ add_library(${PROJECT_NAME}
             src/${PROJECT_NAME}/serialization.cpp
             src/${PROJECT_NAME}/time_optimal_trajectory_parametrization.cpp
             src/${PROJECT_NAME}/zlib_helpers.cpp)
-add_dependencies(${PROJECT_NAME} ${catkin_EXPORTED_TARGETS})
-target_link_libraries(${PROJECT_NAME} ${catkin_LIBRARIES} z)
+ament_target_dependencies(${PROJECT_NAME} geometry_msgs)
+target_link_libraries(${PROJECT_NAME} ${ZLIB_LIBRARIES})
 
 # Examples
 add_executable(clustering_example example/clustering_example.cpp)
-add_dependencies(clustering_example ${PROJECT_NAME})
 target_link_libraries(clustering_example ${PROJECT_NAME})
 
 add_executable(dtw_example example/dtw_example.cpp)
-add_dependencies(dtw_example ${PROJECT_NAME})
 target_link_libraries(dtw_example ${PROJECT_NAME})
 
-if(CATKIN_ENABLE_TESTING)
-  # Tests
-  catkin_add_gtest(planning_test test/planning_test.cpp)
-  add_dependencies(planning_test ${PROJECT_NAME})
-  target_link_libraries(planning_test ${PROJECT_NAME})
+if(BUILD_TESTING)
+    # Tests
+    find_package(ament_cmake_gtest REQUIRED)
 
-  catkin_add_gtest(task_planning_test test/task_planning_test.cpp)
-  add_dependencies(task_planning_test ${PROJECT_NAME})
-  target_link_libraries(task_planning_test ${PROJECT_NAME})
+    ament_add_gtest(planning_test test/planning_test.cpp)
+    target_link_libraries(planning_test ${PROJECT_NAME})
 
-  catkin_add_gtest(task_planning_test_no_equals test/task_planning_test.cpp)
-  target_compile_definitions(
-      task_planning_test_no_equals PRIVATE NO_OPERATOR_EQUALS)
-  add_dependencies(task_planning_test_no_equals ${PROJECT_NAME})
-  target_link_libraries(task_planning_test_no_equals ${PROJECT_NAME})
+    ament_add_gtest(task_planning_test test/task_planning_test.cpp)
+    target_link_libraries(task_planning_test ${PROJECT_NAME})
 
-  catkin_add_gtest(utility_test test/utility_test.cpp)
-  add_dependencies(utility_test ${PROJECT_NAME})
-  target_link_libraries(utility_test ${PROJECT_NAME})
+    ament_add_gtest(task_planning_test_no_equals test/task_planning_test.cpp)
+    target_compile_definitions(
+        task_planning_test_no_equals PRIVATE NO_OPERATOR_EQUALS)
+    target_link_libraries(task_planning_test_no_equals ${PROJECT_NAME})
 
-  catkin_add_gtest(voxel_grid_test test/voxel_grid_test.cpp)
-  add_dependencies(voxel_grid_test ${PROJECT_NAME})
-  target_link_libraries(voxel_grid_test ${PROJECT_NAME})
+    ament_add_gtest(utility_test test/utility_test.cpp)
+    add_dependencies(utility_test ${PROJECT_NAME})
+    target_link_libraries(utility_test ${PROJECT_NAME})
+
+    ament_add_gtest(voxel_grid_test test/voxel_grid_test.cpp)
+    target_link_libraries(voxel_grid_test ${PROJECT_NAME})
 endif()
 
 #############
 ## Install ##
 #############
 
-## Mark library for installation
 install(TARGETS ${PROJECT_NAME}
-    ARCHIVE DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-    LIBRARY DESTINATION ${CATKIN_PACKAGE_LIB_DESTINATION}
-    RUNTIME DESTINATION ${CATKIN_PACKAGE_BIN_DESTINATION}
+    ARCHIVE DESTINATION lib
+    LIBRARY DESTINATION lib
+    RUNTIME DESTINATION bin
 )
-## Mark cpp header files for installation
-install(DIRECTORY include/${PROJECT_NAME}/
-    DESTINATION ${CATKIN_PACKAGE_INCLUDE_DESTINATION}
-    FILES_MATCHING PATTERN "*.hpp"
-    PATTERN ".svn" EXCLUDE
+
+install(
+    DIRECTORY include/
+    DESTINATION include
 )
+
+ament_export_definitions(-DCOMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION=2)
+ament_export_include_directories(include)
+ament_export_libraries(${PROJECT_NAME})
+
+ament_export_dependencies(geometry_msgs)
+
+ament_export_dependencies(Eigen3)
+
+ament_package()

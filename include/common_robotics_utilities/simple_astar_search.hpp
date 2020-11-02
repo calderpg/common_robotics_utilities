@@ -32,8 +32,9 @@ public:
       : node_id_(node_id), cost_to_come_(cost_to_come), value_(value),
         back_pointer_(OwningMaybe<int64_t>(back_pointer)) {}
 
-  AstarPQueueElement(const int64_t node_id, const double value)
-      : node_id_(node_id), cost_to_come_(0.0), value_(value) {}
+  AstarPQueueElement(const int64_t node_id, const double cost_to_come,
+                     const double value)
+      : node_id_(node_id), cost_to_come_(cost_to_come), value_(value) {}
 
   int64_t NodeID() const { return node_id_; }
 
@@ -123,10 +124,9 @@ public:
 using ExploredList = std::unordered_map<int64_t, BackPointerAndCostToCome>;
 
 /// Extract the result from the explored node map @param explored produced by A*
-/// search, with @param start_id the node_id of the start node and @param
-/// goal_id the node_id of the goal node.
+/// search, with @param goal_id the node_id of the goal node.
 inline AstarIndexResult ExtractAstarResult(
-    const ExploredList& explored, const int64_t start_id, const int64_t goal_id)
+    const ExploredList& explored, const int64_t goal_id)
 {
   // Check if a solution was found
   const auto goal_state_itr = explored.find(goal_id);
@@ -150,14 +150,7 @@ inline AstarIndexResult ExtractAstarResult(
       // This provides bounds safety check
       const auto& current_state = explored.at(current_id);
       solution_path_ids.push_back(current_id);
-      if (current_id == start_id)
-      {
-        break;
-      }
-      else
-      {
-        current_back_pointer = current_state.RawBackPointer();
-      }
+      current_back_pointer = current_state.RawBackPointer();
     }
     // Reverse
     std::reverse(solution_path_ids.begin(), solution_path_ids.end());
@@ -188,7 +181,7 @@ inline AstarIndexResult ExtractAstarResult(
 /// in functionality and that @param edge_validity_check can always return true
 /// if @param generate_children_fn always generates valid children.
 inline AstarIndexResult PerformGenericAstarSearch(
-    const int64_t start_id,
+    const std::map<int64_t, double>& start_ids,
     const std::function<bool(const int64_t)>& goal_check_fn,
     const std::function<std::vector<int64_t>(
       const int64_t)>& generate_children_fn,
@@ -199,9 +192,25 @@ inline AstarIndexResult PerformGenericAstarSearch(
     const bool limit_pqueue_duplicates)
 {
   // Enforced sanity checks
-  if (goal_check_fn(start_id))
+  int64_t best_start_meeting_goal_id = -1;
+  double best_start_meeting_goal_cost = std::numeric_limits<double>::infinity();
+  for (const auto& start_id_and_cost : start_ids)
   {
-    return AstarIndexResult({start_id}, 0.0);
+    const int64_t start_id = start_id_and_cost.first;
+    const double start_cost = start_id_and_cost.second;
+    if (goal_check_fn(start_id))
+    {
+      if (start_cost < best_start_meeting_goal_cost)
+      {
+        best_start_meeting_goal_id = start_id;
+        best_start_meeting_goal_cost = start_cost;
+      }
+    }
+  }
+  if (best_start_meeting_goal_id >= 0)
+  {
+    return AstarIndexResult(
+        {best_start_meeting_goal_id}, best_start_meeting_goal_cost);
   }
   // Setup
   std::priority_queue<AstarPQueueElement,
@@ -216,10 +225,16 @@ inline AstarIndexResult PerformGenericAstarSearch(
   // backpointer is the parent node ID
   ExploredList explored;
   // Initialize
-  queue.push(AstarPQueueElement(start_id, heuristic_fn(start_id)));
-  if (limit_pqueue_duplicates)
+  for (const auto& start_id_and_cost : start_ids)
   {
-    queue_members_map[start_id] = 0.0;
+    const int64_t start_id = start_id_and_cost.first;
+    const double start_cost = start_id_and_cost.second;
+    queue.push(
+        AstarPQueueElement(start_id, start_cost, heuristic_fn(start_id)));
+    if (limit_pqueue_duplicates)
+    {
+      queue_members_map[start_id] = start_cost;
+    }
   }
   // Storage for the goal state (once found)
   OwningMaybe<int64_t> goal_id;
@@ -313,7 +328,7 @@ inline AstarIndexResult PerformGenericAstarSearch(
   }
   if (goal_id)
   {
-    return ExtractAstarResult(explored, start_id, goal_id.Value());
+    return ExtractAstarResult(explored, goal_id.Value());
   }
   else
   {
@@ -361,8 +376,10 @@ inline AstarIndexResult PerformGenericAstarSearch(
   {
     return heuristic_fn(node_id, goal_id);
   };
+  std::map<int64_t, double> start_ids;
+  start_ids[start_id] = 0.0;
   return PerformGenericAstarSearch(
-      start_id, goal_check_function, generate_children_fn,
+      start_ids, goal_check_function, generate_children_fn,
       edge_validity_check_fn, distance_fn, heuristic_function,
       limit_pqueue_duplicates);
 }

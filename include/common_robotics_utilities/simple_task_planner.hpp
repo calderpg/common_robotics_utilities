@@ -456,9 +456,12 @@ TaskStateAStarResult<State, Container> PlanTaskStateSequence(
     }
   };
 
+  std::map<int64_t, double> start_ids;
+  start_ids[start_id] = 0.0;
   const bool limit_pqueue_duplicates = true;
+
   const auto astar_solution = simple_astar_search::PerformGenericAstarSearch(
-      start_id, goal_check_function, generate_children_function,
+      start_ids, goal_check_function, generate_children_function,
       edge_validity_check_function, state_distance_function,
       heuristic_function, limit_pqueue_duplicates);
 

@@ -474,18 +474,16 @@ GTEST_TEST(PlanningTest, Test)
         // Plan with PRM
         std::cout << "PRM Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
-        const auto path
-            = simple_prm_planner::QueryPathSingleStartSingleGoal<Waypoint>(
-                start, goal, loaded_roadmap, WaypointDistance,
-                check_edge_validity_fn, K, false, true, false, true).Path();
+        const auto path = simple_prm_planner::QueryPath<Waypoint>(
+            {start}, {goal}, loaded_roadmap, WaypointDistance,
+            check_edge_validity_fn, K, false, true, false, true).Path();
         check_plan(test_env, {start}, {goal}, path);
         // Plan with Lazy-PRM
         std::cout << "Lazy-PRM Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
-        const auto lazy_path
-            = simple_prm_planner::LazyQueryPathSingleStartSingleGoal<Waypoint>(
-                start, goal, loaded_roadmap, WaypointDistance,
-                check_edge_validity_fn, K, false, true, false, true).Path();
+        const auto lazy_path = simple_prm_planner::LazyQueryPath<Waypoint>(
+            {start}, {goal}, loaded_roadmap, WaypointDistance,
+            check_edge_validity_fn, K, false, true, false, true).Path();
         check_plan(test_env, {start}, {goal}, lazy_path);
         // Plan with A*
         std::cout << "A* Path (" << print::Print(start) << " to "
@@ -589,10 +587,9 @@ GTEST_TEST(PlanningTest, Test)
   const WaypointVector goals = {keypoints.at(2), keypoints.at(3)};
   std::cout << "Multi start/goal PRM Path (" << print::Print(starts) << " to "
             << print::Print(goals) << ")" << std::endl;
-  const auto path
-      = simple_prm_planner::QueryPathMultiStartMultiGoal<Waypoint>(
-          starts, goals, loaded_roadmap, WaypointDistance,
-          check_edge_validity_fn, K, false, true, false).Path();
+  const auto path = simple_prm_planner::QueryPath<Waypoint>(
+      starts, goals, loaded_roadmap, WaypointDistance, check_edge_validity_fn,
+      K, false, true, false).Path();
   check_plan(test_env, starts, goals, path);
 }
 }  // namespace planning_test

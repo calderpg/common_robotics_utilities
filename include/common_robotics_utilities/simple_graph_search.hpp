@@ -213,8 +213,11 @@ inline DijkstrasResult PerformDijkstrasAlgorithm(
 
 template<typename NodeValueType>
 inline simple_astar_search::AstarIndexResult PerformLazyAstarSearch(
-    const simple_graph::Graph<NodeValueType>& graph, const int64_t start_index,
-    const std::function<bool(const int64_t)>& goal_check_fn,
+    const simple_graph::Graph<NodeValueType>& graph,
+    const std::map<int64_t, double>& start_indices,
+    const std::function<bool(
+        const simple_graph::Graph<NodeValueType>&,
+        const int64_t)>& goal_check_fn,
     const std::function<bool(
         const simple_graph::Graph<NodeValueType>&,
         const simple_graph::GraphEdge&)>& edge_validity_check_fn,
@@ -227,13 +230,29 @@ inline simple_astar_search::AstarIndexResult PerformLazyAstarSearch(
     const bool limit_pqueue_duplicates)
 {
   // Enforced sanity checks
-  if (!graph.IndexInRange(start_index))
+  int64_t best_start_meeting_goal_index = -1;
+  double best_start_meeting_goal_cost = std::numeric_limits<double>::infinity();
+  for (const auto& start_index_and_cost : start_indices)
   {
-    throw std::invalid_argument("Start index out of range");
+    const int64_t start_index = start_index_and_cost.first;
+    const double start_cost = start_index_and_cost.second;
+    if (!graph.IndexInRange(start_index))
+    {
+      throw std::invalid_argument("Start index out of range");
+    }
+    if (goal_check_fn(graph, start_index))
+    {
+      if (start_cost < best_start_meeting_goal_cost)
+      {
+        best_start_meeting_goal_index = start_index;
+        best_start_meeting_goal_cost = start_cost;
+      }
+    }
   }
-  if (goal_check_fn(start_index))
+  if (best_start_meeting_goal_index >= 0)
   {
-    return simple_astar_search::AstarIndexResult({start_index}, 0.0);
+    return simple_astar_search::AstarIndexResult(
+        {best_start_meeting_goal_index}, best_start_meeting_goal_cost);
   }
   // Setup
   std::priority_queue<simple_astar_search::AstarPQueueElement,
@@ -248,11 +267,16 @@ inline simple_astar_search::AstarIndexResult PerformLazyAstarSearch(
   // backpointer is the parent index in the provided graph
   simple_astar_search::ExploredList explored;
   // Initialize
-  queue.push(simple_astar_search::AstarPQueueElement(
-      start_index, heuristic_fn(graph, start_index)));
-  if (limit_pqueue_duplicates)
+  for (const auto& start_index_and_cost : start_indices)
   {
-    queue_members_map[start_index] = 0.0;
+    const int64_t start_index = start_index_and_cost.first;
+    const double start_cost = start_index_and_cost.second;
+    queue.push(simple_astar_search::AstarPQueueElement(
+        start_index, start_cost, heuristic_fn(graph, start_index)));
+    if (limit_pqueue_duplicates)
+    {
+      queue_members_map[start_index] = start_cost;
+    }
   }
   // Storage for the goal state (once found)
   OwningMaybe<int64_t> goal_index;
@@ -282,7 +306,7 @@ inline simple_astar_search::AstarIndexResult PerformLazyAstarSearch(
       explored[top_node.NodeID()]
           = simple_astar_search::BackPointerAndCostToCome(top_node);
       // Check if we have reached the goal
-      if (goal_check_fn(top_node.NodeID()))
+      if (goal_check_fn(graph, top_node.NodeID()))
       {
         goal_index = OwningMaybe<int64_t>(top_node.NodeID());
         break;
@@ -338,7 +362,7 @@ inline simple_astar_search::AstarIndexResult PerformLazyAstarSearch(
             // Push onto the pqueue
             queue.push(simple_astar_search::AstarPQueueElement(
                 child_node_index, top_node.NodeID(), child_cost_to_come,
-                         child_value));
+                child_value));
             // Add to the queue member map
             if (limit_pqueue_duplicates)
             {
@@ -352,7 +376,7 @@ inline simple_astar_search::AstarIndexResult PerformLazyAstarSearch(
   if (goal_index)
   {
     return simple_astar_search::ExtractAstarResult(
-        explored, start_index, goal_index.Value());
+        explored, goal_index.Value());
   }
   else
   {
@@ -362,8 +386,9 @@ inline simple_astar_search::AstarIndexResult PerformLazyAstarSearch(
 
 template<typename NodeValueType>
 inline simple_astar_search::AstarIndexResult PerformLazyAstarSearch(
-    const simple_graph::Graph<NodeValueType>& graph, const int64_t start_index,
-    const int64_t goal_index,
+    const simple_graph::Graph<NodeValueType>& graph,
+    const std::vector<int64_t>& start_indices,
+    const std::vector<int64_t>& goal_indices,
     const std::function<bool(
         const simple_graph::Graph<NodeValueType>&,
         const simple_graph::GraphEdge&)>& edge_validity_check_fn,
@@ -375,35 +400,67 @@ inline simple_astar_search::AstarIndexResult PerformLazyAstarSearch(
     const bool limit_pqueue_duplicates)
 {
   // Enforced sanity checks
-  if (!graph.IndexInRange(start_index))
+  for (const int64_t start_index : start_indices)
   {
-    throw std::invalid_argument("Start index out of range");
+    if (!graph.IndexInRange(start_index))
+    {
+      throw std::invalid_argument("Start index out of range");
+    }
   }
-  if (!graph.IndexInRange(goal_index))
+  for (const int64_t goal_index : goal_indices)
   {
-    throw std::invalid_argument("Goal index out of range");
+    if (!graph.IndexInRange(goal_index))
+    {
+      throw std::invalid_argument("Goal index out of range");
+    }
   }
   // Make goal check function
-  const auto goal_check_function = [&] (const int64_t node_index)
+  const auto goal_check_function = [&] (
+      const simple_graph::Graph<NodeValueType>& search_graph,
+      const int64_t node_index)
   {
-    return (node_index == goal_index);
+    UNUSED(search_graph);
+    for (const int64_t goal_index : goal_indices)
+    {
+      if (node_index == goal_index)
+      {
+        return true;
+      }
+    }
+    return false;
   };
   // Make heuristic helper function
   const auto heuristic_function = [&] (
       const simple_graph::Graph<NodeValueType>& search_graph,
       const int64_t node_index)
   {
-    return heuristic_fn(search_graph, node_index, goal_index);
+    double best_heuristic_value = std::numeric_limits<double>::infinity();
+    for (const int64_t goal_index : goal_indices)
+    {
+      const double heuristic_value =
+          heuristic_fn(search_graph, node_index, goal_index);
+      if (heuristic_value < best_heuristic_value)
+      {
+        best_heuristic_value = heuristic_value;
+      }
+    }
+    return best_heuristic_value;
   };
+  std::map<int64_t, double> start_indices_map;
+  for (const int64_t start_index : start_indices)
+  {
+    start_indices_map[start_index] = 0.0;
+  }
   return PerformLazyAstarSearch<NodeValueType>(
-      graph, start_index, goal_check_function, edge_validity_check_fn,
+      graph, start_indices_map, goal_check_function, edge_validity_check_fn,
       distance_fn, heuristic_function, limit_pqueue_duplicates);
 }
 
 template<typename NodeValueType>
 inline simple_astar_search::AstarIndexResult PerformLazyAstarSearch(
-    const simple_graph::Graph<NodeValueType>& graph, const int64_t start_index,
-    const int64_t goal_index,
+    const simple_graph::Graph<NodeValueType>& graph,
+    const std::vector<int64_t>& start_indices,
+    const std::vector<int64_t>& goal_indices,
     const std::function<bool(const NodeValueType&,
                              const NodeValueType&)>& edge_validity_check_fn,
     const std::function<double(const NodeValueType&,
@@ -438,14 +495,15 @@ inline simple_astar_search::AstarIndexResult PerformLazyAstarSearch(
         search_graph.GetNodeImmutable(to_index).GetValueImmutable());
   };
   return PerformLazyAstarSearch<NodeValueType>(
-      graph, start_index, goal_index, edge_validity_check_function,
+      graph, start_indices, goal_indices, edge_validity_check_function,
       distance_function, heuristic_function, limit_pqueue_duplicates);
 }
 
 template<typename NodeValueType>
 inline simple_astar_search::AstarIndexResult PerformAstarSearch(
-    const simple_graph::Graph<NodeValueType>& graph, const int64_t start_index,
-    const int64_t goal_index,
+    const simple_graph::Graph<NodeValueType>& graph,
+    const std::vector<int64_t>& start_indices,
+    const std::vector<int64_t>& goal_indices,
     const std::function<double(const NodeValueType&,
                                const NodeValueType&)>& heuristic_fn,
     const bool limit_pqueue_duplicates)
@@ -480,7 +538,7 @@ inline simple_astar_search::AstarIndexResult PerformAstarSearch(
         search_graph.GetNodeImmutable(to_index).GetValueImmutable());
   };
   return PerformLazyAstarSearch<NodeValueType>(
-      graph, start_index, goal_index, edge_validity_check_function,
+      graph, start_indices, goal_indices, edge_validity_check_function,
       distance_function, heuristic_function, limit_pqueue_duplicates);
 }
 }  // namespace simple_graph_search

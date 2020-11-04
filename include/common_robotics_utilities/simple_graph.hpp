@@ -747,12 +747,8 @@ public:
     first_node.AddInEdge(second_edge);
   }
 };
-}  // namespace simple_graph
-}  // namespace common_robotics_utilities
 
-inline std::ostream& operator<< (
-    std::ostream& stream,
-    const common_robotics_utilities::simple_graph::GraphEdge& edge)
+inline std::ostream& operator<< (std::ostream& stream, const GraphEdge& edge)
 {
   stream << edge.Print();
   return stream;
@@ -760,9 +756,7 @@ inline std::ostream& operator<< (
 
 template<typename NodeValueType>
 inline std::ostream& operator<< (
-    std::ostream& stream,
-    const common_robotics_utilities::simple_graph
-        ::GraphNode<NodeValueType>& node)
+    std::ostream& stream, const GraphNode<NodeValueType>& node)
 {
   stream << node.Print();
   return stream;
@@ -770,10 +764,11 @@ inline std::ostream& operator<< (
 
 template<typename NodeValueType>
 inline std::ostream& operator<< (
-    std::ostream& stream,
-    const common_robotics_utilities::simple_graph
-        ::Graph<NodeValueType>& graph)
+    std::ostream& stream, const Graph<NodeValueType>& graph)
 {
   stream << graph.Print();
   return stream;
 }
+}  // namespace simple_graph
+}  // namespace common_robotics_utilities
+

@@ -1198,6 +1198,13 @@ public:
 
   VoxelGrid() : VoxelGridBase<T, BackingStore>() {}
 };
+
+inline std::ostream& operator<<(std::ostream& strm, const GridIndex& index)
+{
+  strm << "GridIndex: (" << index.X() << "," << index.Y() << "," << index.Z()
+       << ")";
+  return strm;
+}
 }  // namespace voxel_grid
 }  // namespace common_robotics_utilities
 
@@ -1217,11 +1224,3 @@ struct hash<common_robotics_utilities::voxel_grid::GridIndex>
 };
 }
 
-inline std::ostream& operator<<(
-    std::ostream& strm,
-    const common_robotics_utilities::voxel_grid::GridIndex& index)
-{
-  strm << "GridIndex: (" << index.X() << "," << index.Y() << "," << index.Z()
-       << ")";
-  return strm;
-}

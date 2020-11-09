@@ -4,7 +4,7 @@ project(common_robotics_utilities)
 ## Find catkin macros and libraries
 ## if COMPONENTS list like find_package(catkin REQUIRED COMPONENTS xyz)
 ## is used, also find other catkin packages
-find_package(catkin REQUIRED COMPONENTS geometry_msgs)
+find_package(catkin REQUIRED COMPONENTS roscpp geometry_msgs visualization_msgs)
 find_package(Eigen3 REQUIRED)
 set(Eigen3_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIR})
 find_package(OpenMP)
@@ -22,7 +22,9 @@ catkin_package(INCLUDE_DIRS
                LIBRARIES
                ${PROJECT_NAME}
                CATKIN_DEPENDS
+               roscpp
                geometry_msgs
+               visualization_msgs
                DEPENDS
                Eigen3
                CFG_EXTRAS ${PROJECT_NAME}-extras.cmake)
@@ -76,6 +78,7 @@ add_library(${PROJECT_NAME}
             include/${PROJECT_NAME}/print.hpp
             include/${PROJECT_NAME}/random_rotation_generator.hpp
             include/${PROJECT_NAME}/ros_conversions.hpp
+            include/${PROJECT_NAME}/ros_helpers.hpp
             include/${PROJECT_NAME}/serialization.hpp
             include/${PROJECT_NAME}/simple_astar_search.hpp
             include/${PROJECT_NAME}/simple_dtw.hpp
@@ -128,6 +131,10 @@ if(CATKIN_ENABLE_TESTING)
         task_planning_test_no_equals PRIVATE NO_OPERATOR_EQUALS)
     add_dependencies(task_planning_test_no_equals ${PROJECT_NAME})
     target_link_libraries(task_planning_test_no_equals ${PROJECT_NAME})
+
+    catkin_add_gtest(ros_helpers_test test/ros_helpers_test.cpp)
+    add_dependencies(ros_helpers_test ${PROJECT_NAME})
+    target_link_libraries(ros_helpers_test ${PROJECT_NAME})
 
     catkin_add_gtest(utility_test test/utility_test.cpp)
     add_dependencies(utility_test ${PROJECT_NAME})

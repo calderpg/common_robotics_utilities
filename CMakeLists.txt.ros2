@@ -3,7 +3,9 @@ project(common_robotics_utilities)
 
 find_package(ament_cmake_ros REQUIRED)
 
+find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
+find_package(visualization_msgs REQUIRED)
 
 find_package(Eigen3 REQUIRED)
 set(Eigen3_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIR})
@@ -58,6 +60,7 @@ add_library(${PROJECT_NAME}
             include/${PROJECT_NAME}/print.hpp
             include/${PROJECT_NAME}/random_rotation_generator.hpp
             include/${PROJECT_NAME}/ros_conversions.hpp
+            include/${PROJECT_NAME}/ros_helpers.hpp
             include/${PROJECT_NAME}/serialization.hpp
             include/${PROJECT_NAME}/simple_astar_search.hpp
             include/${PROJECT_NAME}/simple_dtw.hpp
@@ -83,7 +86,7 @@ add_library(${PROJECT_NAME}
             src/${PROJECT_NAME}/serialization.cpp
             src/${PROJECT_NAME}/time_optimal_trajectory_parametrization.cpp
             src/${PROJECT_NAME}/zlib_helpers.cpp)
-ament_target_dependencies(${PROJECT_NAME} geometry_msgs)
+ament_target_dependencies(${PROJECT_NAME} rclcpp geometry_msgs visualization_msgs)
 target_link_libraries(${PROJECT_NAME} ${ZLIB_LIBRARIES})
 
 # Examples
@@ -107,6 +110,10 @@ if(BUILD_TESTING)
     target_compile_definitions(
         task_planning_test_no_equals PRIVATE NO_OPERATOR_EQUALS)
     target_link_libraries(task_planning_test_no_equals ${PROJECT_NAME})
+
+    ament_add_gtest(ros_helpers_test test/ros_helpers_test.cpp)
+    add_dependencies(ros_helpers_test ${PROJECT_NAME})
+    target_link_libraries(ros_helpers_test ${PROJECT_NAME})
 
     ament_add_gtest(utility_test test/utility_test.cpp)
     add_dependencies(utility_test ${PROJECT_NAME})
@@ -135,7 +142,9 @@ ament_export_definitions(-DCOMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION=2)
 ament_export_include_directories(include)
 ament_export_libraries(${PROJECT_NAME})
 
+ament_export_dependencies(rclcpp)
 ament_export_dependencies(geometry_msgs)
+ament_export_dependencies(visualization_msgs)
 
 ament_export_dependencies(Eigen3)
 

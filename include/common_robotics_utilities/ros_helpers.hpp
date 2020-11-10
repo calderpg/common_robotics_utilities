@@ -20,13 +20,13 @@ namespace ros_helpers
 {
 
 #if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
-using Time = rclcpp::Time;
+using RosTime = rclcpp::Time;
 #elif COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 1
-using Time = ros::Time;
+using RosTime = ros::Time;
 #endif
 
 template <typename MessageType, typename Container = std::vector<MessageType>>
-void SetMessageTimestamps(Container& messages, const Time& timestamp)
+void SetMessageTimestamps(Container& messages, const RosTime& timestamp)
 {
   for (auto& message : messages)
   {
@@ -35,16 +35,16 @@ void SetMessageTimestamps(Container& messages, const Time& timestamp)
 }
 
 #if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
-using Marker = visualization_msgs::msg::Marker;
-using MarkerArray = visualization_msgs::msg::MarkerArray;
+using VisualizationMarker = visualization_msgs::msg::Marker;
+using VisualizationMarkerArray = visualization_msgs::msg::MarkerArray;
 #elif COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 1
-using Marker = visualization_msgs::Marker;
-using MarkerArray = visualization_msgs::MarkerArray;
+using VisualizationMarker = visualization_msgs::Marker;
+using VisualizationMarkerArray = visualization_msgs::MarkerArray;
 #endif
 
-void SetMessageTimestamps(MarkerArray& markers, const Time& timestamp)
+void SetMessageTimestamps(VisualizationMarkerArray& markers, const RosTime& timestamp)
 {
-  SetMessageTimestamps<Marker>(markers.markers, timestamp);
+  SetMessageTimestamps<VisualizationMarker>(markers.markers, timestamp);
 }
 
 }  // namespace ros_helpers

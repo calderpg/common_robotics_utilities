@@ -10,20 +10,24 @@ namespace
 {
 
 #if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
-using Duration = rclcpp::Duration;
+using RosDuration = rclcpp::Duration;
 #elif COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 1
-using Duration = ros::Duration;
+using RosDuration = ros::Duration;
 #endif
 
 GTEST_TEST(ROSHelpersTest, SetMessageTimestamps)
 {
-  Marker marker;
-  MarkerArray marker_array;
-  marker_array.markers.push_back(marker);
-  Time base_stamp = marker.header.stamp;  // handle clock types (indirectly)
-  Time expected_stamp = base_stamp + Duration(1, 0);  // +1 second
+  VisualizationMarkerArray marker_array;
+  marker_array.markers.resize(5);
+  // Note that the ROS time type depends on which ROS variant is in use.
+  // Get marker base timestamp (ensuring clock sources match).
+  const RosTime base_stamp = marker_array.markers[0].header.stamp;
+  // Advance timestamps by one second.
+  const RosTime expected_stamp = base_stamp + RosDuration(1, 0);
   SetMessageTimestamps(marker_array, expected_stamp);
-  EXPECT_EQ(expected_stamp, marker_array.markers[0].header.stamp);
+  for (const auto& marker : marker_array.markers) {
+    EXPECT_EQ(marker.header.stamp, expected_stamp);
+  }
 }
 
 }  // namespace

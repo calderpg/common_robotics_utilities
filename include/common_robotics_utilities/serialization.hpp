@@ -479,7 +479,7 @@ DeserializeMemcpyableVectorLike(
   return MakeDeserialized(deserialized, bytes_read);
 }
 
-template<typename Key, typename Value, typename MapLike=std::map<Key, Value>>
+template<typename Key, typename Value, typename MapLike>
 inline uint64_t SerializeMapLike(
     const MapLike& map_to_serialize,
     std::vector<uint8_t>& buffer,
@@ -502,7 +502,7 @@ inline uint64_t SerializeMapLike(
   return bytes_written;
 }
 
-template<typename Key, typename Value, typename MapLike=std::map<Key, Value>>
+template<typename Key, typename Value, typename MapLike>
 inline Deserialized<MapLike> DeserializeMapLike(
     const std::vector<uint8_t>& buffer,
     const uint64_t starting_offset,
@@ -530,7 +530,7 @@ inline Deserialized<MapLike> DeserializeMapLike(
   return MakeDeserialized(deserialized, bytes_read);
 }
 
-template<typename Key, typename SetLike=std::set<Key>>
+template<typename Key, typename SetLike>
 inline uint64_t SerializeSetLike(
     const SetLike& set_to_serialize,
     std::vector<uint8_t>& buffer,
@@ -552,7 +552,7 @@ inline uint64_t SerializeSetLike(
   return bytes_written;
 }
 
-template<typename Key, typename SetLike=std::set<Key>>
+template<typename Key, typename SetLike>
 inline Deserialized<SetLike> DeserializeSetLike(
     const std::vector<uint8_t>& buffer,
     const uint64_t starting_offset,
@@ -934,7 +934,7 @@ DeserializeNetworkMemcpyableVectorLike(const std::vector<uint8_t>& buffer,
   return MakeDeserialized(deserialized, bytes_read);
 }
 
-template<typename Key, typename Value, typename MapLike=std::map<Key, Value>>
+template<typename Key, typename Value, typename MapLike>
 inline uint64_t SerializeNetworkMapLike(
     const MapLike& map_to_serialize,
     std::vector<uint8_t>& buffer,
@@ -957,7 +957,7 @@ inline uint64_t SerializeNetworkMapLike(
   return bytes_written;
 }
 
-template<typename Key, typename Value, typename MapLike=std::map<Key, Value>>
+template<typename Key, typename Value, typename MapLike>
 inline Deserialized<MapLike> DeserializeNetworkMapLike(
     const std::vector<uint8_t>& buffer,
     const uint64_t starting_offset,
@@ -985,7 +985,7 @@ inline Deserialized<MapLike> DeserializeNetworkMapLike(
   return MakeDeserialized(deserialized, bytes_read);
 }
 
-template<typename Key, typename SetLike=std::set<Key>>
+template<typename Key, typename SetLike>
 inline uint64_t SerializeNetworkSetLike(
     const SetLike& set_to_serialize,
     std::vector<uint8_t>& buffer,
@@ -1007,7 +1007,7 @@ inline uint64_t SerializeNetworkSetLike(
   return bytes_written;
 }
 
-template<typename Key, typename SetLike=std::set<Key>>
+template<typename Key, typename SetLike>
 inline Deserialized<SetLike> DeserializeNetworkSetLike(
     const std::vector<uint8_t>& buffer,
     const uint64_t starting_offset,

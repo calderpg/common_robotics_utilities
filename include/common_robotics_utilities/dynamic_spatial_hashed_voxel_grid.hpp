@@ -600,7 +600,7 @@ class DynamicSpatialHashedVoxelGridBase
 private:
   using GridChunk = DynamicSpatialHashedVoxelGridChunk<T, BackingStore>;
   using ChunkMapAllocator =
-      Eigen::aligned_allocator<std::pair<ChunkRegion, GridChunk>>;
+      Eigen::aligned_allocator<std::pair<const ChunkRegion, GridChunk>>;
   using ChunkMap =
       std::unordered_map<
           ChunkRegion, GridChunk, std::hash<ChunkRegion>,

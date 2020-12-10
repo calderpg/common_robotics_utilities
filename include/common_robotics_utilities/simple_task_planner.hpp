@@ -1,7 +1,5 @@
 #pragma once
 
-#include <omp.h>
-
 #include <algorithm>
 #include <cstdint>
 #include <functional>
@@ -237,7 +235,6 @@ public:
     std::vector<simple_knearest_neighbors::IndexAndDistance> primitive_costs(
         primitives_.size());
 
-#pragma omp parallel for
     for (size_t idx = 0; idx < primitives_.size(); idx++)
     {
       double primitive_cost = std::numeric_limits<double>::infinity();
@@ -533,8 +530,8 @@ NextPrimitiveToExecute<State, Container> GetNextPrimitiveToExecute(
   std::vector<TaskStateAStarResult<State, Container>> outcome_task_sequences(
       potential_outcome_states.size());
 
-#pragma omp parallel for
-  for (size_t idx = 0; idx < potential_outcome_states.size(); idx++) {
+  for (size_t idx = 0; idx < potential_outcome_states.size(); idx++)
+  {
     outcome_task_sequences.at(idx) = PlanTaskStateSequence<State, Container>(
         primitive_collection, task_sequence_complete_fn,
         potential_outcome_states.at(idx), state_heuristic_fn);
@@ -555,8 +552,10 @@ NextPrimitiveToExecute<State, Container> GetNextPrimitiveToExecute(
           outcome_task_sequences, 0, outcome_cost_function, 1, false).at(0);
 
   // Identify the best primitive to perform next.
-  if (!std::isinf(best_outcome.Distance())) {
-    if (best_outcome.Distance() > 0.0) {
+  if (!std::isinf(best_outcome.Distance()))
+  {
+    if (best_outcome.Distance() > 0.0)
+    {
       const State& best_outcome_state =
           potential_outcome_states.at(best_outcome.Index());
       const auto& best_task_state_sequence =
@@ -570,12 +569,16 @@ NextPrimitiveToExecute<State, Container> GetNextPrimitiveToExecute(
       return NextPrimitiveToExecute<State, Container>(
           best_primitive_and_cost.ActionPrimitive(),
           best_primitive_and_cost.EstimatedCost(), best_outcome.Index());
-    } else {
+    }
+    else
+    {
       // 0 distance means the outcome completes a task sequence and thus there
       // is no next primitive to execute.
       return NextPrimitiveToExecute<State, Container>(best_outcome.Index());
     }
-  } else {
+  }
+  else
+  {
     throw std::runtime_error(
         "Could not identify task state sequence for any potential outcomes");
   }

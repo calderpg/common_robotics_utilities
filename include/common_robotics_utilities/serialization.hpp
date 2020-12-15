@@ -619,6 +619,29 @@ inline Deserialized<std::pair<First, Second>> DeserializePair(
   return MakeDeserialized(deserialized, bytes_read);
 }
 
+// Byte-order conversions. For now, only Linux and macOS are supported.
+#if defined(__APPLE__)
+    #include <libkern/OSByteOrder.h>
+
+    #define HostToNetwork16(x) OSSwapHostToBigInt16(x)
+    #define HostToNetwork32(x) OSSwapHostToBigInt32(x)
+    #define HostToNetwork64(x) OSSwapHostToBigInt64(x)
+
+    #define NetworkToHost16(x) OSSwapBigToHostInt16(x)
+    #define NetworkToHost32(x) OSSwapBigToHostInt32(x)
+    #define NetworkToHost64(x) OSSwapBigToHostInt64(x)
+#else
+    #include <endian.h>
+
+    #define HostToNetwork16(x) htobe16(x)
+    #define HostToNetwork32(x) htobe32(x)
+    #define HostToNetwork64(x) htobe64(x)
+
+    #define NetworkToHost16(x) be16toh(x)
+    #define NetworkToHost32(x) be32toh(x)
+    #define NetworkToHost64(x) be64toh(x)
+#endif
+
 template<typename T>
 inline uint64_t SerializeNetworkMemcpyableInPlace(
     const T& item_to_serialize,
@@ -646,21 +669,21 @@ inline uint64_t SerializeNetworkMemcpyableInPlace(
   {
     uint16_t swap_temp;
     memcpy(&swap_temp, &item_to_serialize, 2);
-    const uint16_t swapped = htobe16(swap_temp);
+    const uint16_t swapped = HostToNetwork16(swap_temp);
     memcpy(&temp_buffer[0], &swapped, 2);
   }
   else if (sizeof(T) == 4)
   {
     uint32_t swap_temp;
     memcpy(&swap_temp, &item_to_serialize, 4);
-    const uint32_t swapped = htobe32(swap_temp);
+    const uint32_t swapped = HostToNetwork32(swap_temp);
     memcpy(&temp_buffer[0], &swapped, 4);
   }
   else if (sizeof(T) == 8)
   {
     uint64_t swap_temp;
     memcpy(&swap_temp, &item_to_serialize, 8);
-    const uint64_t swapped = htobe64(swap_temp);
+    const uint64_t swapped = HostToNetwork64(swap_temp);
     memcpy(&temp_buffer[0], &swapped, 8);
   }
   // Move to buffer
@@ -704,21 +727,21 @@ inline uint64_t SerializeNetworkMemcpyable(const T& item_to_serialize,
   {
     uint16_t swap_temp;
     memcpy(&swap_temp, &item_to_serialize, 2);
-    const uint16_t swapped = htobe16(swap_temp);
+    const uint16_t swapped = HostToNetwork16(swap_temp);
     memcpy(&temp_buffer[0], &swapped, 2);
   }
   else if (sizeof(T) == 4)
   {
     uint32_t swap_temp;
     memcpy(&swap_temp, &item_to_serialize, 4);
-    const uint32_t swapped = htobe32(swap_temp);
+    const uint32_t swapped = HostToNetwork32(swap_temp);
     memcpy(&temp_buffer[0], &swapped, 4);
   }
   else if (sizeof(T) == 8)
   {
     uint64_t swap_temp;
     memcpy(&swap_temp, &item_to_serialize, 8);
-    const uint64_t swapped = htobe64(swap_temp);
+    const uint64_t swapped = HostToNetwork64(swap_temp);
     memcpy(&temp_buffer[0], &swapped, 8);
   }
   // Move to buffer
@@ -762,21 +785,21 @@ inline Deserialized<T> DeserializeNetworkMemcpyable(
   {
     uint16_t swap_temp;
     memcpy(&swap_temp, &buffer[starting_offset], 2);
-    const uint16_t swapped = be16toh(swap_temp);
+    const uint16_t swapped = NetworkToHost16(swap_temp);
     memcpy(&temp_item, &swapped, 2);
   }
   else if (sizeof(T) == 4)
   {
     uint32_t swap_temp;
     memcpy(&swap_temp, &buffer[starting_offset], 4);
-    const uint32_t swapped = be32toh(swap_temp);
+    const uint32_t swapped = NetworkToHost32(swap_temp);
     memcpy(&temp_item, &swapped, 4);
   }
   else if (sizeof(T) == 8)
   {
     uint64_t swap_temp;
     memcpy(&swap_temp, &buffer[starting_offset], 8);
-    const uint64_t swapped = be64toh(swap_temp);
+    const uint64_t swapped = NetworkToHost64(swap_temp);
     memcpy(&temp_item, &swapped, 8);
   }
   return MakeDeserialized(temp_item, sizeof(temp_item));

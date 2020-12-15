@@ -3,7 +3,9 @@
 #include <cstdint>
 #include <stdexcept>
 
+#if defined(_OPENMP)
 #include <omp.h>
+#endif
 
 namespace common_robotics_utilities
 {

@@ -1,5 +1,9 @@
 #pragma once
 
+#if defined(_OPENMP)
+#include <omp.h>
+#endif
+
 #include <algorithm>
 #include <cstdint>
 #include <unordered_set>
@@ -448,7 +452,9 @@ public:
     // Second, optionally parallel pass to update edges for the kept nodes
     if (use_parallel)
     {
+#if defined(_OPENMP)
 #pragma omp parallel for
+#endif
       for (int64_t kept_node_index = 0;
           kept_node_index < static_cast<int64_t>(pruned_graph.Size());
           kept_node_index++)

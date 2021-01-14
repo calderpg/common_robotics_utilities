@@ -174,12 +174,12 @@ private:
     // Ok, we're inside the chunk
     else
     {
-      const int64_t x_cell
-          = static_cast<int64_t>(location_wrt_chunk(0) / sizes_.CellXSize());
-      const int64_t y_cell
-          = static_cast<int64_t>(location_wrt_chunk(1) / sizes_.CellYSize());
-      const int64_t z_cell
-          = static_cast<int64_t>(location_wrt_chunk(2) / sizes_.CellZSize());
+      const int64_t x_cell = static_cast<int64_t>(
+          std::floor(location_wrt_chunk(0) / sizes_.CellXSize()));
+      const int64_t y_cell = static_cast<int64_t>(
+          std::floor(location_wrt_chunk(1) / sizes_.CellYSize()));
+      const int64_t z_cell = static_cast<int64_t>(
+          std::floor(location_wrt_chunk(2) / sizes_.CellZSize()));
       if (x_cell < 0 || y_cell < 0 || z_cell < 0 || x_cell >= sizes_.NumXCells()
           || y_cell >= sizes_.NumYCells() || z_cell >= sizes_.NumZCells())
       {

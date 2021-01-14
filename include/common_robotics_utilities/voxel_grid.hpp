@@ -992,12 +992,12 @@ public:
   GridIndex LocationInGridFrameToGridIndex3d(
       const Eigen::Vector3d& location) const
   {
-    const int64_t x_cell
-        = static_cast<int64_t>(location.x() * sizes_.InvCellXSize());
-    const int64_t y_cell
-        = static_cast<int64_t>(location.y() * sizes_.InvCellYSize());
-    const int64_t z_cell
-        = static_cast<int64_t>(location.z() * sizes_.InvCellZSize());
+    const int64_t x_cell = static_cast<int64_t>(
+        std::floor(location.x() * sizes_.InvCellXSize()));
+    const int64_t y_cell = static_cast<int64_t>(
+        std::floor(location.y() * sizes_.InvCellYSize()));
+    const int64_t z_cell = static_cast<int64_t>(
+        std::floor(location.z() * sizes_.InvCellZSize()));
     return GridIndex(x_cell, y_cell, z_cell);
   }
 
@@ -1006,12 +1006,12 @@ public:
   {
     if (location(3) == 1.0)
     {
-      const int64_t x_cell
-          = static_cast<int64_t>(location(0) * sizes_.InvCellXSize());
-      const int64_t y_cell
-          = static_cast<int64_t>(location(1) * sizes_.InvCellYSize());
-      const int64_t z_cell
-          = static_cast<int64_t>(location(2) * sizes_.InvCellZSize());
+      const int64_t x_cell = static_cast<int64_t>(
+          std::floor(location(0) * sizes_.InvCellXSize()));
+      const int64_t y_cell = static_cast<int64_t>(
+          std::floor(location(1) * sizes_.InvCellYSize()));
+      const int64_t z_cell = static_cast<int64_t>(
+          std::floor(location(2) * sizes_.InvCellZSize()));
       return GridIndex(x_cell, y_cell, z_cell);
     }
     else

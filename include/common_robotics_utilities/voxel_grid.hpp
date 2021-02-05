@@ -619,8 +619,8 @@ public:
   {
     origin_transform_ = Eigen::Isometry3d::Identity();
     inverse_origin_transform_ = origin_transform_.inverse();
-    utility::RequireAlignment(origin_transform_, 16u);
-    utility::RequireAlignment(inverse_origin_transform_, 16u);
+    utility::RequireEigenAlignment(origin_transform_);
+    utility::RequireEigenAlignment(inverse_origin_transform_);
     data_.clear();
     initialized_ = false;
   }
@@ -637,8 +637,8 @@ public:
       sizes_ = sizes;
       origin_transform_ = origin_transform;
       inverse_origin_transform_ = origin_transform_.inverse();
-      utility::RequireAlignment(origin_transform_, 16u);
-      utility::RequireAlignment(inverse_origin_transform_, 16u);
+      utility::RequireEigenAlignment(origin_transform_);
+      utility::RequireEigenAlignment(inverse_origin_transform_);
       default_value_ = default_value;
       oob_value_ = oob_value;
       SetContents(default_value_);
@@ -1223,4 +1223,3 @@ struct hash<common_robotics_utilities::voxel_grid::GridIndex>
   }
 };
 }
-

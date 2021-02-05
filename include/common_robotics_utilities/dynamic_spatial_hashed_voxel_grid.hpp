@@ -776,6 +776,8 @@ public:
     {
       origin_transform_ = origin_transform;
       inverse_origin_transform_ = origin_transform_.inverse();
+      utility::RequireEigenAlignment(origin_transform_);
+      utility::RequireEigenAlignment(inverse_origin_transform_);
       chunk_sizes_ = chunk_sizes;
       default_value_ = default_value;
       chunks_.reserve(expected_chunks);
@@ -789,8 +791,10 @@ public:
 
   DynamicSpatialHashedVoxelGridBase()
   {
-    origin_transform_.setIdentity();
+    origin_transform_ = Eigen::Isometry3d::Identity();
     inverse_origin_transform_ = origin_transform_.inverse();
+    utility::RequireEigenAlignment(origin_transform_);
+    utility::RequireEigenAlignment(inverse_origin_transform_);
     initialized_ = false;
   }
 

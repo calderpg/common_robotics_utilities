@@ -8,6 +8,8 @@
 #include <vector>
 #include <iostream>
 
+#include <Eigen/Geometry>
+
 // Branch prediction hints
 // Figure out which compiler we have
 #if defined(__clang__)
@@ -223,6 +225,14 @@ inline void RequireAlignment(const T& item, const uint64_t desired_alignment)
                              + " not aligned at desired alignment of "
                              + std::to_string(desired_alignment) + " bytes");
   }
+}
+
+template<typename T>
+inline void RequireEigenAlignment(const T& item)
+{
+  const uint64_t eigen_alignment =
+      static_cast<uint64_t>(EIGEN_DEFAULT_ALIGN_BYTES);
+  RequireAlignment<T>(item, eigen_alignment);
 }
 
 template <typename T>

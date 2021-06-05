@@ -397,12 +397,12 @@ TaskStateAStarResult<State, Container> PlanTaskStateSequence(
     return task_sequence_complete_fn(current_state);
   };
 
-  const std::function<std::vector<int64_t>(const int64_t)>
-      generate_children_function = [&] (const int64_t current_state_id)
+  const std::function<std::map<int64_t, double>(const int64_t)>
+      generate_valid_children_function = [&] (const int64_t current_state_id)
   {
     const State& current_state = state_map.at(current_state_id);
 
-    std::vector<int64_t> child_state_ids;
+    std::map<int64_t, double> child_states_with_costs;
 
     for (const auto& primitive : primitive_collection.Primitives())
     {
@@ -416,28 +416,14 @@ TaskStateAStarResult<State, Container> PlanTaskStateSequence(
           AddStateImpl<State>(
               state_map, outcome_state_id, outcome_state,
               utility::HasOperatorEquals<State>());
-          child_state_ids.push_back(outcome_state_id);
+
+          child_states_with_costs[outcome_state_id] =
+              primitive->EstimateActionCost(current_state, outcome_state);
         }
       }
     }
 
-    return child_state_ids;
-  };
-
-  // Child state generation only produces valid transitions.
-  const std::function<bool(int64_t, int64_t)> edge_validity_check_function =
-      [] (const int64_t, const int64_t) { return true; };
-
-  const std::function<double(int64_t, int64_t)> state_distance_function =
-      [&] (const int64_t starting_state_id, const int64_t target_state_id)
-  {
-    const State& starting_state = state_map.at(starting_state_id);
-    const State& target_state = state_map.at(target_state_id);
-
-    const auto best_primitive =
-        primitive_collection.SelectBestPrimitiveForTransition(
-            starting_state, target_state);
-    return best_primitive.EstimatedCost();
+    return child_states_with_costs;
   };
 
   const std::function<double(const int64_t)> heuristic_function =
@@ -459,8 +445,7 @@ TaskStateAStarResult<State, Container> PlanTaskStateSequence(
   const bool limit_pqueue_duplicates = true;
 
   const auto astar_solution = simple_astar_search::PerformGenericAstarSearch(
-      start_ids, goal_check_function, generate_children_function,
-      edge_validity_check_function, state_distance_function,
+      start_ids, goal_check_function, generate_valid_children_function,
       heuristic_function, limit_pqueue_duplicates);
 
   Container solution_path;

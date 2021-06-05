@@ -171,24 +171,18 @@ inline AstarIndexResult ExtractAstarResult(
 /// implementation below in PerformAstarSearch to see how this may be performed.
 /// @return Solution path between @param start_id and the goal (as defined by
 /// @goal_check_fn), if one exists, or an empty path.
-/// @param generate_children_fn returns the node IDs of child states for the
-/// provided node ID, @param edge_validity_check_fn returns true if the edge
-/// between provided node IDs is valid, @param distance_fn returns the distance
-/// between provided node IDs, and @param heuristic_fn returns the heuristic
-/// value for the provided node ID. @param limit_pqueue_duplicates selects
-/// whether to use a second hashtable to track elements in the pqueue and reduce
-/// duplicates added to the pqueue. This usually improves performance.
-/// Note that @param generate_children_fn and @param edge_validity_check overlap
-/// in functionality and that @param edge_validity_check can always return true
-/// if @param generate_children_fn always generates valid children.
+/// @param generate_valid_children_fn returns the node IDs of valid child states
+/// for the provided node ID together with the cost of moving from provided node
+/// to child node.
+/// @param heuristic_fn returns the heuristic value for the provided node ID.
+/// @param limit_pqueue_duplicates selects whether to use a second hashtable to
+/// track elements in the pqueue and reduce duplicates added to the pqueue. This
+/// usually improves performance.
 inline AstarIndexResult PerformGenericAstarSearch(
     const std::map<int64_t, double>& start_ids,
     const std::function<bool(const int64_t)>& goal_check_fn,
-    const std::function<std::vector<int64_t>(
-      const int64_t)>& generate_children_fn,
-    const std::function<bool(const int64_t,
-                             const int64_t)>& edge_validity_check_fn,
-    const std::function<double(const int64_t, const int64_t)>& distance_fn,
+    const std::function<std::map<int64_t, double>(
+        const int64_t)>& generate_valid_children_fn,
     const std::function<double(const int64_t)>& heuristic_fn,
     const bool limit_pqueue_duplicates)
 {
@@ -269,59 +263,54 @@ inline AstarIndexResult PerformGenericAstarSearch(
         goal_id = OwningMaybe<int64_t>(top_node.NodeID());
         break;
       }
-      // Generate possible children
-      const std::vector<int64_t> candidate_children
-          = generate_children_fn(top_node.NodeID());
-      // Loop through potential child nodes
-      for (const int64_t child_node_id : candidate_children)
+      // Generate valid children
+      const std::map<int64_t, double> children_with_costs
+          = generate_valid_children_fn(top_node.NodeID());
+      for (const auto& child_with_cost : children_with_costs)
       {
-        // Check if the top node->child edge is valid
-        if (edge_validity_check_fn(top_node.NodeID(), child_node_id))
+        const int64_t child_node_id = child_with_cost.first;
+        const double parent_to_child_cost = child_with_cost.second;
+        // Compute the cost-to-come for the new child
+        const double parent_cost_to_come = top_node.CostToCome();
+        const double child_cost_to_come
+            = parent_cost_to_come + parent_to_child_cost;
+        // Check if the child state has already been explored
+        const auto child_explored_find_itr = explored.find(child_node_id);
+        // Check if it has already been explored with lower cost
+        const bool child_in_explored
+            = (child_explored_find_itr != explored.end());
+        const bool explored_child_is_better
+            = (child_in_explored)
+              ? (child_cost_to_come
+                  >= child_explored_find_itr->second.CostToCome())
+              : false;
+        // Check if the child state is already in the queue
+        bool queue_is_better = false;
+        if (limit_pqueue_duplicates)
         {
-          // Compute the cost-to-come for the new child
-          const double parent_cost_to_come = top_node.CostToCome();
-          const double parent_to_child_cost
-              = distance_fn(top_node.NodeID(), child_node_id);
-          const double child_cost_to_come
-              = parent_cost_to_come + parent_to_child_cost;
-          // Check if the child state has already been explored
-          const auto child_explored_find_itr = explored.find(child_node_id);
-          // Check if it has already been explored with lower cost
-          const bool child_in_explored
-              = (child_explored_find_itr != explored.end());
-          const bool explored_child_is_better
-              = (child_in_explored)
-                ? (child_cost_to_come
-                    >= child_explored_find_itr->second.CostToCome())
+          const auto queue_members_map_itr
+              = queue_members_map.find(child_node_id);
+          const bool in_queue
+              = (queue_members_map_itr != queue_members_map.end());
+          queue_is_better
+              = (in_queue)
+                ? (child_cost_to_come >= queue_members_map_itr->second)
                 : false;
-          // Check if the child state is already in the queue
-          bool queue_is_better = false;
+        }
+        // Only add the new state if we need to
+        if (!explored_child_is_better && !queue_is_better)
+        {
+          // Compute the heuristic for the child
+          const double child_heuristic = heuristic_fn(child_node_id);
+          // Compute the child value
+          const double child_value = child_cost_to_come + child_heuristic;
+          // Push onto the pqueue
+          queue.push(AstarPQueueElement(child_node_id, top_node.NodeID(),
+                                        child_cost_to_come, child_value));
+          // Add to the queue member map
           if (limit_pqueue_duplicates)
           {
-            const auto queue_members_map_itr
-                = queue_members_map.find(child_node_id);
-            const bool in_queue
-                = (queue_members_map_itr != queue_members_map.end());
-            queue_is_better
-                = (in_queue)
-                  ? (child_cost_to_come >= queue_members_map_itr->second)
-                  : false;
-          }
-          // Only add the new state if we need to
-          if (!explored_child_is_better && !queue_is_better)
-          {
-            // Compute the heuristic for the child
-            const double child_heuristic = heuristic_fn(child_node_id);
-            // Compute the child value
-            const double child_value = child_cost_to_come + child_heuristic;
-            // Push onto the pqueue
-            queue.push(AstarPQueueElement(child_node_id, top_node.NodeID(),
-                                          child_cost_to_come, child_value));
-            // Add to the queue member map
-            if (limit_pqueue_duplicates)
-            {
-              queue_members_map[child_node_id] = child_cost_to_come;
-            }
+            queue_members_map[child_node_id] = child_cost_to_come;
           }
         }
       }
@@ -335,6 +324,64 @@ inline AstarIndexResult PerformGenericAstarSearch(
   {
     return AstarIndexResult();
   }
+}
+
+/// Perform A* search. This implementation is somewhat different structurally
+/// from many implementations - it operates excusively on "node IDs" that
+/// uniquely and reproducibly identify a single state. This is used because A*
+/// needs to insert states into std::unordered_map and instead of refering to
+/// states and their hashes, we only refer to them by their IDs. This means you,
+/// the caller, need to maintain a mapping between IDs and values so that you
+/// can translate the IDs used here with the real values of the state. See the
+/// implementation below in PerformAstarSearch to see how this may be performed.
+/// @return Solution path between @param start_id and the goal (as defined by
+/// @goal_check_fn), if one exists, or an empty path.
+/// @param generate_children_fn returns the node IDs of child states for the
+/// provided node ID, @param edge_validity_check_fn returns true if the edge
+/// between provided node IDs is valid, @param distance_fn returns the distance
+/// between provided node IDs, and @param heuristic_fn returns the heuristic
+/// value for the provided node ID. @param limit_pqueue_duplicates selects
+/// whether to use a second hashtable to track elements in the pqueue and reduce
+/// duplicates added to the pqueue. This usually improves performance.
+/// Note that @param generate_children_fn and @param edge_validity_check overlap
+/// in functionality and that @param edge_validity_check can always return true
+/// if @param generate_children_fn always generates valid children. In such
+/// cases, consider using the above function instead, which takes valid child
+/// nodes plus cost.
+inline AstarIndexResult PerformGenericAstarSearch(
+    const std::map<int64_t, double>& start_ids,
+    const std::function<bool(const int64_t)>& goal_check_fn,
+    const std::function<std::vector<int64_t>(
+      const int64_t)>& generate_children_fn,
+    const std::function<bool(const int64_t,
+                             const int64_t)>& edge_validity_check_fn,
+    const std::function<double(const int64_t, const int64_t)>& distance_fn,
+    const std::function<double(const int64_t)>& heuristic_fn,
+    const bool limit_pqueue_duplicates)
+{
+  // Make a valid-child-states-only function
+  const auto valid_child_state_function = [&] (const int64_t current_node_id)
+  {
+    std::map<int64_t, double> valid_child_states_and_costs;
+    // Generate possible children
+    const std::vector<int64_t> candidate_children
+        = generate_children_fn(current_node_id);
+    // Loop through potential child nodes
+    for (const int64_t child_node_id : candidate_children)
+    {
+      // Check if the top node->child edge is valid
+      if (edge_validity_check_fn(current_node_id, child_node_id))
+      {
+        const double parent_to_child_cost
+              = distance_fn(current_node_id, child_node_id);
+        valid_child_states_and_costs[child_node_id] = parent_to_child_cost;
+      }
+    }
+    return valid_child_states_and_costs;
+  };
+  return PerformGenericAstarSearch(
+      start_ids, goal_check_fn, valid_child_state_function, heuristic_fn,
+      limit_pqueue_duplicates);
 }
 
 /// Perform A* search. This implementation is somewhat different structurally

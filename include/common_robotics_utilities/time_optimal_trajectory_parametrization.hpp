@@ -121,15 +121,13 @@ public:
   Trajectory(const std::list<Eigen::VectorXd>& waypoints,
              const Eigen::VectorXd& max_velocity,
              const Eigen::VectorXd& max_acceleration,
-             const double max_deviation,
-             const double timestep);
+             const double max_deviation = 0.0,
+             const double timestep = 0.001);
 
-  Trajectory(const Path &path_,
-             const Eigen::VectorXd& max_velocity_,
-             const Eigen::VectorXd& max_acceleration_,
-             double timestep = 0.001);
-
-  ~Trajectory(void);
+  Trajectory(const Path& path,
+             const Eigen::VectorXd& max_velocity,
+             const Eigen::VectorXd& max_acceleration,
+             const double timestep = 0.001);
 
   // Returns the optimal duration of the trajectory
   double Duration() const;

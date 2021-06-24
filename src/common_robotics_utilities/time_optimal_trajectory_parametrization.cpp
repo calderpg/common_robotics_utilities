@@ -196,9 +196,14 @@ Path::Path(const std::list<Eigen::VectorXd>& path, const double max_deviation)
 {
   if (path.size() < 2)
   {
-    throw std::runtime_error(
+    throw std::invalid_argument(
         "TOTP for paths with fewer than two waypoints is ill-defined");
   }
+  if (!std::isfinite(max_deviation))
+  {
+    throw std::invalid_argument("max_deviation must be finite");
+  }
+
   std::list<Eigen::VectorXd>::const_iterator config1 = path.begin();
   std::list<Eigen::VectorXd>::const_iterator config2 = config1;
   config2++;
@@ -344,52 +349,16 @@ Trajectory::Trajectory(const std::list<Eigen::VectorXd>& waypoints,
                        const Eigen::VectorXd& max_acceleration,
                        const double max_deviation,
                        const double timestep)
-  : path_(Path(waypoints, max_deviation)),
-    max_velocity_(max_velocity),
-    max_acceleration_(max_acceleration),
-    n_(static_cast<uint32_t>(max_velocity.size())),
-    time_step_(timestep),
-    cached_time_(std::numeric_limits<double>::max())
-{
-  trajectory_.push_back(TrajectoryStep(0.0, 0.0));
-  double after_acceleration = GetMinMaxPathAcceleration(0.0, 0.0, true);
-  while (!IntegrateForward(trajectory_, after_acceleration))
-  {
-    double before_acceleration = 0.0;
-    TrajectoryStep switching_point;
-    if (GetNextSwitchingPoint(trajectory_.back().path_pos_,
-                              switching_point,
-                              before_acceleration,
-                              after_acceleration))
-    {
-      break;
-    }
-    IntegrateBackward(trajectory_,
-                      switching_point.path_pos_,
-                      switching_point.path_vel_,
-                      before_acceleration);
-  }
-  const double before_acceleration
-      = GetMinMaxPathAcceleration(path_.Length(), 0.0, false);
-  IntegrateBackward(trajectory_, path_.Length(), 0.0, before_acceleration);
-  // calculate timing
-  std::list<TrajectoryStep>::iterator previous = trajectory_.begin();
-  std::list<TrajectoryStep>::iterator it = previous;
-  it->time_ = 0.0;
-  it++;
-  while (it != trajectory_.end())
-  {
-    it->time_ = previous->time_ + (it->path_pos_ - previous->path_pos_)
-                / ((it->path_vel_ + previous->path_vel_) / 2.0);
-    previous = it;
-    it++;
-  }
-}
+  : Trajectory(Path(waypoints, max_deviation),
+               max_velocity,
+               max_acceleration,
+               timestep) {}
+
 
 Trajectory::Trajectory(const Path& path,
                        const Eigen::VectorXd& max_velocity,
                        const Eigen::VectorXd& max_acceleration,
-                       double timestep)
+                       const double timestep)
   : path_(path),
     max_velocity_(max_velocity),
     max_acceleration_(max_acceleration),
@@ -397,6 +366,19 @@ Trajectory::Trajectory(const Path& path,
     time_step_(timestep),
     cached_time_(std::numeric_limits<double>::max())
 {
+  if (!max_velocity_.array().isFinite().all())
+  {
+    throw std::invalid_argument("max_velocity must be finite");
+  }
+  if (!max_acceleration_.array().isFinite().all())
+  {
+    throw std::invalid_argument("max_acceleration must be finite");
+  }
+  if (!std::isfinite(time_step_))
+  {
+    throw std::invalid_argument("timestep must be finite");
+  }
+
   trajectory_.push_back(TrajectoryStep(0.0, 0.0));
   double after_acceleration = GetMinMaxPathAcceleration(0.0, 0.0, true);
   while (!IntegrateForward(trajectory_, after_acceleration))
@@ -431,8 +413,6 @@ Trajectory::Trajectory(const Path& path,
     it++;
   }
 }
-
-Trajectory::~Trajectory(void) {}
 
 void Trajectory::OutputPhasePlaneTrajectory() const
 {

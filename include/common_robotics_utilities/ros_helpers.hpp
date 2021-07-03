@@ -42,7 +42,7 @@ using VisualizationMarker = visualization_msgs::Marker;
 using VisualizationMarkerArray = visualization_msgs::MarkerArray;
 #endif
 
-void SetMessageTimestamps(VisualizationMarkerArray& markers, const RosTime& timestamp)
+inline void SetMessageTimestamps(VisualizationMarkerArray& markers, const RosTime& timestamp)
 {
   SetMessageTimestamps<VisualizationMarker>(markers.markers, timestamp);
 }

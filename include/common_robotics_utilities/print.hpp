@@ -12,19 +12,51 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <common_robotics_utilities/utility.hpp>
 #include <Eigen/Geometry>
+
+#if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
+#include <rosidl_runtime_cpp/traits.hpp>
+namespace rosidl_generator_traits
+{
+template<typename T>
+void to_yaml(const T& value, std::ostream& os);
+}  // namespace rosidl_generator_traits
+#endif
 
 namespace common_robotics_utilities
 {
 namespace print
 {
+namespace detail
+{
+#if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
+// Private stream operator overload for all ROS 2 interface
+// types for which rosidl_generator_traits::to_yaml() is
+// implemented
+template <typename T>
+inline typename std::enable_if<
+  rosidl_generator_traits::is_message<T>::value,
+  std::ostream&
+>::type operator<<(std::ostream& os, const T& value)
+{
+  rosidl_generator_traits::to_yaml(value, os);
+  return os;
+}
+#endif
+}  // namespace detail
+
 // Base template function for printing types
 template <typename T>
 inline std::string Print(const T& toprint,
                          const bool add_delimiters=false,
                          const std::string& separator=", ")
 {
+#if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
+  using namespace detail;
+#endif
   UNUSED(add_delimiters);
   UNUSED(separator);
   std::ostringstream strm;

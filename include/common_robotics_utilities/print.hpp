@@ -22,7 +22,7 @@
 namespace rosidl_generator_traits
 {
 template<typename T>
-void to_yaml(const T& value, std::ostream& os);
+std::string to_yaml(const T& value);
 }  // namespace rosidl_generator_traits
 #endif
 
@@ -33,19 +33,24 @@ namespace print
 namespace detail
 {
 #if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
-// Private stream operator overload for all ROS 2 interface
-// types for which rosidl_generator_traits::to_yaml() is
-// implemented
-template <typename T>
-inline typename std::enable_if<
-  rosidl_generator_traits::is_message<T>::value,
-  std::ostream&
->::type operator<<(std::ostream& os, const T& value)
-{
-  rosidl_generator_traits::to_yaml(value, os);
-  return os;
-}
+struct ROSMessagePrinter {
+  template <typename T>
+  static std::string Print(const T& message)
+  {
+    return rosidl_generator_traits::to_yaml(message);
+  }
+};
 #endif
+struct GenericPrinter
+{
+  template <typename T>
+  static std::string Print(const T& value)
+  {
+    std::ostringstream strm;
+    strm << value;
+    return strm.str();
+  }
+};
 }  // namespace detail
 
 // Base template function for printing types
@@ -54,14 +59,16 @@ inline std::string Print(const T& toprint,
                          const bool add_delimiters=false,
                          const std::string& separator=", ")
 {
-#if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
-  using namespace detail;
-#endif
   UNUSED(add_delimiters);
   UNUSED(separator);
-  std::ostringstream strm;
-  strm << toprint;
-  return strm.str();
+#if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
+  using Printer = typename std::conditional<
+    rosidl_generator_traits::is_message<T>::value,
+    detail::ROSMessagePrinter, detail::GenericPrinter>::type;
+#else
+  using Printer = detail::GenericPrinter;
+#endif
+  return Printer::Print(toprint);
 }
 
 ///////////////////////////////////////////////////////////////////

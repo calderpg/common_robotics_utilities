@@ -12,10 +12,31 @@
 
 #include <gtest/gtest.h>
 
+namespace
+{
+namespace test
+{
+struct DummyType {
+  int value;
+};
+}  // namespace test
+
+std::ostream& operator<<(
+    std::ostream& os, const test::DummyType& dummy)
+{
+  return os << dummy.value;
+}
+}  // namespace
+
 namespace common_robotics_utilities
 {
 namespace print_test
 {
+GTEST_TEST(PrintTest, CanPrintIfStreamOperatorIsInOuterNamespace)
+{
+  (void)print::Print(std::vector<test::DummyType>());
+}
+
 GTEST_TEST(PrintTest, CanPrintROSMessages)
 {
 #if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2

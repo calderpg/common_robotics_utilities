@@ -63,9 +63,9 @@ inline std::string Print(const T& toprint,
   UNUSED(separator);
 #if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
   using Printer = typename std::conditional<
-    rosidl_generator_traits::is_message<T>::value,
-    rosidl_generator_traits::detail::ROSMessagePrinter,
-    detail::GenericPrinter>::type;
+      rosidl_generator_traits::is_message<T>::value,
+      rosidl_generator_traits::detail::ROSMessagePrinter,
+      detail::GenericPrinter>::type;
 #else
   using Printer = detail::GenericPrinter;
 #endif

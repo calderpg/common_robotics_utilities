@@ -34,7 +34,7 @@ namespace print_test
 {
 GTEST_TEST(PrintTest, CanPrintIfStreamOperatorIsInOuterNamespace)
 {
-  (void)print::Print(std::vector<test::DummyType>());
+  EXPECT_FALSE(print::Print(std::vector<test::DummyType>(3)).empty());
 }
 
 GTEST_TEST(PrintTest, CanPrintROSMessages)
@@ -44,7 +44,7 @@ GTEST_TEST(PrintTest, CanPrintROSMessages)
 #elif COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 1
   using Point = geometry_msgs::Point;
 #endif
-  (void)print::Print(std::vector<Point>());
+  EXPECT_FALSE(print::Print(std::vector<Point>(3)).empty());
 }
 }  // namespace print_test
 }  // namespace common_robotics_utilities

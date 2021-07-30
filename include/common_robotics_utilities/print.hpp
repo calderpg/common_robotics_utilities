@@ -19,10 +19,19 @@
 
 #if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
 #include <rosidl_runtime_cpp/traits.hpp>
+
 namespace rosidl_generator_traits
 {
-template<typename T>
-std::string to_yaml(const T& value);
+namespace detail
+{
+struct ROSMessagePrinter {
+  template <typename T>
+  static std::string Print(const T& message)
+  {
+    return to_yaml(message);
+  }
+};
+}  // namespace detail
 }  // namespace rosidl_generator_traits
 #endif
 
@@ -32,15 +41,6 @@ namespace print
 {
 namespace detail
 {
-#if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
-struct ROSMessagePrinter {
-  template <typename T>
-  static std::string Print(const T& message)
-  {
-    return rosidl_generator_traits::to_yaml(message);
-  }
-};
-#endif
 struct GenericPrinter
 {
   template <typename T>
@@ -64,7 +64,8 @@ inline std::string Print(const T& toprint,
 #if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
   using Printer = typename std::conditional<
     rosidl_generator_traits::is_message<T>::value,
-    detail::ROSMessagePrinter, detail::GenericPrinter>::type;
+    rosidl_generator_traits::detail::ROSMessagePrinter,
+    detail::GenericPrinter>::type;
 #else
   using Printer = detail::GenericPrinter;
 #endif

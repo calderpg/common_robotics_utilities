@@ -353,9 +353,18 @@ void AddStateImpl(
     std::unordered_map<int64_t, State>& state_map, const int64_t state_id,
     const State& state, std::true_type)
 {
-  if (state_map.count(state_id) > 0)
+  auto found_itr = state_map.find(state_id);
+  if (found_itr != state_map.end())
   {
-    if (!(state_map.at(state_id) == state))
+    if (found_itr->second == state)
+    {
+      // This is not strictly necessary - after all, this condition should only
+      // be true if the stored and new state are identical. This assignment is
+      // performed so that AddState-with-equals matches the behavior of
+      // AddState-without-equals to make debugging easier.
+      found_itr->second = state;
+    }
+    else
     {
       throw std::runtime_error("State IDs are not unique");
     }
@@ -372,10 +381,7 @@ void AddStateImpl(
     std::unordered_map<int64_t, State>& state_map, const int64_t state_id,
     const State& state, std::false_type)
 {
-  if (state_map.count(state_id) == 0)
-  {
-    state_map[state_id] = state;
-  }
+  state_map[state_id] = state;
 }
 
 template<typename State, typename Container=std::vector<State>>

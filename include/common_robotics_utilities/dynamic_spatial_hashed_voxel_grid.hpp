@@ -1058,8 +1058,8 @@ private:
       std::vector<uint8_t>& buffer,
       const serialization::Serializer<T>& value_serializer) const override
   {
-    UNUSED(buffer);
-    UNUSED(value_serializer);
+    CRU_UNUSED(buffer);
+    CRU_UNUSED(value_serializer);
     return 0;
   }
 
@@ -1067,15 +1067,15 @@ private:
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
       const serialization::Deserializer<T>& value_deserializer) override
   {
-    UNUSED(buffer);
-    UNUSED(starting_offset);
-    UNUSED(value_deserializer);
+    CRU_UNUSED(buffer);
+    CRU_UNUSED(starting_offset);
+    CRU_UNUSED(value_deserializer);
     return 0;
   }
 
   bool OnMutableAccess(const Eigen::Vector4d& location) override
   {
-    UNUSED(location);
+    CRU_UNUSED(location);
     return true;
   }
 

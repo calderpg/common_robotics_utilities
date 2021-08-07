@@ -1133,8 +1133,8 @@ private:
       std::vector<uint8_t>& buffer,
       const serialization::Serializer<T>& value_serializer) const override
   {
-    UNUSED(buffer);
-    UNUSED(value_serializer);
+    CRU_UNUSED(buffer);
+    CRU_UNUSED(value_serializer);
     return 0;
   }
 
@@ -1142,9 +1142,9 @@ private:
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
       const serialization::Deserializer<T>& value_deserializer) override
   {
-    UNUSED(buffer);
-    UNUSED(starting_offset);
-    UNUSED(value_deserializer);
+    CRU_UNUSED(buffer);
+    CRU_UNUSED(starting_offset);
+    CRU_UNUSED(value_deserializer);
     return 0;
   }
 
@@ -1152,9 +1152,9 @@ private:
                        const int64_t y_index,
                        const int64_t z_index) override
   {
-    UNUSED(x_index);
-    UNUSED(y_index);
-    UNUSED(z_index);
+    CRU_UNUSED(x_index);
+    CRU_UNUSED(y_index);
+    CRU_UNUSED(z_index);
     return true;
   }
 

@@ -353,16 +353,11 @@ void AddStateImpl(
     std::unordered_map<int64_t, State>& state_map, const int64_t state_id,
     const State& state, std::true_type)
 {
-  if (state_map.count(state_id) > 0)
+  const auto result = state_map.insert(std::make_pair(state_id, state));
+  // If the state was not inserted, a state with the same ID already exists.
+  if (!result.second && !(*result.first == state))
   {
-    if (!(state_map.at(state_id) == state))
-    {
-      throw std::runtime_error("State IDs are not unique");
-    }
-  }
-  else
-  {
-    state_map[state_id] = state;
+    throw std::runtime_error("State IDs are not unique");
   }
 }
 
@@ -372,10 +367,7 @@ void AddStateImpl(
     std::unordered_map<int64_t, State>& state_map, const int64_t state_id,
     const State& state, std::false_type)
 {
-  if (state_map.count(state_id) == 0)
-  {
-    state_map[state_id] = state;
-  }
+  state_map.insert(std::make_pair(state_id, state));
 }
 
 template<typename State, typename Container=std::vector<State>>

@@ -420,7 +420,7 @@ inline simple_astar_search::AstarIndexResult PerformLazyAstarSearch(
       const simple_graph::Graph<NodeValueType>& search_graph,
       const int64_t node_index)
   {
-    UNUSED(search_graph);
+    CRU_UNUSED(search_graph);
     for (const int64_t goal_index : goal_indices)
     {
       if (node_index == goal_index)
@@ -513,7 +513,7 @@ inline simple_astar_search::AstarIndexResult PerformAstarSearch(
       = [&] (const simple_graph::Graph<NodeValueType>& search_graph,
              const simple_graph::GraphEdge& edge)
   {
-    UNUSED(search_graph);
+    CRU_UNUSED(search_graph);
     if (edge.GetWeight() < std::numeric_limits<double>::infinity())
     {
       return true;
@@ -527,7 +527,7 @@ inline simple_astar_search::AstarIndexResult PerformAstarSearch(
       = [&] (const simple_graph::Graph<NodeValueType>& search_graph,
              const simple_graph::GraphEdge& edge)
   {
-    UNUSED(search_graph);
+    CRU_UNUSED(search_graph);
     return edge.GetWeight();
   };
   const auto heuristic_function

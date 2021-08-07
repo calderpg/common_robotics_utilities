@@ -14,25 +14,25 @@
 // Figure out which compiler we have
 #if defined(__clang__)
   /* Clang/LLVM */
-  #define LIKELY(x) __builtin_expect(!!(x), 1)
-  #define UNLIKELY(x) __builtin_expect(!!(x), 0)
+  #define CRU_LIKELY(x) __builtin_expect(!!(x), 1)
+  #define CRU_UNLIKELY(x) __builtin_expect(!!(x), 0)
 #elif defined(__ICC) || defined(__INTEL_COMPILER)
   /* Intel ICC/ICPC */
-  #define LIKELY(x) __builtin_expect(!!(x), 1)
-  #define UNLIKELY(x) __builtin_expect(!!(x), 0)
+  #define CRU_LIKELY(x) __builtin_expect(!!(x), 1)
+  #define CRU_UNLIKELY(x) __builtin_expect(!!(x), 0)
 #elif defined(__GNUC__) || defined(__GNUG__)
   /* GNU GCC/G++ */
-  #define LIKELY(x) __builtin_expect(!!(x), 1)
-  #define UNLIKELY(x) __builtin_expect(!!(x), 0)
+  #define CRU_LIKELY(x) __builtin_expect(!!(x), 1)
+  #define CRU_UNLIKELY(x) __builtin_expect(!!(x), 0)
 #elif defined(_MSC_VER)
   /* Microsoft Visual Studio */
   /* MSVC doesn't support branch prediction hints. Use PGO instead. */
-  #define LIKELY(x) (x)
-  #define UNLIKELY(x) (x)
+  #define CRU_LIKELY(x) (x)
+  #define CRU_UNLIKELY(x) (x)
 #endif
 
 // Macro to disable unused parameter compiler warnings
-#define UNUSED(x) (void)(x)
+#define CRU_UNUSED(x) (void)(x)
 
 namespace common_robotics_utilities
 {
@@ -43,7 +43,7 @@ namespace utility
 //   how-do-i-combine-hash-values-in-c0x
 inline void hash_combine(std::size_t& seed)
 {
-  UNUSED(seed);
+  CRU_UNUSED(seed);
 }
 
 template <typename T, typename... Rest>
@@ -67,9 +67,9 @@ inline void hash_combine(std::size_t& seed, const T& v, Rest... rest)
 //   bool v3;
 // };
 //
-// MAKE_HASHABLE(SomeType, t.v1, t.v2, t.v3)
+// CRU_MAKE_HASHABLE(SomeType, t.v1, t.v2, t.v3)
 
-#define MAKE_HASHABLE(type, ...) \
+#define CRU_MAKE_HASHABLE(type, ...) \
     namespace std {\
         template<> struct hash<type> {\
             std::size_t operator()(const type& t) const {\
@@ -475,7 +475,7 @@ inline void ConditionalPrint(const std::string& msg,
                              const int32_t msg_level,
                              const int32_t print_level)
 {
-  if (UNLIKELY(msg_level <= print_level))
+  if (CRU_UNLIKELY(msg_level <= print_level))
   {
     const std::string printstr = "[" + std::to_string(msg_level) + "/"
                                  + std::to_string(print_level) + "] "
@@ -488,7 +488,7 @@ inline void ConditionalError(const std::string& msg,
                              const int32_t msg_level,
                              const int32_t print_level)
 {
-  if (UNLIKELY(msg_level <= print_level))
+  if (CRU_UNLIKELY(msg_level <= print_level))
   {
     const std::string printstr = "[" + std::to_string(msg_level) + "/"
                                  + std::to_string(print_level) + "] "

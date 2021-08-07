@@ -622,25 +622,73 @@ inline Deserialized<std::pair<First, Second>> DeserializePair(
 // Byte-order conversions. For now, only Linux and macOS are supported.
 #if defined(__APPLE__)
     #include <libkern/OSByteOrder.h>
-
-    #define HostToNetwork16(x) OSSwapHostToBigInt16(x)
-    #define HostToNetwork32(x) OSSwapHostToBigInt32(x)
-    #define HostToNetwork64(x) OSSwapHostToBigInt64(x)
-
-    #define NetworkToHost16(x) OSSwapBigToHostInt16(x)
-    #define NetworkToHost32(x) OSSwapBigToHostInt32(x)
-    #define NetworkToHost64(x) OSSwapBigToHostInt64(x)
 #else
     #include <endian.h>
-
-    #define HostToNetwork16(x) htobe16(x)
-    #define HostToNetwork32(x) htobe32(x)
-    #define HostToNetwork64(x) htobe64(x)
-
-    #define NetworkToHost16(x) be16toh(x)
-    #define NetworkToHost32(x) be32toh(x)
-    #define NetworkToHost64(x) be64toh(x)
 #endif
+
+inline uint8_t HostToNetwork8(const uint8_t value)
+{
+  return value;
+}
+
+inline uint16_t HostToNetwork16(const uint16_t value)
+{
+#if defined(__APPLE__)
+  return OSSwapHostToBigInt16(value);
+#else
+  return htobe16(value);
+#endif
+}
+
+inline uint32_t HostToNetwork32(const uint32_t value)
+{
+#if defined(__APPLE__)
+  return OSSwapHostToBigInt32(value);
+#else
+  return htobe32(value);
+#endif
+}
+
+inline uint64_t HostToNetwork64(const uint64_t value)
+{
+#if defined(__APPLE__)
+  return OSSwapHostToBigInt64(value);
+#else
+  return htobe64(value);
+#endif
+}
+
+inline uint8_t NetworkToHost8(const uint8_t value)
+{
+  return value;
+}
+
+inline uint16_t NetworkToHost16(const uint16_t value)
+{
+#if defined(__APPLE__)
+  return OSSwapBigToHostInt16(value);
+#else
+  return be16toh(value);
+#endif
+}
+
+inline uint32_t NetworkToHost32(const uint32_t value)
+{
+#if defined(__APPLE__)
+  return OSSwapBigToHostInt32(value);
+#else
+  return be32toh(value);
+#endif
+}
+
+inline uint64_t NetworkToHost64(const uint64_t value)
+{
+#if defined(__APPLE__)
+  return OSSwapBigToHostInt64(value);
+#else
+  return be64toh(value);
+#endif
+}
 
 template<typename T>
 inline uint64_t SerializeNetworkMemcpyableInPlace(

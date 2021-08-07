@@ -611,7 +611,7 @@ RRTPlanMultiPath(
         = nearest_neighbor_fn(tree, random_target);
     // nearest_neighbor_index < 0 is handled as a special case of early
     // termination.
-    if (UNLIKELY(nearest_neighbor_index < 0))
+    if (CRU_UNLIKELY(nearest_neighbor_index < 0))
     {
       break;
     }
@@ -888,7 +888,7 @@ BiRRTPlanMultiPath(
         = nearest_neighbor_fn(active_tree, target_state, start_tree_active);
     // nearest_neighbor_index < 0 is handled as a sepecial case of early
     // termination.
-    if (UNLIKELY(nearest_neighbor_index < 0))
+    if (CRU_UNLIKELY(nearest_neighbor_index < 0))
     {
       break;
     }

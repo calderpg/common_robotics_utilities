@@ -25,8 +25,8 @@ inline std::string Print(const T& toprint,
                          const bool add_delimiters=false,
                          const std::string& separator=", ")
 {
-  UNUSED(add_delimiters);
-  UNUSED(separator);
+  CRU_UNUSED(add_delimiters);
+  CRU_UNUSED(separator);
   std::ostringstream strm;
   strm << toprint;
   return strm.str();
@@ -185,8 +185,8 @@ inline std::string Print(const bool& bool_to_print,
                          const bool add_delimiters,
                          const std::string& separator)
 {
-  UNUSED(add_delimiters);
-  UNUSED(separator);
+  CRU_UNUSED(add_delimiters);
+  CRU_UNUSED(separator);
   if (bool_to_print)
   {
     return "true";
@@ -202,8 +202,8 @@ inline std::string Print(const uint8_t& byte_to_print,
                          const bool add_delimiters,
                          const std::string& separator)
 {
-  UNUSED(add_delimiters);
-  UNUSED(separator);
+  CRU_UNUSED(add_delimiters);
+  CRU_UNUSED(separator);
   return std::to_string(static_cast<int32_t>(byte_to_print));
 }
 
@@ -212,8 +212,8 @@ inline std::string Print(const Eigen::Vector2d& vector_to_print,
                          const bool add_delimiters,
                          const std::string& separator)
 {
-  UNUSED(add_delimiters);
-  UNUSED(separator);
+  CRU_UNUSED(add_delimiters);
+  CRU_UNUSED(separator);
   std::ostringstream strm;
   strm << std::setprecision(12);
   strm << "Vector2d: <x: ";
@@ -229,8 +229,8 @@ inline std::string Print(const Eigen::Vector3d& vector_to_print,
                          const bool add_delimiters,
                          const std::string& separator)
 {
-  UNUSED(add_delimiters);
-  UNUSED(separator);
+  CRU_UNUSED(add_delimiters);
+  CRU_UNUSED(separator);
   std::ostringstream strm;
   strm << std::setprecision(12);
   strm << "Vector3d: <x: ";
@@ -248,8 +248,8 @@ inline std::string Print(const Eigen::Vector4d& vector_to_print,
                          const bool add_delimiters,
                          const std::string& separator)
 {
-  UNUSED(add_delimiters);
-  UNUSED(separator);
+  CRU_UNUSED(add_delimiters);
+  CRU_UNUSED(separator);
   std::ostringstream strm;
   strm << std::setprecision(12);
   strm << "Vector4d: <x: ";
@@ -269,8 +269,8 @@ inline std::string Print(const Eigen::VectorXd& vector_to_print,
                          const bool add_delimiters,
                          const std::string& separator)
 {
-  UNUSED(add_delimiters);
-  UNUSED(separator);
+  CRU_UNUSED(add_delimiters);
+  CRU_UNUSED(separator);
   if (vector_to_print.size() > 0)
   {
     std::ostringstream strm;
@@ -294,8 +294,8 @@ inline std::string Print(const Eigen::MatrixXd& matrix_to_print,
                          const bool add_delimiters,
                          const std::string& separator)
 {
-  UNUSED(add_delimiters);
-  UNUSED(separator);
+  CRU_UNUSED(add_delimiters);
+  CRU_UNUSED(separator);
   if (matrix_to_print.rows() > 0 && matrix_to_print.cols() > 0)
   {
     std::ostringstream strm;
@@ -328,8 +328,8 @@ inline std::string Print(const Eigen::Quaterniond& quaternion_to_print,
                          const bool add_delimiters,
                          const std::string& separator)
 {
-  UNUSED(add_delimiters);
-  UNUSED(separator);
+  CRU_UNUSED(add_delimiters);
+  CRU_UNUSED(separator);
   std::ostringstream strm;
   strm << std::setprecision(12);
   strm << "Quaterniond: <x: ";
@@ -349,10 +349,10 @@ inline std::string Print(const Eigen::Isometry3d& transform_to_print,
                          const bool add_delimiters,
                          const std::string& separator)
 {
-  UNUSED(add_delimiters);
-  UNUSED(separator);
-  Eigen::Vector3d vector_to_print = transform_to_print.translation();
-  Eigen::Quaterniond quaternion_to_print(transform_to_print.rotation());
+  CRU_UNUSED(add_delimiters);
+  CRU_UNUSED(separator);
+  const Eigen::Vector3d vector_to_print = transform_to_print.translation();
+  const Eigen::Quaterniond quaternion_to_print(transform_to_print.rotation());
   std::ostringstream strm;
   strm << std::setprecision(12);
   strm << "Isometry3d: <x: ";

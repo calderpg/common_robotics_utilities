@@ -12,13 +12,43 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <string>
+#include <type_traits>
+#include <utility>
 #include <common_robotics_utilities/utility.hpp>
 #include <Eigen/Geometry>
+
+#if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
+#include <rosidl_runtime_cpp/traits.hpp>
+#endif
 
 namespace common_robotics_utilities
 {
 namespace print
 {
+namespace detail
+{
+#if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
+struct ROSMessagePrinter
+{
+  template <typename T>
+  static std::string Print(const T& message)
+  {
+    return to_yaml(message);
+  }
+};
+#endif
+struct GenericPrinter
+{
+  template <typename T>
+  static std::string Print(const T& value)
+  {
+    std::ostringstream strm;
+    strm << value;
+    return strm.str();
+  }
+};
+}  // namespace detail
+
 // Base template function for printing types
 template <typename T>
 inline std::string Print(const T& toprint,
@@ -27,9 +57,14 @@ inline std::string Print(const T& toprint,
 {
   CRU_UNUSED(add_delimiters);
   CRU_UNUSED(separator);
-  std::ostringstream strm;
-  strm << toprint;
-  return strm.str();
+#if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
+  using Printer = typename std::conditional<
+      rosidl_generator_traits::is_message<T>::value,
+      detail::ROSMessagePrinter, detail::GenericPrinter>::type;
+#else
+  using Printer = detail::GenericPrinter;
+#endif
+  return Printer::Print(toprint);
 }
 
 ///////////////////////////////////////////////////////////////////

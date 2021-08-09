@@ -17,7 +17,8 @@ namespace
 {
 namespace test
 {
-struct DummyType {
+struct DummyType
+{
   int32_t value = 0;
 };
 }  // namespace test

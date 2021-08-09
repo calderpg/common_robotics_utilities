@@ -24,7 +24,8 @@ namespace rosidl_generator_traits
 {
 namespace detail
 {
-struct ROSMessagePrinter {
+struct ROSMessagePrinter
+{
   template <typename T>
   static std::string Print(const T& message)
   {

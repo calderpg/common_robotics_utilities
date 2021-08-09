@@ -66,13 +66,13 @@ public:
 
   Eigen::VectorXd GetTangent(const double s) const
   {
-    UNUSED(s);
+    CRU_UNUSED(s);
     return (end_ - start_) / length_;
   }
 
   Eigen::VectorXd GetCurvature(const double s) const
   {
-    UNUSED(s);
+    CRU_UNUSED(s);
     return Eigen::VectorXd::Zero(start_.size());
   }
 
@@ -525,7 +525,7 @@ bool Trajectory::GetNextAccelerationSwitchingPoint(
     {
       return true;
     }
-    if(discontinuity)
+    if (discontinuity)
     {
       const double before_path_vel
           = GetAccelerationMaxPathVelocity(switching_path_pos - eps);
@@ -938,7 +938,7 @@ Trajectory::GetTrajectorySegment(double time) const
   }
   else
   {
-    if(time < cached_time_)
+    if (time < cached_time_)
     {
       cached_trajectory_segment_ = trajectory_.begin();
     }

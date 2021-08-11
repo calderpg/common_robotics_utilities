@@ -33,7 +33,8 @@ struct ROSMessagePrinter
   template <typename T>
   static std::string Print(const T& message)
   {
-    return to_yaml(message);
+    constexpr bool use_flow_style = true;
+    return to_yaml(message, use_flow_style);
   }
 };
 #endif

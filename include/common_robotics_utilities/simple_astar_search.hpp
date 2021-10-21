@@ -479,12 +479,12 @@ inline AstarResult<T, Container> PerformAstarSearch(
     const std::function<double(const T&, const T&)>& heuristic_fn,
     const bool limit_pqueue_duplicates)
 {
-  const StateEqual equality_check;
+  const StateEqual equality_checker;
 
   // Make goal check function
   const auto goal_check_function = [&] (const T& current_state)
   {
-    return equality_check(current_state, goal_state);
+    return equality_checker(current_state, goal_state);
   };
 
   // Make heuristic helper function

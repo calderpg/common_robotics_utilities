@@ -5,6 +5,7 @@
 #include <limits>
 #include <map>
 #include <queue>
+#include <stdexcept>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -17,33 +18,34 @@ namespace simple_astar_search
 {
 /// Wrapper for P-Queue elements used in A* search. Contains the unique node_id,
 /// "backpointer" to the parent node_id, cost to come, and state value.
+template<typename T>
 class AstarPQueueElement
 {
 protected:
 
-  int64_t node_id_ = 0;
+  T state_;
   double cost_to_come_ = 0.0;
   double value_ = 0.0;
-  OwningMaybe<int64_t> back_pointer_;
+  OwningMaybe<T> back_pointer_;
 
 public:
 
-  AstarPQueueElement(const int64_t node_id, const int64_t back_pointer,
+  AstarPQueueElement(const T& state, const T& back_pointer,
                      const double cost_to_come, const double value)
-      : node_id_(node_id), cost_to_come_(cost_to_come), value_(value),
-        back_pointer_(OwningMaybe<int64_t>(back_pointer)) {}
+      : state_(state), cost_to_come_(cost_to_come), value_(value),
+        back_pointer_(OwningMaybe<T>(back_pointer)) {}
 
-  AstarPQueueElement(const int64_t node_id, const double cost_to_come,
+  AstarPQueueElement(const T& state, const double cost_to_come,
                      const double value)
-      : node_id_(node_id), cost_to_come_(cost_to_come), value_(value) {}
+      : state_(state), cost_to_come_(cost_to_come), value_(value) {}
 
-  int64_t NodeID() const { return node_id_; }
+  const T& State() const { return state_; }
 
-  int64_t BackPointer() const { return back_pointer_.Value(); }
+  const T& BackPointer() const { return back_pointer_.Value(); }
 
   bool HasBackPointer() const { return back_pointer_.HasValue(); }
 
-  const OwningMaybe<int64_t>& RawBackPointer() const { return back_pointer_; }
+  const OwningMaybe<T>& RawBackPointer() const { return back_pointer_; }
 
   double CostToCome() const { return cost_to_come_; }
 
@@ -51,12 +53,13 @@ public:
 };
 
 /// Comparator for AstarPQueueElements for use in std::priority_queue.
+template<typename T>
 class CompareAstarPQueueElementFn
 {
 public:
 
-  bool operator()(const AstarPQueueElement& lhs,
-                  const AstarPQueueElement& rhs) const
+  bool operator()(const AstarPQueueElement<T>& lhs,
+                  const AstarPQueueElement<T>& rhs) const
   {
     return lhs.Value() > rhs.Value();
   }
@@ -90,162 +93,215 @@ public:
   double PathCost() const { return path_cost_; }
 };
 
-/// Internally, A* plans over node ids, rather than node values.
-/// Search result is both path and path cost.
-/// Path is a vector of node_ids, and cost is the computed cost-to-come of the
-/// goal node.
-using AstarIndexResult = AstarResult<int64_t, std::vector<int64_t>>;
-
 /// Class to wrap the backpointer and cost-to-come, as used in the explored
 /// list in A*.
+template<typename T>
 class BackPointerAndCostToCome
 {
 private:
   double cost_to_come_ = std::numeric_limits<double>::infinity();
-  OwningMaybe<int64_t> back_pointer_;
+  OwningMaybe<T> back_pointer_;
 
 public:
   // TODO(calderpg) Once C++17 is required, remove the default constructor and
   // replace map[] with map.insert_or_assign().
   BackPointerAndCostToCome() {}
 
-  explicit BackPointerAndCostToCome(const AstarPQueueElement& pqueue_element)
+  explicit BackPointerAndCostToCome(const AstarPQueueElement<T>& pqueue_element)
       : cost_to_come_(pqueue_element.CostToCome()),
         back_pointer_(pqueue_element.RawBackPointer()) {}
 
-  int64_t BackPointer() const { return back_pointer_.Value(); }
+  const T& BackPointer() const { return back_pointer_.Value(); }
 
   bool HasBackPointer() const { return back_pointer_.HasValue(); }
 
-  const OwningMaybe<int64_t>& RawBackPointer() const { return back_pointer_; }
+  const OwningMaybe<T>& RawBackPointer() const { return back_pointer_; }
 
   double CostToCome() const { return cost_to_come_; }
 };
 
-using ExploredList = std::unordered_map<int64_t, BackPointerAndCostToCome>;
+template<typename T, typename StateHash=std::hash<T>,
+         typename StateEqual=std::equal_to<T>>
+using ExploredList =
+    std::unordered_map<T, BackPointerAndCostToCome<T>, StateHash, StateEqual>;
 
 /// Extract the result from the explored node map @param explored produced by A*
 /// search, with @param goal_id the node_id of the goal node.
-inline AstarIndexResult ExtractAstarResult(
-    const ExploredList& explored, const int64_t goal_id)
+template<typename T, typename Container=std::vector<T>,
+         typename StateHash=std::hash<T>, typename StateEqual=std::equal_to<T>>
+inline AstarResult<T, Container> ExtractAstarResult(
+    const ExploredList<T, StateHash, StateEqual>& explored, const T& goal_state)
 {
   // Check if a solution was found
-  const auto goal_state_itr = explored.find(goal_id);
+  const auto goal_state_itr = explored.find(goal_state);
   // If no solution found
   if (goal_state_itr == explored.end())
   {
-    return AstarIndexResult();
+    return AstarResult<T, Container>();
   }
   // If a solution was found
   else
   {
-    // Extract the path node ids in reverse order
-    std::vector<int64_t> solution_path_ids;
-    solution_path_ids.push_back(goal_id);
-    OwningMaybe<int64_t> current_back_pointer =
+    // Extract the path states in reverse order
+    Container solution_path;
+    solution_path.push_back(goal_state);
+
+    OwningMaybe<T> current_back_pointer =
         goal_state_itr->second.RawBackPointer();
+
     while (current_back_pointer)
     {
-      const int64_t current_id = current_back_pointer.Value();
+      const T& backpointer_state = current_back_pointer.Value();
       // Using map.at(key) throws an exception if key not found
       // This provides bounds safety check
-      const auto& current_state = explored.at(current_id);
-      solution_path_ids.push_back(current_id);
+      const auto& current_state = explored.at(backpointer_state);
+      solution_path.push_back(backpointer_state);
       current_back_pointer = current_state.RawBackPointer();
     }
+
     // Reverse
-    std::reverse(solution_path_ids.begin(), solution_path_ids.end());
+    std::reverse(solution_path.begin(), solution_path.end());
+
     // Get the cost of the path
     const double solution_path_cost = goal_state_itr->second.CostToCome();
-    return AstarIndexResult(solution_path_ids, solution_path_cost);
+
+    return AstarResult<T, Container>(solution_path, solution_path_cost);
   }
 }
 
-/// Perform A* search. This implementation is somewhat different structurally
-/// from many implementations - it operates excusively on "node IDs" that
-/// uniquely and reproducibly identify a single state. This is used because A*
-/// needs to insert states into std::unordered_map and instead of refering to
-/// states and their hashes, we only refer to them by their IDs. This means you,
-/// the caller, need to maintain a mapping between IDs and values so that you
-/// can translate the IDs used here with the real values of the state. See the
-/// implementation below in PerformAstarSearch to see how this may be performed.
-/// @return Solution path between @param start_id and the goal (as defined by
-/// @goal_check_fn), if one exists, or an empty path.
-/// @param generate_valid_children_fn returns the node IDs of valid child states
-/// for the provided node ID together with the cost of moving from provided node
-/// to child node.
-/// @param heuristic_fn returns the heuristic value for the provided node ID.
+/// Wrapper for state with cost.
+template<typename T>
+class StateWithCost
+{
+private:
+  T state_;
+  double cost_ = 0.0;
+
+public:
+  StateWithCost() {}
+
+  explicit StateWithCost(const T& state) : state_(state) {}
+
+  StateWithCost(const T& state, const double cost)
+      : state_(state), cost_(cost)
+  {
+    if (cost_ < 0.0)
+    {
+      throw std::invalid_argument("cost cannot be negative");
+    }
+  }
+
+  const T& State() const { return state_; }
+
+  double Cost() const { return cost_; }
+};
+
+template<typename T>
+using StatesWithCosts = std::vector<StateWithCost<T>>;
+
+/// Perform A* search.
+/// @return Solution path between one of the starting states in
+/// @param start_states and the goal (as defined by @param goal_check_fn), if
+/// one exists, or an empty path.
+/// @param generate_valid_children_fn returns the valid child states for the
+/// provided state together with the cost of moving from provided state to the
+/// child state.
+/// @param heuristic_fn returns the heuristic value for the provided state.
 /// @param limit_pqueue_duplicates selects whether to use a second hashtable to
 /// track elements in the pqueue and reduce duplicates added to the pqueue. This
 /// usually improves performance.
-inline AstarIndexResult PerformGenericAstarSearch(
-    const std::map<int64_t, double>& start_ids,
-    const std::function<bool(const int64_t)>& goal_check_fn,
-    const std::function<std::map<int64_t, double>(
-        const int64_t)>& generate_valid_children_fn,
-    const std::function<double(const int64_t)>& heuristic_fn,
+template<typename T, typename Container=std::vector<T>,
+         typename StateHash=std::hash<T>, typename StateEqual=std::equal_to<T>>
+inline AstarResult<T, Container> PerformAstarSearch(
+    const StatesWithCosts<T>& start_states,
+    const std::function<bool(const T&)>& goal_check_fn,
+    const std::function<StatesWithCosts<T>(const T&)>&
+        generate_valid_children_fn,
+    const std::function<double(const T&)>& heuristic_fn,
     const bool limit_pqueue_duplicates)
 {
-  // Enforced sanity checks
-  int64_t best_start_meeting_goal_id = -1;
-  double best_start_meeting_goal_cost = std::numeric_limits<double>::infinity();
-  for (const auto& start_id_and_cost : start_ids)
+  // Sanity check
+  if (start_states.empty())
   {
-    const int64_t start_id = start_id_and_cost.first;
-    const double start_cost = start_id_and_cost.second;
-    if (goal_check_fn(start_id))
+    throw std::invalid_argument("start_states cannot be empty");
+  }
+
+  // Check if a provided start state meets goal conditions
+  int64_t best_start_meeting_goal_index = -1;
+  double best_start_meeting_goal_cost = std::numeric_limits<double>::infinity();
+
+  for (int64_t idx = 0; idx < static_cast<int64_t>(start_states.size()); idx++)
+  {
+    const T& start_state = start_states.at(idx).State();
+    const double start_cost = start_states.at(idx).Cost();
+    if (goal_check_fn(start_state))
     {
       if (start_cost < best_start_meeting_goal_cost)
       {
-        best_start_meeting_goal_id = start_id;
+        best_start_meeting_goal_index = idx;
         best_start_meeting_goal_cost = start_cost;
       }
     }
   }
-  if (best_start_meeting_goal_id >= 0)
+
+  // Return early if we already have a solution
+  if (best_start_meeting_goal_index >= 0)
   {
-    return AstarIndexResult(
-        {best_start_meeting_goal_id}, best_start_meeting_goal_cost);
+    const auto& best_start_meeting_goal =
+        start_states.at(best_start_meeting_goal_index);
+
+    Container solution;
+    solution.push_back(best_start_meeting_goal.State());
+
+    return AstarResult<T, Container>(solution, best_start_meeting_goal.Cost());
   }
+
   // Setup
-  std::priority_queue<AstarPQueueElement,
-                      std::vector<AstarPQueueElement>,
-                      CompareAstarPQueueElementFn> queue;
+  std::priority_queue<AstarPQueueElement<T>,
+                      std::vector<AstarPQueueElement<T>>,
+                      CompareAstarPQueueElementFn<T>> queue;
+
   // Optional map to reduce the number of duplicate items added to the pqueue
   // Key is the node ID
   // Value is cost-to-come
-  std::unordered_map<int64_t, double> queue_members_map;
+  std::unordered_map<T, double, StateHash, StateEqual> queue_members_map;
+
   // Key is the node ID
   // Value is backpointer + cost-to-come
   // backpointer is the parent node ID
-  ExploredList explored;
+  ExploredList<T, StateHash, StateEqual> explored;
+
   // Initialize
-  for (const auto& start_id_and_cost : start_ids)
+  for (const auto& start_state_and_cost : start_states)
   {
-    const int64_t start_id = start_id_and_cost.first;
-    const double start_cost = start_id_and_cost.second;
-    queue.push(
-        AstarPQueueElement(start_id, start_cost, heuristic_fn(start_id)));
+    const T& start_state = start_state_and_cost.State();
+    const double start_cost = start_state_and_cost.Cost();
+    queue.push(AstarPQueueElement<T>(
+        start_state, start_cost, heuristic_fn(start_state)));
     if (limit_pqueue_duplicates)
     {
-      queue_members_map[start_id] = start_cost;
+      queue_members_map[start_state] = start_cost;
     }
   }
+
   // Storage for the goal state (once found)
-  OwningMaybe<int64_t> goal_id;
+  OwningMaybe<T> goal_state;
+
   // Search
   while (queue.size() > 0)
   {
     // Get the top of the priority queue
-    const AstarPQueueElement top_node = queue.top();
+    const AstarPQueueElement<T> top_node = queue.top();
     queue.pop();
+
     // Remove from queue map if necessary
     if (limit_pqueue_duplicates)
     {
-      queue_members_map.erase(top_node.NodeID());
+      queue_members_map.erase(top_node.State());
     }
+
     // Check if the node has already been discovered
-    const auto node_explored_find_itr = explored.find(top_node.NodeID());
+    const auto node_explored_find_itr = explored.find(top_node.State());
     // We have not been here before, or it is cheaper now
     const bool node_in_explored = (node_explored_find_itr != explored.end());
     const bool node_explored_is_better
@@ -253,29 +309,35 @@ inline AstarIndexResult PerformGenericAstarSearch(
           ? (top_node.CostToCome()
               >= node_explored_find_itr->second.CostToCome())
           : false;
+
     if (!node_explored_is_better)
     {
       // Add to the explored list
-      explored[top_node.NodeID()] = BackPointerAndCostToCome(top_node);
+      explored[top_node.State()] = BackPointerAndCostToCome<T>(top_node);
+
       // Check if we have reached the goal
-      if (goal_check_fn(top_node.NodeID()))
+      if (goal_check_fn(top_node.State()))
       {
-        goal_id = OwningMaybe<int64_t>(top_node.NodeID());
+        goal_state = OwningMaybe<T>(top_node.State());
         break;
       }
+
       // Generate valid children
-      const std::map<int64_t, double> children_with_costs
-          = generate_valid_children_fn(top_node.NodeID());
+      const StatesWithCosts<T> children_with_costs
+          = generate_valid_children_fn(top_node.State());
+
       for (const auto& child_with_cost : children_with_costs)
       {
-        const int64_t child_node_id = child_with_cost.first;
-        const double parent_to_child_cost = child_with_cost.second;
+        const T& child_state = child_with_cost.State();
+        const double parent_to_child_cost = child_with_cost.Cost();
+
         // Compute the cost-to-come for the new child
         const double parent_cost_to_come = top_node.CostToCome();
         const double child_cost_to_come
             = parent_cost_to_come + parent_to_child_cost;
+
         // Check if the child state has already been explored
-        const auto child_explored_find_itr = explored.find(child_node_id);
+        const auto child_explored_find_itr = explored.find(child_state);
         // Check if it has already been explored with lower cost
         const bool child_in_explored
             = (child_explored_find_itr != explored.end());
@@ -284,12 +346,13 @@ inline AstarIndexResult PerformGenericAstarSearch(
               ? (child_cost_to_come
                   >= child_explored_find_itr->second.CostToCome())
               : false;
+
         // Check if the child state is already in the queue
         bool queue_is_better = false;
         if (limit_pqueue_duplicates)
         {
           const auto queue_members_map_itr
-              = queue_members_map.find(child_node_id);
+              = queue_members_map.find(child_state);
           const bool in_queue
               = (queue_members_map_itr != queue_members_map.end());
           queue_is_better
@@ -297,226 +360,146 @@ inline AstarIndexResult PerformGenericAstarSearch(
                 ? (child_cost_to_come >= queue_members_map_itr->second)
                 : false;
         }
+
         // Only add the new state if we need to
         if (!explored_child_is_better && !queue_is_better)
         {
           // Compute the heuristic for the child
-          const double child_heuristic = heuristic_fn(child_node_id);
+          const double child_heuristic = heuristic_fn(child_state);
           // Compute the child value
           const double child_value = child_cost_to_come + child_heuristic;
           // Push onto the pqueue
-          queue.push(AstarPQueueElement(child_node_id, top_node.NodeID(),
-                                        child_cost_to_come, child_value));
+          queue.push(AstarPQueueElement<T>(
+              child_state, top_node.State(), child_cost_to_come, child_value));
           // Add to the queue member map
           if (limit_pqueue_duplicates)
           {
-            queue_members_map[child_node_id] = child_cost_to_come;
+            queue_members_map[child_state] = child_cost_to_come;
           }
         }
       }
     }
   }
-  if (goal_id)
+
+  // Package search result
+  if (goal_state)
   {
-    return ExtractAstarResult(explored, goal_id.Value());
+    return ExtractAstarResult<T, Container, StateHash, StateEqual>(
+        explored, goal_state.Value());
   }
   else
   {
-    return AstarIndexResult();
+    return AstarResult<T, Container>();
   }
 }
 
-/// Perform A* search. This implementation is somewhat different structurally
-/// from many implementations - it operates excusively on "node IDs" that
-/// uniquely and reproducibly identify a single state. This is used because A*
-/// needs to insert states into std::unordered_map and instead of refering to
-/// states and their hashes, we only refer to them by their IDs. This means you,
-/// the caller, need to maintain a mapping between IDs and values so that you
-/// can translate the IDs used here with the real values of the state. See the
-/// implementation below in PerformAstarSearch to see how this may be performed.
-/// @return Solution path between @param start_id and the goal (as defined by
-/// @goal_check_fn), if one exists, or an empty path.
-/// @param generate_children_fn returns the node IDs of child states for the
-/// provided node ID, @param edge_validity_check_fn returns true if the edge
-/// between provided node IDs is valid, @param distance_fn returns the distance
-/// between provided node IDs, and @param heuristic_fn returns the heuristic
-/// value for the provided node ID. @param limit_pqueue_duplicates selects
-/// whether to use a second hashtable to track elements in the pqueue and reduce
-/// duplicates added to the pqueue. This usually improves performance.
-/// Note that @param generate_children_fn and @param edge_validity_check overlap
-/// in functionality and that @param edge_validity_check can always return true
-/// if @param generate_children_fn always generates valid children. In such
-/// cases, consider using the above function instead, which takes valid child
-/// nodes plus cost.
-inline AstarIndexResult PerformGenericAstarSearch(
-    const std::map<int64_t, double>& start_ids,
-    const std::function<bool(const int64_t)>& goal_check_fn,
-    const std::function<std::vector<int64_t>(
-      const int64_t)>& generate_children_fn,
-    const std::function<bool(const int64_t,
-                             const int64_t)>& edge_validity_check_fn,
-    const std::function<double(const int64_t, const int64_t)>& distance_fn,
-    const std::function<double(const int64_t)>& heuristic_fn,
-    const bool limit_pqueue_duplicates)
-{
-  // Make a valid-child-states-only function
-  const auto valid_child_state_function = [&] (const int64_t current_node_id)
-  {
-    std::map<int64_t, double> valid_child_states_and_costs;
-    // Generate possible children
-    const std::vector<int64_t> candidate_children
-        = generate_children_fn(current_node_id);
-    // Loop through potential child nodes
-    for (const int64_t child_node_id : candidate_children)
-    {
-      // Check if the top node->child edge is valid
-      if (edge_validity_check_fn(current_node_id, child_node_id))
-      {
-        const double parent_to_child_cost
-              = distance_fn(current_node_id, child_node_id);
-        valid_child_states_and_costs[child_node_id] = parent_to_child_cost;
-      }
-    }
-    return valid_child_states_and_costs;
-  };
-  return PerformGenericAstarSearch(
-      start_ids, goal_check_fn, valid_child_state_function, heuristic_fn,
-      limit_pqueue_duplicates);
-}
-
-/// Perform A* search. This implementation is somewhat different structurally
-/// from many implementations - it operates excusively on "node IDs" that
-/// uniquely and reproducibly identify a single state. This is used because A*
-/// needs to insert states into std::unordered_map and instead of refering to
-/// states and their hashes, we only refer to them by their IDs. This means you,
-/// the caller, need to maintain a mapping between IDs and values so that you
-/// can translate the IDs used here with the real values of the state. See the
-/// implementation below in PerformAstarSearch to see how this may be performed.
-/// @return Solution path between @param start_id and @param goal_id, if one
-/// exists, or an empty path. @param generate_children_fn returns the node IDs
-/// of child states for the provided node ID, @param edge_validity_check_fn
-/// returns true if the edge between provided node IDs is valid, @param
-/// distance_fn returns the distance between provided node IDs, and @param
-/// heuristic_fn returns the heuristic value between provided node IDs.
+/// Perform A* search.
+/// @return Solution path between one of the starting states in
+/// @param start_states and the goal (as defined by @param goal_check_fn), if
+/// one exists, or an empty path.
+/// @param generate_children_fn returns the child states for the provided state
+/// together with the cost of moving from provided state to the child state.
+/// @param edge_validity_check_fn returns true if the edge between the provided
+/// states is valid.
+/// @param distance_fn returns the distance between the provided states.
+/// @param heuristic_fn returns the heuristic value for the provided state.
 /// @param limit_pqueue_duplicates selects whether to use a second hashtable to
 /// track elements in the pqueue and reduce duplicates added to the pqueue. This
 /// usually improves performance.
 /// Note that @param generate_children_fn and @param edge_validity_check overlap
 /// in functionality and that @param edge_validity_check can always return true
-/// if @param generate_children_fn always generates valid children.
-inline AstarIndexResult PerformGenericAstarSearch(
-    const int64_t start_id, const int64_t goal_id,
-    const std::function<std::vector<int64_t>(
-      const int64_t)>& generate_children_fn,
-    const std::function<bool(const int64_t,
-                             const int64_t)>& edge_validity_check_fn,
-    const std::function<double(const int64_t, const int64_t)>& distance_fn,
-    const std::function<double(const int64_t, const int64_t)>& heuristic_fn,
+/// if @param generate_children_fn always generates valid children. In such
+/// cases, consider using the above function instead, which takes valid child
+/// nodes plus cost.
+template<typename T, typename Container=std::vector<T>,
+         typename StateHash=std::hash<T>, typename StateEqual=std::equal_to<T>>
+inline AstarResult<T, Container> PerformAstarSearch(
+    const StatesWithCosts<T>& start_states,
+    const std::function<bool(const T&)>& goal_check_fn,
+    const std::function<Container(const T&)>& generate_children_fn,
+    const std::function<bool(const T&, const T&)>&
+        edge_validity_check_fn,
+    const std::function<double(const T&, const T&)>& distance_fn,
+    const std::function<double(const T&)>& heuristic_fn,
     const bool limit_pqueue_duplicates)
 {
-  // Make goal check function
-  const auto goal_check_function = [&] (const int64_t node_id)
+  // Make a valid-child-states-only function
+  const auto valid_child_state_function = [&] (const T& current_state)
   {
-    return (node_id == goal_id);
+    StatesWithCosts<T> valid_child_states_and_costs;
+
+    // Generate possible children
+    const Container candidate_children = generate_children_fn(current_state);
+
+    // Loop through potential child nodes
+    for (const T& child_state : candidate_children)
+    {
+      // Check if the top node->child edge is valid
+      if (edge_validity_check_fn(current_state, child_state))
+      {
+        const double parent_to_child_cost
+              = distance_fn(current_state, child_state);
+        valid_child_states_and_costs.emplace_back(
+            child_state, parent_to_child_cost);
+      }
+    }
+    return valid_child_states_and_costs;
   };
-  // Make heuristic helper function
-  const auto heuristic_function = [&] (const int64_t node_id)
-  {
-    return heuristic_fn(node_id, goal_id);
-  };
-  std::map<int64_t, double> start_ids;
-  start_ids[start_id] = 0.0;
-  return PerformGenericAstarSearch(
-      start_ids, goal_check_function, generate_children_fn,
-      edge_validity_check_fn, distance_fn, heuristic_function,
+
+  return PerformAstarSearch<T, Container, StateHash, StateEqual>(
+      start_states, goal_check_fn, valid_child_state_function, heuristic_fn,
       limit_pqueue_duplicates);
 }
 
 /// Perform A* search.
-/// @return Solution path between @param start and @param goal, if one
-/// exists, or an empty path. @param generate_children_fn returns the child
-/// states for the provided state, @param edge_validity_check_fn returns true if
-/// the edge between provided states is valid, @param distance_fn returns the
-///  distance between provided states, and @param heuristic_fn returns the
-///  heuristic value between provided states. @param state_id_fn produces
-/// distinct state IDs (for all states, two states are identical if their IDs
-/// are the same, and if two states are different, their IDs must be different).
-///  @param limit_pqueue_duplicates selects whether to use a second hashtable to
+/// @return Solution path between the start state and goal state, if one exists,
+/// or an empty path.
+/// @param generate_children_fn returns the child states for the provided state
+/// together with the cost of moving from provided state to the child state.
+/// @param edge_validity_check_fn returns true if the edge between the provided
+/// states is valid.
+/// @param distance_fn returns the distance between the provided states.
+/// @param heuristic_fn returns the heuristic value for the provided state.
+/// @param limit_pqueue_duplicates selects whether to use a second hashtable to
 /// track elements in the pqueue and reduce duplicates added to the pqueue. This
 /// usually improves performance.
 /// Note that @param generate_children_fn and @param edge_validity_check overlap
 /// in functionality and that @param edge_validity_check can always return true
-/// if @param generate_children_fn always generates valid children.
-template<typename T, typename Container=std::vector<T>>
+/// if @param generate_children_fn always generates valid children. In such
+/// cases, consider using the above function instead, which takes valid child
+/// nodes plus cost.
+template<typename T, typename Container=std::vector<T>,
+         typename StateHash=std::hash<T>, typename StateEqual=std::equal_to<T>>
 inline AstarResult<T, Container> PerformAstarSearch(
-    const T& start, const T& goal,
+    const T& start_state, const T& goal_state,
     const std::function<Container(const T&)>& generate_children_fn,
-    const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
+    const std::function<bool(const T&, const T&)>&
+        edge_validity_check_fn,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<double(const T&, const T&)>& heuristic_fn,
-    const std::function<int64_t(const T&)>& state_id_fn,
     const bool limit_pqueue_duplicates)
 {
-  // Make the state storage and add the start & goal states
-  std::unordered_map<int64_t, T> state_map;
-  const int64_t start_id = state_id_fn(start);
-  state_map[start_id] = start;
-  const int64_t goal_id = state_id_fn(goal);
-  state_map[goal_id] = goal;
-  // Bind new helper functions
-  const std::function<std::vector<int64_t>(
-    const int64_t)> generate_children_function = [&] (const int64_t state_id)
+  const StateEqual equality_checker;
+
+  // Make goal check function
+  const auto goal_check_function = [&] (const T& current_state)
   {
-    const T& state = state_map.at(state_id);
-    const auto child_states = generate_children_fn(state);
-    std::vector<int64_t> child_state_ids(child_states.size());
-    for (size_t idx = 0; idx < child_states.size(); idx++)
-    {
-      const T& child_state = child_states.at(idx);
-      const int64_t child_state_id = state_id_fn(child_state);
-      state_map[child_state_id] = child_state;
-      child_state_ids.at(idx) = child_state_id;
-    }
-    return child_state_ids;
+    return equality_checker(current_state, goal_state);
   };
-  const std::function<bool(const int64_t,
-                           const int64_t)> edge_validity_check_function
-      = [&] (const int64_t start_state_id, const int64_t end_state_id)
+
+  // Make heuristic helper function
+  const auto heuristic_function = [&] (const T& current_state)
   {
-    const T& start_state = state_map.at(start_state_id);
-    const T& end_state = state_map.at(end_state_id);
-    return edge_validity_check_fn(start_state, end_state);
+    return heuristic_fn(current_state, goal_state);
   };
-  const std::function<double(const int64_t, const int64_t)> distance_function
-      = [&] (const int64_t start_state_id, const int64_t end_state_id)
-  {
-    const T& start_state = state_map.at(start_state_id);
-    const T& end_state = state_map.at(end_state_id);
-    return distance_fn(start_state, end_state);
-  };
-  const std::function<double(const int64_t, const int64_t)> heuristic_function
-      = [&] (const int64_t start_state_id, const int64_t end_state_id)
-  {
-    const T& start_state = state_map.at(start_state_id);
-    const T& end_state = state_map.at(end_state_id);
-    return heuristic_fn(start_state, end_state);
-  };
-  // Call A*
-  const auto astar_solution
-      = PerformGenericAstarSearch(
-          start_id, goal_id, generate_children_function,
-          edge_validity_check_function, distance_function, heuristic_function,
-          limit_pqueue_duplicates);
-  // Extract the solution path
-  Container solution_path;
-  solution_path.reserve(astar_solution.Path().size());
-  for (const int64_t state_id : astar_solution.Path())
-  {
-    const T& solution_path_state = state_map.at(state_id);
-    solution_path.push_back(solution_path_state);
-  }
-  solution_path.shrink_to_fit();
-  return AstarResult<T, Container>(solution_path, astar_solution.PathCost());
+
+  StatesWithCosts<T> start_states;
+  start_states.emplace_back(start_state);
+
+  return PerformAstarSearch<T, Container, StateHash, StateEqual>(
+      start_states, goal_check_function, generate_children_fn,
+      edge_validity_check_fn, distance_fn, heuristic_function,
+      limit_pqueue_duplicates);
 }
 }  // namespace simple_astar_search
 }  // namespace common_robotics_utilities

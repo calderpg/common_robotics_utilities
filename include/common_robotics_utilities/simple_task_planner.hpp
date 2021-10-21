@@ -14,7 +14,6 @@
 
 #include <common_robotics_utilities/simple_astar_search.hpp>
 #include <common_robotics_utilities/simple_knearest_neighbors.hpp>
-#include <common_robotics_utilities/utility.hpp>
 
 namespace common_robotics_utilities
 {
@@ -121,12 +120,6 @@ private:
   std::string name_;
 };
 
-/// Generate a distinct state identifier. Two states with the same identifier
-/// must be equal and, likewise, two distinct states must not share the same
-/// identifier.
-template<typename State>
-using StateIdentifierFunction = std::function<int64_t(const State&)>;
-
 /// Wrapper for an action primitive and the estimated cost of applying it for a
 /// given transition.
 template<typename State, typename Container=std::vector<State>>
@@ -160,7 +153,8 @@ private:
 
 /// Stores a collection of action primitives, enforcing name uniqueness and
 /// providing useful helpers.
-template<typename State, typename Container=std::vector<State>>
+template<typename State, typename Container=std::vector<State>,
+         typename StateEqual=std::equal_to<State>>
 class ActionPrimitiveCollection
 {
 public:
@@ -169,14 +163,7 @@ public:
   using ActionPrimitiveAndEstimatedCostType =
       ActionPrimitiveAndEstimatedCost<State, Container>;
 
-  explicit ActionPrimitiveCollection(
-      const StateIdentifierFunction<State>& state_identifier_fn)
-      : state_identifier_fn_(state_identifier_fn) {}
-
-  int64_t GetStateIdentifier(const State& state) const
-  {
-    return state_identifier_fn_(state);
-  }
+  ActionPrimitiveCollection() {}
 
   void RegisterPrimitive(const ActionPrimitivePtrType& new_primitive)
   {
@@ -227,8 +214,6 @@ public:
   ActionPrimitiveAndEstimatedCostType SelectBestPrimitiveForTransition(
       const State& start_state, const State& target_state) const
   {
-    const int64_t target_state_identifier = GetStateIdentifier(target_state);
-
     // Get the cost for applying each primitive. If the primitive cannot be
     // applied to the starting state, or does not produce the target state, it
     // receives a cost of infinity.
@@ -242,10 +227,9 @@ public:
       if (primitive->IsCandidate(start_state))
       {
         const auto outcomes = primitive->GetOutcomes(start_state);
-        for (const auto& outcome : outcomes)
+        for (const auto& outcome_state : outcomes)
         {
-          const int64_t outcome_state_identifier = GetStateIdentifier(outcome);
-          if (outcome_state_identifier == target_state_identifier)
+          if (state_equality_checker_(outcome_state, target_state))
           {
             const double estimated_action_cost =
                 primitive->EstimateActionCost(start_state, target_state);
@@ -325,7 +309,7 @@ public:
   }
 
 private:
-  StateIdentifierFunction<State> state_identifier_fn_;
+  StateEqual state_equality_checker_;
   ActionPrimitivePtrTypeVector primitives_;
 };
 
@@ -347,54 +331,22 @@ using TaskExecutionCompleteFunction = std::function<bool(const State&)>;
 template<typename State, typename Container=std::vector<State>>
 using TaskStateAStarResult = simple_astar_search::AstarResult<State, Container>;
 
-/// If operator == has been provided, we use it as a sanity check.
-template<typename State>
-void AddStateImpl(
-    std::unordered_map<int64_t, State>& state_map, const int64_t state_id,
-    const State& state, std::true_type)
-{
-  const auto result = state_map.insert(std::make_pair(state_id, state));
-  // If the state was not inserted, a state with the same ID already exists.
-  if (!result.second && !(*result.first == state))
-  {
-    throw std::runtime_error("State IDs are not unique");
-  }
-}
-
-/// If operator == has not been provided, don't add the sanity check.
-template<typename State>
-void AddStateImpl(
-    std::unordered_map<int64_t, State>& state_map, const int64_t state_id,
-    const State& state, std::false_type)
-{
-  state_map.insert(std::make_pair(state_id, state));
-}
-
-template<typename State, typename Container=std::vector<State>>
+template<typename State, typename Container=std::vector<State>,
+         typename StateHash=std::hash<State>,
+         typename StateEqual=std::equal_to<State>>
 TaskStateAStarResult<State, Container> PlanTaskStateSequence(
-    const ActionPrimitiveCollection<State, Container>& primitive_collection,
+    const ActionPrimitiveCollection<State, Container, StateEqual>&
+        primitive_collection,
     const TaskSequenceCompleteFunction<State>& task_sequence_complete_fn,
     const State& start_state,
     const StateHeuristicFunction<State>& state_heuristic_fn = {})
 {
-  std::unordered_map<int64_t, State> state_map;
-  const int64_t start_id = primitive_collection.GetStateIdentifier(start_state);
-  state_map[start_id] = start_state;
-
   // Assemble helper functions.
-  const std::function<bool(const int64_t)> goal_check_function =
-      [&](const int64_t current_state_id)
+  const std::function<simple_astar_search::StatesWithCosts<State>(
+      const State&)> generate_valid_children_function =
+          [&] (const State& current_state)
   {
-    const State& current_state = state_map.at(current_state_id);
-    return task_sequence_complete_fn(current_state);
-  };
-
-  const std::function<std::map<int64_t, double>(const int64_t)>
-      generate_valid_children_function = [&] (const int64_t current_state_id)
-  {
-    const State& current_state = state_map.at(current_state_id);
-
-    std::map<int64_t, double> child_states_with_costs;
+    simple_astar_search::StatesWithCosts<State> child_states_with_costs;
 
     for (const auto& primitive : primitive_collection.Primitives())
     {
@@ -403,14 +355,9 @@ TaskStateAStarResult<State, Container> PlanTaskStateSequence(
         const auto outcomes = primitive->GetOutcomes(current_state);
         for (const State& outcome_state : outcomes)
         {
-          const int64_t outcome_state_id =
-              primitive_collection.GetStateIdentifier(outcome_state);
-          AddStateImpl<State>(
-              state_map, outcome_state_id, outcome_state,
-              utility::HasOperatorEquals<State>());
-
-          child_states_with_costs[outcome_state_id] =
-              primitive->EstimateActionCost(current_state, outcome_state);
+          child_states_with_costs.emplace_back(
+              outcome_state,
+              primitive->EstimateActionCost(current_state, outcome_state));
         }
       }
     }
@@ -418,12 +365,11 @@ TaskStateAStarResult<State, Container> PlanTaskStateSequence(
     return child_states_with_costs;
   };
 
-  const std::function<double(const int64_t)> heuristic_function =
-      [&] (const int64_t current_state_id)
+  const std::function<double(const State&)> heuristic_function =
+      [&] (const State& current_state)
   {
     if (state_heuristic_fn)
     {
-      const State& current_state = state_map.at(current_state_id);
       return state_heuristic_fn(current_state);
     }
     else
@@ -432,23 +378,16 @@ TaskStateAStarResult<State, Container> PlanTaskStateSequence(
     }
   };
 
-  std::map<int64_t, double> start_ids;
-  start_ids[start_id] = 0.0;
+  simple_astar_search::StatesWithCosts<State> start_states;
+  start_states.emplace_back(start_state, 0.0);
+
   const bool limit_pqueue_duplicates = true;
 
-  const auto astar_solution = simple_astar_search::PerformGenericAstarSearch(
-      start_ids, goal_check_function, generate_valid_children_function,
-      heuristic_function, limit_pqueue_duplicates);
-
-  Container solution_path;
-  solution_path.reserve(astar_solution.Path().size());
-  for (const int64_t state_id : astar_solution.Path()) {
-    const State& solution_path_state = state_map.at(state_id);
-    solution_path.push_back(solution_path_state);
-  }
-  solution_path.shrink_to_fit();
-  return TaskStateAStarResult<State, Container>(
-      solution_path, astar_solution.PathCost());
+  return simple_astar_search::PerformAstarSearch
+      <State, Container, StateHash, StateEqual>(
+          start_states, task_sequence_complete_fn,
+          generate_valid_children_function, heuristic_function,
+          limit_pqueue_duplicates);
 }
 
 /// Wrapper for an action primitive, the estimated cost of applying it for a
@@ -491,9 +430,12 @@ private:
   int64_t selected_outcome_index_ = -1;
 };
 
-template<typename State, typename Container=std::vector<State>>
+template<typename State, typename Container=std::vector<State>,
+         typename StateHash=std::hash<State>,
+         typename StateEqual=std::equal_to<State>>
 NextPrimitiveToExecute<State, Container> GetNextPrimitiveToExecute(
-    const ActionPrimitiveCollection<State, Container>& primitive_collection,
+    const ActionPrimitiveCollection<State, Container, StateEqual>&
+        primitive_collection,
     const TaskSequenceCompleteFunction<State>& task_sequence_complete_fn,
     const Container& potential_outcome_states,
     const StateHeuristicFunction<State>& state_heuristic_fn = {})
@@ -509,9 +451,10 @@ NextPrimitiveToExecute<State, Container> GetNextPrimitiveToExecute(
 
   for (size_t idx = 0; idx < potential_outcome_states.size(); idx++)
   {
-    outcome_task_sequences.at(idx) = PlanTaskStateSequence<State, Container>(
-        primitive_collection, task_sequence_complete_fn,
-        potential_outcome_states.at(idx), state_heuristic_fn);
+    outcome_task_sequences.at(idx) =
+        PlanTaskStateSequence<State, Container, StateHash, StateEqual>(
+            primitive_collection, task_sequence_complete_fn,
+            potential_outcome_states.at(idx), state_heuristic_fn);
   }
 
   // Get the cheapest outcome in terms of task sequence cost.
@@ -561,9 +504,12 @@ NextPrimitiveToExecute<State, Container> GetNextPrimitiveToExecute(
   }
 }
 
-template<typename State, typename Container=std::vector<State>>
+template<typename State, typename Container=std::vector<State>,
+         typename StateHash=std::hash<State>,
+         typename StateEqual=std::equal_to<State>>
 Container PerformSingleTaskExecution(
-    const ActionPrimitiveCollection<State, Container>& primitive_collection,
+    const ActionPrimitiveCollection<State, Container, StateEqual>&
+        primitive_collection,
     const TaskSequenceCompleteFunction<State>& task_sequence_complete_fn,
     const Container& start_states,
     const int32_t max_primitive_executions = -1,
@@ -585,9 +531,10 @@ Container PerformSingleTaskExecution(
                         max_primitive_executions < 0))
   {
     // Identify the selected outcome state and the next primitive to execute.
-    const auto next_to_execute = GetNextPrimitiveToExecute<State, Container>(
-        primitive_collection, task_sequence_complete_fn, current_outcomes,
-        state_heuristic_fn);
+    const auto next_to_execute =
+        GetNextPrimitiveToExecute<State, Container, StateHash, StateEqual>(
+            primitive_collection, task_sequence_complete_fn, current_outcomes,
+            state_heuristic_fn);
 
     // Get the outcome state and add it to the execution trace.
     const State& selected_outcome =
@@ -640,9 +587,12 @@ Container PerformSingleTaskExecution(
   return task_state_trace;
 }
 
-template<typename State, typename Container=std::vector<State>>
+template<typename State, typename Container=std::vector<State>,
+         typename StateHash=std::hash<State>,
+         typename StateEqual=std::equal_to<State>>
 Container PerformSingleTaskExecution(
-    const ActionPrimitiveCollection<State, Container>& primitive_collection,
+    const ActionPrimitiveCollection<State, Container, StateEqual>&
+        primitive_collection,
     const TaskSequenceCompleteFunction<State>& task_sequence_complete_fn,
     const State& start_state,
     const int32_t max_primitive_executions = -1,
@@ -657,7 +607,7 @@ Container PerformSingleTaskExecution(
   Container start_states;
   start_states.push_back(start_state);
 
-  return PerformSingleTaskExecution<State, Container>(
+  return PerformSingleTaskExecution<State, Container, StateHash, StateEqual>(
       primitive_collection, task_sequence_complete_fn, start_states,
       max_primitive_executions, single_step, state_heuristic_fn,
       user_pre_action_callback_fn, user_post_outcome_callback_fn);

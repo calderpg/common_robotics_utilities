@@ -40,13 +40,24 @@ bool WaypointsEqual(const Waypoint& first, const Waypoint& second)
   return (first.first == second.first && first.second == second.second);
 }
 
-int64_t HashWaypoint(const Waypoint& waypoint)
+struct WaypointEqualer
 {
-  std::size_t hash_val = 0;
-  common_robotics_utilities::utility::hash_combine(
-      hash_val, waypoint.first, waypoint.second);
-  return static_cast<int64_t>(hash_val);
-}
+  bool operator()(const Waypoint& first, const Waypoint& second) const
+  {
+    return WaypointsEqual(first, second);
+  }
+};
+
+struct WaypointHasher
+{
+  size_t operator()(const Waypoint& waypoint) const
+  {
+    std::size_t hash_val = 0;
+    common_robotics_utilities::utility::hash_combine(
+        hash_val, waypoint.first, waypoint.second);
+    return hash_val;
+  }
+};
 
 double WaypointDistance(const Waypoint& start, const Waypoint& end)
 {
@@ -490,10 +501,10 @@ GTEST_TEST(PlanningTest, Test)
                   << print::Print(goal) << ")" << std::endl;
         const auto astar_path
             = simple_astar_search::PerformAstarSearch<
-                Waypoint, WaypointVector>(
+                Waypoint, WaypointVector, WaypointHasher, WaypointEqualer>(
                     start, goal, GenerateAllPossible8ConnectedChildren,
                     check_edge_validity_fn, WaypointDistance, WaypointDistance,
-                    HashWaypoint, true).Path();
+                    true).Path();
         check_plan(test_env, {start}, {goal}, astar_path);
         // Plan with RRT-Extend
         std::cout << "RRT-Extend Path (" << print::Print(start) << " to "

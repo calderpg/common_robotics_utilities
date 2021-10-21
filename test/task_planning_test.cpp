@@ -45,7 +45,6 @@ public:
     return rep;
   }
 
-#ifndef NO_OPERATOR_EQUALS
   bool operator==(const PutInBoxState& other) const
   {
     if (ObjectPutAway() == other.ObjectPutAway() &&
@@ -60,12 +59,55 @@ public:
       return false;
     }
   }
-#endif
 
 private:
   int32_t objects_available_ = -1;
   bool object_put_away_ = false;
   bool box_open_ = false;
+};
+
+struct PutInBoxStateHasher
+{
+  size_t operator()(const PutInBoxState& state) const
+  {
+    const uint64_t BOX_OPEN = 0x01;
+    const uint64_t BOX_CLOSED = 0x02;
+    const uint64_t OBJECT_NOT_PUT_AWAY = 0x04;
+    const uint64_t OBJECT_PUT_AWAY = 0x08;
+    const uint64_t OBJECTS_AVAILABLE_NONE = 0x10;
+    const uint64_t OBJECTS_AVAILABLE_SOME = 0x20;
+
+    uint64_t state_identifier = 0;
+
+    if (state.BoxOpen())
+    {
+      state_identifier |= BOX_OPEN;
+    }
+    else
+    {
+      state_identifier |= BOX_CLOSED;
+    }
+
+    if (state.ObjectPutAway())
+    {
+      state_identifier |= OBJECT_PUT_AWAY;
+    }
+    else
+    {
+      state_identifier |= OBJECT_NOT_PUT_AWAY;
+    }
+
+    if (state.ObjectsAvailable() > 0)
+    {
+      state_identifier |= OBJECTS_AVAILABLE_SOME;
+    }
+    else if (state.ObjectsAvailable() == 0)
+    {
+      state_identifier |= OBJECTS_AVAILABLE_NONE;
+    }
+
+    return static_cast<size_t>(state_identifier);
+  }
 };
 
 std::ostream& operator<<(std::ostream& strm, const PutInBoxState& state)
@@ -267,47 +309,6 @@ private:
   const std::string name_ = "PutObjectInBoxPrimitive";
 };
 
-int64_t GetStateIdentifier(const PutInBoxState& state)
-{
-  const uint64_t BOX_OPEN = 0x01;
-  const uint64_t BOX_CLOSED = 0x02;
-  const uint64_t OBJECT_NOT_PUT_AWAY = 0x04;
-  const uint64_t OBJECT_PUT_AWAY = 0x08;
-  const uint64_t OBJECTS_AVAILABLE_NONE = 0x10;
-  const uint64_t OBJECTS_AVAILABLE_SOME = 0x20;
-
-  uint64_t state_identifier = 0;
-
-  if (state.BoxOpen())
-  {
-    state_identifier |= BOX_OPEN;
-  }
-  else
-  {
-    state_identifier |= BOX_CLOSED;
-  }
-
-  if (state.ObjectPutAway())
-  {
-    state_identifier |= OBJECT_PUT_AWAY;
-  }
-  else
-  {
-    state_identifier |= OBJECT_NOT_PUT_AWAY;
-  }
-
-  if (state.ObjectsAvailable() > 0)
-  {
-    state_identifier |= OBJECTS_AVAILABLE_SOME;
-  }
-  else if (state.ObjectsAvailable() == 0)
-  {
-    state_identifier |= OBJECTS_AVAILABLE_NONE;
-  }
-
-  return static_cast<int64_t>(state_identifier);
-}
-
 bool IsTaskComplete(const PutInBoxState& state)
 {
   return ((state.ObjectsAvailable() == 0) && (state.BoxOpen() == false));
@@ -328,7 +329,7 @@ bool IsSingleExecutionComplete(const PutInBoxState& state)
 GTEST_TEST(TaskPlanningTest, Test)
 {
   // Collect the primitives
-  PutInBoxStatePrimitiveCollection primitive_collection(GetStateIdentifier);
+  PutInBoxStatePrimitiveCollection primitive_collection;
   primitive_collection.RegisterPrimitive(std::make_shared<OpenBoxPrimitive>());
   primitive_collection.RegisterPrimitive(std::make_shared<CloseBoxPrimitive>());
   primitive_collection.RegisterPrimitive(
@@ -348,8 +349,8 @@ GTEST_TEST(TaskPlanningTest, Test)
   for (const auto& starting_state : possible_starting_states)
   {
     std::cout << "Starting state:\n" << starting_state << std::endl;
-    const auto task_sequence_plan =
-        PlanTaskStateSequence<PutInBoxState, PutInBoxStateContainer>(
+    const auto task_sequence_plan = PlanTaskStateSequence
+        <PutInBoxState, PutInBoxStateContainer, PutInBoxStateHasher>(
             primitive_collection, IsSingleExecutionComplete, starting_state);
     std::cout << "Task sequence plan:\n"
               << print::Print(task_sequence_plan.Path(), false, "\n")
@@ -381,8 +382,8 @@ GTEST_TEST(TaskPlanningTest, Test)
       execution_start_state = PutInBoxState(
           -last.ObjectsAvailable(), false, last.BoxOpen());
     }
-    const auto execution_trace =
-        PerformSingleTaskExecution<PutInBoxState, PutInBoxStateContainer>(
+    const auto execution_trace = PerformSingleTaskExecution
+        <PutInBoxState, PutInBoxStateContainer, PutInBoxStateHasher>(
             primitive_collection, IsSingleExecutionComplete,
             execution_start_state, -1);
     std::cout << "Single execution of task in " << execution_trace.size()

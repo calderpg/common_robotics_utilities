@@ -346,7 +346,7 @@ inline void UpdateRoadMapEdges(
 template<typename T, typename Container=std::vector<T>>
 inline simple_astar_search::AstarResult<T, Container> ExtractSolution(
     const simple_graph::Graph<T>& roadmap,
-    const simple_astar_search::AstarIndexResult& astar_index_solution)
+    const simple_graph_search::AstarIndexResult& astar_index_solution)
 {
   Container solution_path;
   solution_path.reserve(astar_index_solution.Path().size());

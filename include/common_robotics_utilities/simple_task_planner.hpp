@@ -383,18 +383,19 @@ TaskStateAStarResult<State, Container> PlanTaskStateSequence(
 
   // Assemble helper functions.
   const std::function<bool(const int64_t)> goal_check_function =
-      [&](const int64_t current_state_id)
+      [&](const int64_t& current_state_id)
   {
     const State& current_state = state_map.at(current_state_id);
     return task_sequence_complete_fn(current_state);
   };
 
-  const std::function<std::map<int64_t, double>(const int64_t)>
-      generate_valid_children_function = [&] (const int64_t current_state_id)
+  const std::function<simple_astar_search::StatesWithCosts<int64_t>(
+      const int64_t&)> generate_valid_children_function =
+          [&] (const int64_t& current_state_id)
   {
     const State& current_state = state_map.at(current_state_id);
 
-    std::map<int64_t, double> child_states_with_costs;
+    simple_astar_search::StatesWithCosts<int64_t> child_states_with_costs;
 
     for (const auto& primitive : primitive_collection.Primitives())
     {
@@ -409,8 +410,9 @@ TaskStateAStarResult<State, Container> PlanTaskStateSequence(
               state_map, outcome_state_id, outcome_state,
               utility::HasOperatorEquals<State>());
 
-          child_states_with_costs[outcome_state_id] =
-              primitive->EstimateActionCost(current_state, outcome_state);
+          child_states_with_costs.emplace_back(
+              outcome_state_id,
+              primitive->EstimateActionCost(current_state, outcome_state));
         }
       }
     }
@@ -419,7 +421,7 @@ TaskStateAStarResult<State, Container> PlanTaskStateSequence(
   };
 
   const std::function<double(const int64_t)> heuristic_function =
-      [&] (const int64_t current_state_id)
+      [&] (const int64_t& current_state_id)
   {
     if (state_heuristic_fn)
     {
@@ -432,12 +434,13 @@ TaskStateAStarResult<State, Container> PlanTaskStateSequence(
     }
   };
 
-  std::map<int64_t, double> start_ids;
-  start_ids[start_id] = 0.0;
+  simple_astar_search::StatesWithCosts<int64_t> start_states;
+  start_states.emplace_back(start_id, 0.0);
+
   const bool limit_pqueue_duplicates = true;
 
-  const auto astar_solution = simple_astar_search::PerformGenericAstarSearch(
-      start_ids, goal_check_function, generate_valid_children_function,
+  const auto astar_solution = simple_astar_search::PerformAstarSearch<int64_t>(
+      start_states, goal_check_function, generate_valid_children_function,
       heuristic_function, limit_pqueue_duplicates);
 
   Container solution_path;

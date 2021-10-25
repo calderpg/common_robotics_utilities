@@ -339,7 +339,9 @@ TaskStateAStarResult<State, Container> PlanTaskStateSequence(
         primitive_collection,
     const TaskSequenceCompleteFunction<State>& task_sequence_complete_fn,
     const State& start_state,
-    const StateHeuristicFunction<State>& state_heuristic_fn = {})
+    const StateHeuristicFunction<State>& state_heuristic_fn = {},
+    const StateHash& state_hasher = StateHash(),
+    const StateEqual& state_equaler = StateEqual())
 {
   // Assemble helper functions.
   const std::function<simple_astar_search::StatesWithCosts<State>(
@@ -387,7 +389,7 @@ TaskStateAStarResult<State, Container> PlanTaskStateSequence(
       <State, Container, StateHash, StateEqual>(
           start_states, task_sequence_complete_fn,
           generate_valid_children_function, heuristic_function,
-          limit_pqueue_duplicates);
+          limit_pqueue_duplicates, state_hasher, state_equaler);
 }
 
 /// Wrapper for an action primitive, the estimated cost of applying it for a
@@ -438,7 +440,9 @@ NextPrimitiveToExecute<State, Container> GetNextPrimitiveToExecute(
         primitive_collection,
     const TaskSequenceCompleteFunction<State>& task_sequence_complete_fn,
     const Container& potential_outcome_states,
-    const StateHeuristicFunction<State>& state_heuristic_fn = {})
+    const StateHeuristicFunction<State>& state_heuristic_fn = {},
+    const StateHash& state_hasher = StateHash(),
+    const StateEqual& state_equaler = StateEqual())
 {
   if (potential_outcome_states.empty())
   {
@@ -454,7 +458,8 @@ NextPrimitiveToExecute<State, Container> GetNextPrimitiveToExecute(
     outcome_task_sequences.at(idx) =
         PlanTaskStateSequence<State, Container, StateHash, StateEqual>(
             primitive_collection, task_sequence_complete_fn,
-            potential_outcome_states.at(idx), state_heuristic_fn);
+            potential_outcome_states.at(idx), state_heuristic_fn,
+            state_hasher, state_equaler);
   }
 
   // Get the cheapest outcome in terms of task sequence cost.
@@ -515,6 +520,8 @@ Container PerformSingleTaskExecution(
     const int32_t max_primitive_executions = -1,
     const bool single_step = false,
     const StateHeuristicFunction<State>& state_heuristic_fn = {},
+    const StateHash& state_hasher = StateHash(),
+    const StateEqual& state_equaler = StateEqual(),
     const std::function<void(
         const State&, const ActionPrimitivePtr<State, Container>&)>&
             user_pre_action_callback_fn = {},
@@ -534,7 +541,7 @@ Container PerformSingleTaskExecution(
     const auto next_to_execute =
         GetNextPrimitiveToExecute<State, Container, StateHash, StateEqual>(
             primitive_collection, task_sequence_complete_fn, current_outcomes,
-            state_heuristic_fn);
+            state_heuristic_fn, state_hasher, state_equaler);
 
     // Get the outcome state and add it to the execution trace.
     const State& selected_outcome =
@@ -598,6 +605,8 @@ Container PerformSingleTaskExecution(
     const int32_t max_primitive_executions = -1,
     const bool single_step = false,
     const StateHeuristicFunction<State>& state_heuristic_fn = {},
+    const StateHash& state_hasher = StateHash(),
+    const StateEqual& state_equaler = StateEqual(),
     const std::function<void(
         const State&, const ActionPrimitivePtr<State, Container>&)>&
             user_pre_action_callback_fn = {},
@@ -609,8 +618,9 @@ Container PerformSingleTaskExecution(
 
   return PerformSingleTaskExecution<State, Container, StateHash, StateEqual>(
       primitive_collection, task_sequence_complete_fn, start_states,
-      max_primitive_executions, single_step, state_heuristic_fn,
-      user_pre_action_callback_fn, user_post_outcome_callback_fn);
+      max_primitive_executions, single_step, state_heuristic_fn, state_hasher,
+      state_equaler, user_pre_action_callback_fn,
+      user_post_outcome_callback_fn);
 }
 }  // namespace simple_task_planner
 }  // namespace common_robotics_utilities

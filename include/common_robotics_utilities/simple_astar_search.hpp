@@ -10,6 +10,7 @@
 #include <utility>
 #include <vector>
 
+#include <Eigen/Geometry>
 #include <common_robotics_utilities/maybe.hpp>
 
 namespace common_robotics_utilities
@@ -29,6 +30,7 @@ protected:
   OwningMaybe<T> back_pointer_;
 
 public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
   AstarPQueueElement(const T& state, const T& back_pointer,
                      const double cost_to_come, const double value)
@@ -103,6 +105,8 @@ private:
   OwningMaybe<T> back_pointer_;
 
 public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
   // TODO(calderpg) Once C++17 is required, remove the default constructor and
   // replace map[] with map.insert_or_assign().
   BackPointerAndCostToCome() {}
@@ -178,6 +182,8 @@ private:
   double cost_ = 0.0;
 
 public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
   StateWithCost() {}
 
   explicit StateWithCost(const T& state) : state_(state) {}
@@ -197,7 +203,11 @@ public:
 };
 
 template<typename T>
-using StatesWithCosts = std::vector<StateWithCost<T>>;
+using StateWithCostAllocator = Eigen::aligned_allocator<StateWithCost<T>>;
+
+template<typename T>
+using StatesWithCosts =
+    std::vector<StateWithCost<T>, StateWithCostAllocator<T>>;
 
 /// Perform A* search.
 /// @return Solution path between one of the starting states in
@@ -218,7 +228,9 @@ inline AstarResult<T, Container> PerformAstarSearch(
     const std::function<StatesWithCosts<T>(const T&)>&
         generate_valid_children_fn,
     const std::function<double(const T&)>& heuristic_fn,
-    const bool limit_pqueue_duplicates)
+    const bool limit_pqueue_duplicates = true,
+    const StateHash& hasher = StateHash(),
+    const StateEqual& equaler = StateEqual())
 {
   // Sanity check
   if (start_states.empty())
@@ -261,15 +273,20 @@ inline AstarResult<T, Container> PerformAstarSearch(
                       std::vector<AstarPQueueElement<T>>,
                       CompareAstarPQueueElementFn<T>> queue;
 
+  // We must specific an initial bucket count to unordered_map constructors.
+  const size_t initial_bucket_count = 100;
+
   // Optional map to reduce the number of duplicate items added to the pqueue
   // Key is the node ID
   // Value is cost-to-come
-  std::unordered_map<T, double, StateHash, StateEqual> queue_members_map;
+  std::unordered_map<T, double, StateHash, StateEqual> queue_members_map(
+      initial_bucket_count, hasher, equaler);
 
   // Key is the node ID
   // Value is backpointer + cost-to-come
   // backpointer is the parent node ID
-  ExploredList<T, StateHash, StateEqual> explored;
+  ExploredList<T, StateHash, StateEqual> explored(
+      initial_bucket_count, hasher, equaler);
 
   // Initialize
   for (const auto& start_state_and_cost : start_states)
@@ -421,7 +438,9 @@ inline AstarResult<T, Container> PerformAstarSearch(
         edge_validity_check_fn,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<double(const T&)>& heuristic_fn,
-    const bool limit_pqueue_duplicates)
+    const bool limit_pqueue_duplicates = true,
+    const StateHash& hasher = StateHash(),
+    const StateEqual& equaler = StateEqual())
 {
   // Make a valid-child-states-only function
   const auto valid_child_state_function = [&] (const T& current_state)
@@ -448,7 +467,7 @@ inline AstarResult<T, Container> PerformAstarSearch(
 
   return PerformAstarSearch<T, Container, StateHash, StateEqual>(
       start_states, goal_check_fn, valid_child_state_function, heuristic_fn,
-      limit_pqueue_duplicates);
+      limit_pqueue_duplicates, hasher, equaler);
 }
 
 /// Perform A* search.
@@ -477,14 +496,14 @@ inline AstarResult<T, Container> PerformAstarSearch(
         edge_validity_check_fn,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<double(const T&, const T&)>& heuristic_fn,
-    const bool limit_pqueue_duplicates)
+    const bool limit_pqueue_duplicates = true,
+    const StateHash& hasher = StateHash(),
+    const StateEqual& equaler = StateEqual())
 {
-  const StateEqual equality_checker;
-
   // Make goal check function
   const auto goal_check_function = [&] (const T& current_state)
   {
-    return equality_checker(current_state, goal_state);
+    return equaler(current_state, goal_state);
   };
 
   // Make heuristic helper function
@@ -499,7 +518,7 @@ inline AstarResult<T, Container> PerformAstarSearch(
   return PerformAstarSearch<T, Container, StateHash, StateEqual>(
       start_states, goal_check_function, generate_children_fn,
       edge_validity_check_fn, distance_fn, heuristic_function,
-      limit_pqueue_duplicates);
+      limit_pqueue_duplicates, hasher, equaler);
 }
 }  // namespace simple_astar_search
 }  // namespace common_robotics_utilities

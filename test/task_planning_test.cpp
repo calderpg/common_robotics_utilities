@@ -116,6 +116,7 @@ std::ostream& operator<<(std::ostream& strm, const PutInBoxState& state)
   return strm;
 }
 
+using PutInBoxStatesWithCosts = OutcomesWithCosts<PutInBoxState>;
 using PutInBoxStateContainer = std::vector<PutInBoxState>;
 using PutInBoxStatePrimitiveType =
     ActionPrimitiveInterface<PutInBoxState, PutInBoxStateContainer>;
@@ -136,21 +137,21 @@ public:
 
   double Ranking() const override { return 1.0; }
 
-  PutInBoxStateContainer GetOutcomes(const PutInBoxState& state) const override
+  PutInBoxStatesWithCosts GetOutcomes(const PutInBoxState& state) const override
   {
     if (IsCandidate(state))
     {
-      return {PutInBoxState(
-          state.ObjectsAvailable(), state.ObjectPutAway(), true)};
+      PutInBoxStatesWithCosts outcomes;
+      outcomes.emplace_back(
+          PutInBoxState(state.ObjectsAvailable(), state.ObjectPutAway(), true),
+          1.0);
+      return outcomes;
     }
     else
     {
       throw std::invalid_argument("State is not a candidate for primitive");
     }
   }
-
-  double EstimateActionCost(
-      const PutInBoxState&, const PutInBoxState&) const override { return 1.0; }
 
   PutInBoxStateContainer Execute(const PutInBoxState& state) override
   {
@@ -181,21 +182,21 @@ public:
 
   double Ranking() const override { return 1.0; }
 
-  PutInBoxStateContainer GetOutcomes(const PutInBoxState& state) const override
+  PutInBoxStatesWithCosts GetOutcomes(const PutInBoxState& state) const override
   {
     if (IsCandidate(state))
     {
-      return {PutInBoxState(
-          state.ObjectsAvailable(), state.ObjectPutAway(), false)};
+      PutInBoxStatesWithCosts outcomes;
+      outcomes.emplace_back(
+          PutInBoxState(state.ObjectsAvailable(), state.ObjectPutAway(), false),
+          1.0);
+      return outcomes;
     }
     else
     {
       throw std::invalid_argument("State is not a candidate for primitive");
     }
   }
-
-  double EstimateActionCost(
-      const PutInBoxState&, const PutInBoxState&) const override { return 1.0; }
 
   PutInBoxStateContainer Execute(const PutInBoxState& state) override
   {
@@ -226,7 +227,7 @@ public:
 
   double Ranking() const override { return 1.0; }
 
-  PutInBoxStateContainer GetOutcomes(const PutInBoxState& state) const override
+  PutInBoxStatesWithCosts GetOutcomes(const PutInBoxState& state) const override
   {
     if (IsCandidate(state))
     {
@@ -234,16 +235,17 @@ public:
           1, state.ObjectPutAway(), state.BoxOpen());
       const PutInBoxState none_available(
           0, state.ObjectPutAway(), state.BoxOpen());
-      return {object_available, none_available};
+
+      PutInBoxStatesWithCosts outcomes;
+      outcomes.emplace_back(object_available, 0.5);
+      outcomes.emplace_back(none_available, 0.5);
+      return outcomes;
     }
     else
     {
       throw std::invalid_argument("State is not a candidate for primitive");
     }
   }
-
-  double EstimateActionCost(
-      const PutInBoxState&, const PutInBoxState&) const override { return 0.5; }
 
   PutInBoxStateContainer Execute(const PutInBoxState& state) override
   {
@@ -276,22 +278,23 @@ public:
 
   double Ranking() const override { return 1.0; }
 
-  PutInBoxStateContainer GetOutcomes(const PutInBoxState& state) const override
+  PutInBoxStatesWithCosts GetOutcomes(const PutInBoxState& state) const override
   {
     if (IsCandidate(state))
     {
       const PutInBoxState object_remaining(1, true, true);
       const PutInBoxState task_done(0, true, true);
-      return {object_remaining, task_done};
+
+      PutInBoxStatesWithCosts outcomes;
+      outcomes.emplace_back(object_remaining, 1.0);
+      outcomes.emplace_back(task_done, 1.0);
+      return outcomes;
     }
     else
     {
       throw std::invalid_argument("State is not a candidate for primitive");
     }
   }
-
-  double EstimateActionCost(
-      const PutInBoxState&, const PutInBoxState&) const override { return 1.0; }
 
   PutInBoxStateContainer Execute(const PutInBoxState& state) override
   {
@@ -348,17 +351,19 @@ GTEST_TEST(TaskPlanningTest, Test)
 
   for (const auto& starting_state : possible_starting_states)
   {
-    std::cout << "Starting state:\n" << starting_state << std::endl;
+    std::cout << "++++++++++\nStarting state:\n" << starting_state << std::endl;
     const auto task_sequence_plan = PlanTaskStateSequence
         <PutInBoxState, PutInBoxStateContainer, PutInBoxStateHasher>(
-            primitive_collection, IsSingleExecutionComplete, starting_state);
-    std::cout << "Task sequence plan:\n"
-              << print::Print(task_sequence_plan.Path(), false, "\n")
-              << std::endl;
+            primitive_collection, IsSingleExecutionComplete, {starting_state});
+    std::cout << "Task sequence plan:" << std::endl;
+    for (const auto& state : task_sequence_plan.Path())
+    {
+      std::cout << print::Print(state.Outcome()) << std::endl;
+    }
     ASSERT_TRUE(!std::isinf(task_sequence_plan.PathCost()));
     ASSERT_GT(task_sequence_plan.Path().size(), 0u);
     const auto& final_state = task_sequence_plan.Path().back();
-    ASSERT_TRUE(IsSingleExecutionComplete(final_state));
+    ASSERT_TRUE(IsSingleExecutionComplete(final_state.Outcome()));
   }
 
   // Execute the task

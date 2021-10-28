@@ -110,37 +110,6 @@ private:
   std::string name_;
 };
 
-/// Wrapper for an action primitive and the estimated cost of applying it for a
-/// given transition.
-template<typename State, typename Container=std::vector<State>>
-class ActionPrimitiveAndEstimatedCost
-{
-public:
-  ActionPrimitiveAndEstimatedCost(
-      const ActionPrimitivePtr<State, Container>& action_primitive,
-      const double estimated_cost)
-      : action_primitive_(action_primitive), estimated_cost_(estimated_cost)
-  {
-    if (estimated_cost_ < 0.0)
-    {
-      throw std::invalid_argument("estimated_cost must be >= 0.0");
-    }
-  }
-
-  ActionPrimitiveAndEstimatedCost() {}
-
-  const ActionPrimitivePtr<State, Container>& ActionPrimitive() const
-  {
-    return action_primitive_;
-  }
-
-  double EstimatedCost() const { return estimated_cost_; }
-
-private:
-  ActionPrimitivePtr<State, Container> action_primitive_;
-  double estimated_cost_ = std::numeric_limits<double>::infinity();
-};
-
 /// Stores a collection of action primitives, enforcing name uniqueness and
 /// providing useful helpers.
 template<typename State, typename Container=std::vector<State>>

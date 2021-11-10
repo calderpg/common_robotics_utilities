@@ -135,8 +135,6 @@ public:
 
   const std::string& Name() const override { return name_; }
 
-  double Ranking() const override { return 1.0; }
-
   PutInBoxStatesWithCosts GetOutcomes(const PutInBoxState& state) const override
   {
     if (IsCandidate(state))
@@ -180,8 +178,6 @@ public:
 
   const std::string& Name() const override { return name_; }
 
-  double Ranking() const override { return 1.0; }
-
   PutInBoxStatesWithCosts GetOutcomes(const PutInBoxState& state) const override
   {
     if (IsCandidate(state))
@@ -224,8 +220,6 @@ public:
   }
 
   const std::string& Name() const override { return name_; }
-
-  double Ranking() const override { return 1.0; }
 
   PutInBoxStatesWithCosts GetOutcomes(const PutInBoxState& state) const override
   {
@@ -275,8 +269,6 @@ public:
   }
 
   const std::string& Name() const override { return name_; }
-
-  double Ranking() const override { return 1.0; }
 
   PutInBoxStatesWithCosts GetOutcomes(const PutInBoxState& state) const override
   {

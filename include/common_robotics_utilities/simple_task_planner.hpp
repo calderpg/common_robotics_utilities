@@ -47,13 +47,6 @@ public:
   /// easiest object to manipulate first.
   virtual Container Execute(const State& state) = 0;
 
-  /// Returns the ranking of the primitive
-  /// When multiple primitives can be applied to a given state, the planner
-  /// will select the highest-ranked primitive. If multiple primitives with
-  /// the same ranking are available, the planner will select the most
-  /// recently added primitive.
-  virtual double Ranking() const = 0;
-
   /// Returns the name of the primitive
   virtual const std::string& Name() const = 0;
 };
@@ -80,11 +73,10 @@ public:
       const IsCandidateFunction& is_candidate_fn,
       const GetOutcomesFunction& get_outcomes_fn,
       const ExecuteFunction& execute_fn,
-      const double ranking, const std::string& name)
+      const std::string& name)
       : is_candidate_fn_(is_candidate_fn),
         get_outcomes_fn_(get_outcomes_fn),
-        execute_fn_(execute_fn),
-        ranking_(ranking), name_(name) {}
+        execute_fn_(execute_fn), name_(name) {}
 
   bool IsCandidate(const State& state) const override
   {
@@ -98,15 +90,12 @@ public:
 
   Container Execute(const State& state) override { return execute_fn_(state); }
 
-  double Ranking() const override { return ranking_; }
-
   const std::string& Name() const override { return name_; }
 
 private:
   IsCandidateFunction is_candidate_fn_;
   GetOutcomesFunction get_outcomes_fn_;
   ExecuteFunction execute_fn_;
-  double ranking_;
   std::string name_;
 };
 

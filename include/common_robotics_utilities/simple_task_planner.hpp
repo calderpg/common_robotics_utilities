@@ -99,6 +99,15 @@ private:
   std::string name_;
 };
 
+/// Typedef of a logging function used by ActionPrimitiveCollection.
+using LoggingFunction = std::function<void(const std::string&)>;
+
+/// Make a LoggingFunction using std::cout.
+inline LoggingFunction MakeCoutLoggingFunction()
+{
+  return [] (const std::string& message) { std::cout << message << std::endl; };
+}
+
 /// Stores a collection of action primitives, enforcing name uniqueness and
 /// providing useful helpers.
 template<typename State, typename Container=std::vector<State>>
@@ -108,7 +117,22 @@ public:
   using ActionPrimitivePtrType = ActionPrimitivePtr<State, Container>;
   using ActionPrimitivePtrTypeVector = std::vector<ActionPrimitivePtrType>;
 
-  ActionPrimitiveCollection() {}
+  ActionPrimitiveCollection(
+      const LoggingFunction& logging_fn = MakeCoutLoggingFunction())
+      : logging_fn_(logging_fn) {}
+
+  void SetLoggingFunction(const LoggingFunction& logging_fn)
+  {
+    logging_fn_ = logging_fn;
+  }
+
+  void Log(const std::string& message) const
+  {
+    if (logging_fn_)
+    {
+      logging_fn_(message);
+    }
+  }
 
   void RegisterPrimitive(const ActionPrimitivePtrType& new_primitive)
   {
@@ -122,8 +146,7 @@ public:
                                     + primitive->Name() + "]");
       }
     }
-    std::cout << "Registering primitive [" << new_primitive->Name() << "]"
-              << std::endl;
+    Log("Registering primitive [" + new_primitive->Name() + "]");
     primitives_.push_back(new_primitive);
   }
 
@@ -138,8 +161,7 @@ public:
       }
       else
       {
-        std::cout << "Unregistering primitive [" << primitive->Name() << "]"
-                  << std::endl;
+        Log("Unregistering primitive [" + primitive->Name() + "]");
       }
     }
     primitives_ = primitives_to_keep;
@@ -156,6 +178,7 @@ public:
 
 private:
   ActionPrimitivePtrTypeVector primitives_;
+  LoggingFunction logging_fn_;
 };
 
 /// Return a heuristic value for the provided state.
@@ -509,8 +532,8 @@ Container PerformSingleTaskExecution(
     }
     else
     {
-      std::cout << "Performing primitive [" << next_primitive->Name() << "]"
-                << std::endl;
+      primitive_collection.Log(
+          "Performing primitive [" + next_primitive->Name() + "]");
     }
 
     // Execute the primitive.

@@ -120,8 +120,6 @@ using PutInBoxStatesWithCosts = OutcomesWithCosts<PutInBoxState>;
 using PutInBoxStateContainer = std::vector<PutInBoxState>;
 using PutInBoxStatePrimitiveType =
     ActionPrimitiveInterface<PutInBoxState, PutInBoxStateContainer>;
-using PutInBoxStatePrimitivePtrType =
-    ActionPrimitivePtr<PutInBoxState, PutInBoxStateContainer>;
 using PutInBoxStatePrimitiveCollection =
     ActionPrimitiveCollection<PutInBoxState, PutInBoxStateContainer>;
 

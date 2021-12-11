@@ -53,8 +53,8 @@ public:
 
 /// Typedef of shared pointer to primitive.
 template<typename State, typename Container=std::vector<State>>
-using ActionPrimitivePtr
-  = std::shared_ptr<ActionPrimitiveInterface<State, Container>>;
+using ActionPrimitiveSharedPtr =
+    std::shared_ptr<ActionPrimitiveInterface<State, Container>>;
 
 /// Wrapper type to generate action primitive types from std::functions
 /// Use this if you want to assemble primitives from a number of existing
@@ -114,10 +114,7 @@ template<typename State, typename Container=std::vector<State>>
 class ActionPrimitiveCollection
 {
 public:
-  using ActionPrimitivePtrType = ActionPrimitivePtr<State, Container>;
-  using ActionPrimitivePtrTypeVector = std::vector<ActionPrimitivePtrType>;
-
-  ActionPrimitiveCollection(
+  explicit ActionPrimitiveCollection(
       const LoggingFunction& logging_fn = MakeCoutLoggingFunction())
       : logging_fn_(logging_fn) {}
 
@@ -134,7 +131,8 @@ public:
     }
   }
 
-  void RegisterPrimitive(const ActionPrimitivePtrType& new_primitive)
+  void RegisterPrimitive(
+      const ActionPrimitiveSharedPtr<State, Container>& new_primitive)
   {
     for (const auto& primitive : primitives_)
     {
@@ -152,7 +150,7 @@ public:
 
   void UnregisterPrimitivesByName(const std::unordered_set<std::string>& names)
   {
-    ActionPrimitivePtrTypeVector primitives_to_keep;
+    std::vector<ActionPrimitiveSharedPtr<State, Container>> primitives_to_keep;
     for (const auto& primitive : primitives_)
     {
       if (names.count(primitive->Name()) == 0)
@@ -174,10 +172,11 @@ public:
 
   void ClearPrimitives() { primitives_.clear(); }
 
-  const ActionPrimitivePtrTypeVector& Primitives() const { return primitives_; }
+  const std::vector<ActionPrimitiveSharedPtr<State, Container>>&
+  Primitives() const { return primitives_; }
 
 private:
-  ActionPrimitivePtrTypeVector primitives_;
+  std::vector<ActionPrimitiveSharedPtr<State, Container>> primitives_;
   LoggingFunction logging_fn_;
 };
 
@@ -369,7 +368,7 @@ class NextPrimitiveToExecute
 {
 public:
   NextPrimitiveToExecute(
-      const ActionPrimitivePtr<State, Container>& action_primitive,
+      const ActionPrimitiveSharedPtr<State, Container>& action_primitive,
       const int64_t selected_outcome_index)
       : action_primitive_(action_primitive),
         selected_outcome_index_(selected_outcome_index)
@@ -383,7 +382,7 @@ public:
   explicit NextPrimitiveToExecute(const int64_t selected_outcome_index)
       : NextPrimitiveToExecute({}, selected_outcome_index) {}
 
-  const ActionPrimitivePtr<State, Container>& ActionPrimitive() const
+  const ActionPrimitiveSharedPtr<State, Container>& ActionPrimitive() const
   {
     return action_primitive_;
   }
@@ -391,7 +390,7 @@ public:
   int64_t SelectedOutcomeIndex() const { return selected_outcome_index_; }
 
 private:
-  ActionPrimitivePtr<State, Container> action_primitive_;
+  ActionPrimitiveSharedPtr<State, Container> action_primitive_;
   int64_t selected_outcome_index_ = -1;
 };
 
@@ -475,7 +474,7 @@ Container PerformSingleTaskExecution(
     const StateHash& state_hasher = StateHash(),
     const StateEqual& state_equaler = StateEqual(),
     const std::function<void(
-        const State&, const ActionPrimitivePtr<State, Container>&)>&
+        const State&, const ActionPrimitiveSharedPtr<State, Container>&)>&
             user_pre_action_callback_fn = {},
     const std::function<void(const Container&, int64_t)>&
         user_post_outcome_callback_fn = {})
@@ -559,7 +558,7 @@ Container PerformSingleTaskExecution(
     const StateHash& state_hasher = StateHash(),
     const StateEqual& state_equaler = StateEqual(),
     const std::function<void(
-        const State&, const ActionPrimitivePtr<State, Container>&)>&
+        const State&, const ActionPrimitiveSharedPtr<State, Container>&)>&
             user_pre_action_callback_fn = {},
     const std::function<void(const Container&, int64_t)>&
         user_post_outcome_callback_fn = {})

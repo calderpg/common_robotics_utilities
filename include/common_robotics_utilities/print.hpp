@@ -25,7 +25,7 @@ namespace common_robotics_utilities
 {
 namespace print
 {
-namespace detail
+namespace internal
 {
 #if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
 struct ROSMessagePrinter
@@ -48,7 +48,7 @@ struct GenericPrinter
     return strm.str();
   }
 };
-}  // namespace detail
+}  // namespace internal
 
 // Base template function for printing types
 template <typename T>
@@ -61,9 +61,9 @@ inline std::string Print(const T& toprint,
 #if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
   using Printer = typename std::conditional<
       rosidl_generator_traits::is_message<T>::value,
-      detail::ROSMessagePrinter, detail::GenericPrinter>::type;
+      internal::ROSMessagePrinter, internal::GenericPrinter>::type;
 #else
-  using Printer = detail::GenericPrinter;
+  using Printer = internal::GenericPrinter;
 #endif
   return Printer::Print(toprint);
 }

@@ -72,28 +72,112 @@ private:
   int64_t stride2_ = 0;
   bool valid_ = false;
 
-  static void CheckPositiveValid(const double param)
+  static bool CheckPositiveValid(const double param)
   {
-    if (param <= 0.0)
+    return (std::isfinite(param) && (param > 0.0));
+  }
+
+  static bool CheckPositiveValid(const int64_t param)
+  {
+    return (param > 0);
+  }
+
+  bool Initialize(
+      const double cell_x_size,
+      const double cell_y_size,
+      const double cell_z_size,
+      const double x_size,
+      const double y_size,
+      const double z_size)
+  {
+    // Safety check
+    if (CheckPositiveValid(cell_x_size) && CheckPositiveValid(cell_y_size) &&
+        CheckPositiveValid(cell_z_size) && CheckPositiveValid(x_size) &&
+        CheckPositiveValid(y_size) && CheckPositiveValid(z_size))
     {
-      throw std::invalid_argument("param must be positive and non-zero");
+      // Set
+      cell_x_size_ = cell_x_size;
+      cell_y_size_ = cell_y_size;
+      cell_z_size_ = cell_z_size;
+      inv_cell_x_size_ = 1.0 / cell_x_size_;
+      inv_cell_y_size_ = 1.0 / cell_y_size_;
+      inv_cell_z_size_ = 1.0 / cell_z_size_;
+      num_x_cells_
+          = static_cast<int64_t>(std::ceil(x_size / cell_x_size));
+      num_y_cells_
+          = static_cast<int64_t>(std::ceil(y_size / cell_y_size));
+      num_z_cells_
+          = static_cast<int64_t>(std::ceil(z_size / cell_z_size));
+      x_size_ = static_cast<double>(num_x_cells_) * cell_x_size_;
+      y_size_ = static_cast<double>(num_y_cells_) * cell_y_size_;
+      z_size_ = static_cast<double>(num_z_cells_) * cell_z_size_;
+      stride1_ = num_y_cells_ * num_z_cells_;
+      stride2_ = num_z_cells_;
+      valid_ = true;
+
+      return true;
     }
-    if (std::isnan(param))
+    else
     {
-      throw std::invalid_argument("param must not be NaN");
-    }
-    if (std::isinf(param) != 0)
-    {
-      throw std::invalid_argument("param must not be INF");
+      return false;
     }
   }
 
-  static void CheckPositiveValid(const int64_t param)
+  bool Initialize(
+      const double cell_x_size,
+      const double cell_y_size,
+      const double cell_z_size,
+      const int64_t num_x_cells,
+      const int64_t num_y_cells,
+      const int64_t num_z_cells)
   {
-    if (param <= 0)
+    // Safety check
+    if (CheckPositiveValid(cell_x_size) && CheckPositiveValid(cell_y_size) &&
+        CheckPositiveValid(cell_z_size) && CheckPositiveValid(num_x_cells) &&
+        CheckPositiveValid(num_y_cells) && CheckPositiveValid(num_z_cells))
     {
-      throw std::invalid_argument("param must be positive and non-zero");
+      // Set
+      cell_x_size_ = cell_x_size;
+      cell_y_size_ = cell_y_size;
+      cell_z_size_ = cell_z_size;
+      inv_cell_x_size_ = 1.0 / cell_x_size_;
+      inv_cell_y_size_ = 1.0 / cell_y_size_;
+      inv_cell_z_size_ = 1.0 / cell_z_size_;
+      num_x_cells_ = num_x_cells;
+      num_y_cells_ = num_y_cells;
+      num_z_cells_ = num_z_cells;
+      x_size_ = static_cast<double>(num_x_cells_) * cell_x_size_;
+      y_size_ = static_cast<double>(num_y_cells_) * cell_y_size_;
+      z_size_ = static_cast<double>(num_z_cells_) * cell_z_size_;
+      stride1_ = num_y_cells_ * num_z_cells_;
+      stride2_ = num_z_cells_;
+      valid_ = true;
+
+      return true;
     }
+    else
+    {
+      return false;
+    }
+  }
+
+  void DefaultInitialize()
+  {
+    cell_x_size_ = 0.0;
+    cell_y_size_ = 0.0;
+    cell_z_size_ = 0.0;
+    inv_cell_x_size_ = 0.0;
+    inv_cell_y_size_ = 0.0;
+    inv_cell_z_size_ = 0.0;
+    num_x_cells_ = 0;
+    num_y_cells_ = 0;
+    num_z_cells_ = 0;
+    x_size_ = 0.0;
+    y_size_ = 0.0;
+    z_size_ = 0.0;
+    stride1_ = 0.0;
+    stride2_ = 0.0;
+    valid_ = false;
   }
 
 public:
@@ -132,32 +216,14 @@ public:
             const double y_size,
             const double z_size)
   {
-    // Safety check
-    CheckPositiveValid(cell_x_size);
-    CheckPositiveValid(cell_y_size);
-    CheckPositiveValid(cell_z_size);
-    CheckPositiveValid(x_size);
-    CheckPositiveValid(y_size);
-    CheckPositiveValid(z_size);
-    // Set
-    cell_x_size_ = cell_x_size;
-    cell_y_size_ = cell_y_size;
-    cell_z_size_ = cell_z_size;
-    inv_cell_x_size_ = 1.0 / cell_x_size_;
-    inv_cell_y_size_ = 1.0 / cell_y_size_;
-    inv_cell_z_size_ = 1.0 / cell_z_size_;
-    num_x_cells_
-        = static_cast<int64_t>(std::ceil(x_size / cell_x_size));
-    num_y_cells_
-        = static_cast<int64_t>(std::ceil(y_size / cell_y_size));
-    num_z_cells_
-        = static_cast<int64_t>(std::ceil(z_size / cell_z_size));
-    x_size_ = static_cast<double>(num_x_cells_) * cell_x_size_;
-    y_size_ = static_cast<double>(num_y_cells_) * cell_y_size_;
-    z_size_ = static_cast<double>(num_z_cells_) * cell_z_size_;
-    stride1_ = num_y_cells_ * num_z_cells_;
-    stride2_ = num_z_cells_;
-    valid_ = true;
+    const bool initialized = Initialize(
+        cell_x_size, cell_y_size, cell_z_size, x_size, y_size, z_size);
+
+    if (!initialized)
+    {
+      throw std::invalid_argument(
+          "All size parameters must be positive, non-zero, and finite");
+    }
   }
 
   GridSizes(const double cell_x_size,
@@ -167,49 +233,18 @@ public:
             const int64_t num_y_cells,
             const int64_t num_z_cells)
   {
-    // Safety check
-    CheckPositiveValid(cell_x_size);
-    CheckPositiveValid(cell_y_size);
-    CheckPositiveValid(cell_z_size);
-    CheckPositiveValid(num_x_cells);
-    CheckPositiveValid(num_y_cells);
-    CheckPositiveValid(num_z_cells);
-    // Set
-    cell_x_size_ = cell_x_size;
-    cell_y_size_ = cell_y_size;
-    cell_z_size_ = cell_z_size;
-    inv_cell_x_size_ = 1.0 / cell_x_size_;
-    inv_cell_y_size_ = 1.0 / cell_y_size_;
-    inv_cell_z_size_ = 1.0 / cell_z_size_;
-    num_x_cells_ = num_x_cells;
-    num_y_cells_ = num_y_cells;
-    num_z_cells_ = num_z_cells;
-    x_size_ = static_cast<double>(num_x_cells_) * cell_x_size_;
-    y_size_ = static_cast<double>(num_y_cells_) * cell_y_size_;
-    z_size_ = static_cast<double>(num_z_cells_) * cell_z_size_;
-    stride1_ = num_y_cells_ * num_z_cells_;
-    stride2_ = num_z_cells_;
-    valid_ = true;
+    const bool initialized = Initialize(
+        cell_x_size, cell_y_size, cell_z_size,
+        num_x_cells, num_y_cells, num_z_cells);
+
+    if (!initialized)
+    {
+      throw std::invalid_argument(
+          "All size parameters must be positive, non-zero, and finite");
+    }
   }
 
-  GridSizes()
-  {
-    cell_x_size_ = 0.0;
-    cell_y_size_ = 0.0;
-    cell_z_size_ = 0.0;
-    inv_cell_x_size_ = 0.0;
-    inv_cell_y_size_ = 0.0;
-    inv_cell_z_size_ = 0.0;
-    num_x_cells_ = 0;
-    num_y_cells_ = 0;
-    num_z_cells_ = 0;
-    x_size_ = 0.0;
-    y_size_ = 0.0;
-    z_size_ = 0.0;
-    stride1_ = 0.0;
-    stride2_ = 0.0;
-    valid_ = false;
-  }
+  GridSizes() { DefaultInitialize(); }
 
   bool Valid() const { return valid_; }
 
@@ -268,16 +303,15 @@ public:
                                                         current_position);
     const int64_t num_z_cells = num_z_cells_deserialized.Value();
     current_position += num_z_cells_deserialized.BytesRead();
-    try
+
+    const bool initialized = Initialize(
+        cell_x_size, cell_y_size, cell_z_size,
+        num_x_cells, num_y_cells, num_z_cells);
+    if (!initialized)
     {
-      *this = GridSizes(cell_x_size, cell_y_size, cell_z_size,
-                        num_x_cells, num_y_cells, num_z_cells);
-    }
-    catch (const std::invalid_argument&)
-    {
-      // The only reason the constructor can fail is if the params are
+      // The only reason Initialize can fail is if the params are
       // default-initialized or invalid. We make sure to zero and set invalid.
-      *this = GridSizes();
+      DefaultInitialize();
     }
     // Figure out how many bytes were read
     const uint64_t bytes_read = current_position - starting_offset;

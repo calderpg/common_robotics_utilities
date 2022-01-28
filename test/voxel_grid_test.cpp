@@ -11,7 +11,7 @@ namespace common_robotics_utilities
 {
 namespace voxel_grid_test
 {
-GTEST_TEST(VoxelGridTest, indexLookup)
+GTEST_TEST(VoxelGridTest, IndexLookup)
 {
   const voxel_grid::GridSizes grid_sizes(1.0, 20.0, 20.0, 20.0);
   voxel_grid::VoxelGrid<int32_t> test_grid(grid_sizes, 0);
@@ -24,7 +24,7 @@ GTEST_TEST(VoxelGridTest, indexLookup)
     {
       for (int64_t z_index = 0; z_index < test_grid.GetNumZCells(); z_index++)
       {
-        test_grid.SetValue(x_index, y_index, z_index, fill_val);
+        test_grid.SetIndex(x_index, y_index, z_index, fill_val);
         check_vals.push_back(fill_val);
         fill_val++;
       }
@@ -47,8 +47,9 @@ GTEST_TEST(VoxelGridTest, indexLookup)
         const voxel_grid::GridIndex current(x_index, y_index, z_index);
         const int32_t check_val = check_vals.at(check_index);
         const int32_t ref_val
-            = read_grid.GetImmutable(x_index, y_index, z_index).Value();
-        const int32_t index_ref_val = read_grid.GetImmutable(current).Value();
+            = read_grid.GetIndexImmutable(x_index, y_index, z_index).Value();
+        const int32_t index_ref_val
+            = read_grid.GetIndexImmutable(current).Value();
         ASSERT_EQ(ref_val, check_val);
         ASSERT_EQ(index_ref_val, check_val);
         const int64_t data_index = test_grid.GridIndexToDataIndex(current);
@@ -61,7 +62,7 @@ GTEST_TEST(VoxelGridTest, indexLookup)
   }
 }
 
-GTEST_TEST(VoxelGridTest, locationLookup)
+GTEST_TEST(VoxelGridTest, LocationLookup)
 {
   const voxel_grid::GridSizes grid_sizes(1.0, 20.0, 20.0, 20.0);
   voxel_grid::VoxelGrid<int32_t> test_grid(grid_sizes, 0);
@@ -74,7 +75,7 @@ GTEST_TEST(VoxelGridTest, locationLookup)
     {
       for (double z_pos = -9.5; z_pos <= 9.5; z_pos += 1.0)
       {
-        test_grid.SetValue(x_pos, y_pos, z_pos, fill_val);
+        test_grid.SetLocation(x_pos, y_pos, z_pos, fill_val);
         check_vals.push_back(fill_val);
         fill_val++;
       }
@@ -96,12 +97,12 @@ GTEST_TEST(VoxelGridTest, locationLookup)
       {
         const int32_t check_val = check_vals.at(check_index);
         const int32_t ref_val
-            = read_grid.GetImmutable(x_pos, y_pos, z_pos).Value();
+            = read_grid.GetLocationImmutable(x_pos, y_pos, z_pos).Value();
         const int32_t ref_val_3d
-            = read_grid.GetImmutable3d(
+            = read_grid.GetLocationImmutable3d(
                 Eigen::Vector3d(x_pos, y_pos, z_pos)).Value();
         const int32_t ref_val_4d
-            = read_grid.GetImmutable4d(
+            = read_grid.GetLocationImmutable4d(
                 Eigen::Vector4d(x_pos, y_pos, z_pos, 1.0)).Value();
         ASSERT_EQ(ref_val, check_val);
         ASSERT_EQ(ref_val_3d, check_val);
@@ -131,7 +132,7 @@ GTEST_TEST(VoxelGridTest, locationLookup)
   }
 }
 
-GTEST_TEST(VoxelGridTest, dshvgLookup)
+GTEST_TEST(VoxelGridTest, DshvgLookup)
 {
   const voxel_grid::GridSizes chunk_sizes(1.0, 4.0, 4.0, 4.0);
   voxel_grid::DynamicSpatialHashedVoxelGrid<int32_t> test_grid(
@@ -145,7 +146,7 @@ GTEST_TEST(VoxelGridTest, dshvgLookup)
     {
       for (double z_pos = -9.5; z_pos <= 9.5; z_pos += 1.0)
       {
-        test_grid.SetValue(
+        test_grid.SetLocation(
             x_pos, y_pos, z_pos, voxel_grid::DSHVGSetType::SET_CELL, fill_val);
         check_vals.push_back(fill_val);
         fill_val++;
@@ -167,7 +168,7 @@ GTEST_TEST(VoxelGridTest, dshvgLookup)
       for (double z_pos = -9.5; z_pos <= 9.5; z_pos += 1.0)
       {
         const int32_t check_val = check_vals.at(check_index);
-        const auto lookup = read_grid.GetImmutable(x_pos, y_pos, z_pos);
+        const auto lookup = read_grid.GetLocationImmutable(x_pos, y_pos, z_pos);
         const int32_t ref_val = lookup.Value();
         ASSERT_EQ(ref_val, check_val);
         ASSERT_EQ(lookup.FoundStatus(),

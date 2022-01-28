@@ -776,25 +776,30 @@ public:
     return sizes_.IndexInBounds(index);
   }
 
-  GridQuery<const T> GetImmutable3d(const Eigen::Vector3d& location) const
+  // Immutable location-based queries.
+
+  GridQuery<const T> GetLocationImmutable3d(
+      const Eigen::Vector3d& location) const
   {
-    return GetImmutable(LocationToGridIndex3d(location));
+    return GetIndexImmutable(LocationToGridIndex3d(location));
   }
 
-  GridQuery<const T> GetImmutable4d(const Eigen::Vector4d& location) const
+  GridQuery<const T> GetLocationImmutable4d(
+      const Eigen::Vector4d& location) const
   {
-    return GetImmutable(LocationToGridIndex4d(location));
+    return GetIndexImmutable(LocationToGridIndex4d(location));
   }
 
-  GridQuery<const T> GetImmutable(const double x,
-                                  const double y,
-                                  const double z) const
+  GridQuery<const T> GetLocationImmutable(
+      const double x, const double y, const double z) const
   {
     const Eigen::Vector4d location(x, y, z, 1.0);
-    return GetImmutable4d(location);
+    return GetLocationImmutable4d(location);
   }
 
-  GridQuery<const T> GetImmutable(const GridIndex& index) const
+  // Immutable index-based queries.
+
+  GridQuery<const T> GetIndexImmutable(const GridIndex& index) const
   {
     if (sizes_.IndexInBounds(index))
     {
@@ -806,9 +811,8 @@ public:
     }
   }
 
-  GridQuery<const T> GetImmutable(const int64_t x_index,
-                                  const int64_t y_index,
-                                  const int64_t z_index) const
+  GridQuery<const T> GetIndexImmutable(
+      const int64_t x_index, const int64_t y_index, const int64_t z_index) const
   {
     if (sizes_.IndexInBounds(x_index, y_index, z_index))
     {
@@ -821,25 +825,28 @@ public:
     }
   }
 
-  GridQuery<T> GetMutable3d(const Eigen::Vector3d& location)
+  // Mutable location-based queries.
+
+  GridQuery<T> GetLocationMutable3d(const Eigen::Vector3d& location)
   {
-    return GetMutable(LocationToGridIndex3d(location));
+    return GetIndexMutable(LocationToGridIndex3d(location));
   }
 
-  GridQuery<T> GetMutable4d(const Eigen::Vector4d& location)
+  GridQuery<T> GetLocationMutable4d(const Eigen::Vector4d& location)
   {
-    return GetMutable(LocationToGridIndex4d(location));
+    return GetIndexMutable(LocationToGridIndex4d(location));
   }
 
-  GridQuery<T> GetMutable(const double x,
-                          const double y,
-                          const double z)
+  GridQuery<T> GetLocationMutable(
+      const double x, const double y, const double z)
   {
     const Eigen::Vector4d location(x, y, z, 1.0);
-    return GetMutable4d(location);
+    return GetLocationMutable4d(location);
   }
 
-  GridQuery<T> GetMutable(const GridIndex& index)
+  // Mutable index-based queries.
+
+  GridQuery<T> GetIndexMutable(const GridIndex& index)
   {
     if (sizes_.IndexInBounds(index) && OnMutableAccess(index))
     {
@@ -851,9 +858,8 @@ public:
     }
   }
 
-  GridQuery<T> GetMutable(const int64_t x_index,
-                          const int64_t y_index,
-                          const int64_t z_index)
+  GridQuery<T> GetIndexMutable(
+      const int64_t x_index, const int64_t y_index, const int64_t z_index)
   {
     if (sizes_.IndexInBounds(x_index, y_index, z_index) &&
         OnMutableAccess(x_index, y_index, z_index))
@@ -867,26 +873,28 @@ public:
     }
   }
 
-  bool SetValue3d(const Eigen::Vector3d& location, const T& value)
+  // Location-based setters.
+
+  bool SetLocation3d(const Eigen::Vector3d& location, const T& value)
   {
-    return SetValue(LocationToGridIndex3d(location), value);
+    return SetIndex(LocationToGridIndex3d(location), value);
   }
 
-  bool SetValue4d(const Eigen::Vector4d& location, const T& value)
+  bool SetLocation4d(const Eigen::Vector4d& location, const T& value)
   {
-    return SetValue(LocationToGridIndex4d(location), value);
+    return SetIndex(LocationToGridIndex4d(location), value);
   }
 
-  bool SetValue(const double x,
-                const double y,
-                const double z,
-                const T& value)
+  bool SetLocation(
+      const double x, const double y, const double z, const T& value)
   {
     const Eigen::Vector4d location(x, y, z, 1.0);
-    return SetValue4d(location, value);
+    return SetLocation4d(location, value);
   }
 
-  bool SetValue(const GridIndex& index, const T& value)
+  // Index-based setters.
+
+  bool SetIndex(const GridIndex& index, const T& value)
   {
     if (sizes_.IndexInBounds(index) && OnMutableAccess(index))
     {
@@ -899,10 +907,9 @@ public:
     }
   }
 
-  bool SetValue(const int64_t x_index,
-                const int64_t y_index,
-                const int64_t z_index,
-                const T& value)
+  bool SetIndex(
+      const int64_t x_index, const int64_t y_index, const int64_t z_index,
+      const T& value)
   {
     if (sizes_.IndexInBounds(x_index, y_index, z_index) &&
         OnMutableAccess(x_index, y_index, z_index))
@@ -916,26 +923,28 @@ public:
     }
   }
 
-  bool SetValue3d(const Eigen::Vector3d& location, T&& value)
+  // Location-based setters (for temporary values).
+
+  bool SetLocation3d(const Eigen::Vector3d& location, T&& value)
   {
-    return SetValue(LocationToGridIndex3d(location), value);
+    return SetIndex(LocationToGridIndex3d(location), value);
   }
 
-  bool SetValue4d(const Eigen::Vector4d& location, T&& value)
+  bool SetLocation4d(const Eigen::Vector4d& location, T&& value)
   {
-    return SetValue(LocationToGridIndex4d(location), value);
+    return SetIndex(LocationToGridIndex4d(location), value);
   }
 
-  bool SetValue(const double x,
-                const double y,
-                const double z,
-                T&& value)
+  bool SetLocation(
+      const double x, const double y, const double z, T&& value)
   {
     const Eigen::Vector4d location(x, y, z, 1.0);
-    return SetValue4d(location, value);
+    return SetLocation4d(location, value);
   }
 
-  bool SetValue(const GridIndex& index, T&& value)
+  // Index-based setters (for temporary values).
+
+  bool SetIndex(const GridIndex& index, T&& value)
   {
     if (sizes_.IndexInBounds(index) && OnMutableAccess(index))
     {
@@ -948,10 +957,9 @@ public:
     }
   }
 
-  bool SetValue(const int64_t x_index,
-                const int64_t y_index,
-                const int64_t z_index,
-                T&& value)
+  bool SetIndex(
+      const int64_t x_index, const int64_t y_index, const int64_t z_index,
+      T&& value)
   {
     if (sizes_.IndexInBounds(x_index, y_index, z_index) &&
         OnMutableAccess(x_index, y_index, z_index))
@@ -963,6 +971,30 @@ public:
     {
       return false;
     }
+  }
+
+  // Getters and setters for data-indexed values. Note that these methods will
+  // throw if `data_index` is out of bounds. Prefer using {Get, Set}Index
+  // methods instead for readability and only use these for performance reasons.
+
+  const T& GetDataIndexImmutable(const int64_t data_index) const
+  {
+    return AccessIndex(data_index);
+  }
+
+  T& GetDataIndexMutable(const int64_t data_index)
+  {
+    return AccessIndex(data_index);
+  }
+
+  void SetDataIndex(const int64_t data_index, const T& value)
+  {
+    AccessIndex(data_index) = value;
+  }
+
+  void SetDataIndex(const int64_t data_index, T&& value)
+  {
+    AccessIndex(data_index) = value;
   }
 
   const GridSizes& GetGridSizes() const { return sizes_; }

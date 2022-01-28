@@ -365,7 +365,7 @@ public:
 
   DSHVGFillStatus FillStatus() const { return fill_status_; }
 
-  DynamicSpatialHashedGridQuery<const T> GetImmutableInternal(
+  DynamicSpatialHashedGridQuery<const T> GetIndexImmutable(
       const GridIndex& internal_cell_index) const
   {
     if (fill_status_ == DSHVGFillStatus::CELL_FILLED)
@@ -399,7 +399,7 @@ public:
     }
   }
 
-  DynamicSpatialHashedGridQuery<T> GetMutableInternal(
+  DynamicSpatialHashedGridQuery<T> GetIndexMutable(
       const GridIndex& internal_cell_index) const
   {
     if (fill_status_ == DSHVGFillStatus::CELL_FILLED)
@@ -433,7 +433,7 @@ public:
     }
   }
 
-  DynamicSpatialHashedGridQuery<const T> GetImmutable(
+  DynamicSpatialHashedGridQuery<const T> GetLocationImmutable4d(
       const Eigen::Vector4d& location) const
   {
     if (fill_status_ == DSHVGFillStatus::CELL_FILLED)
@@ -460,7 +460,7 @@ public:
     }
   }
 
-  DynamicSpatialHashedGridQuery<T> GetMutable(
+  DynamicSpatialHashedGridQuery<T> GetLocationMutable4d(
       const Eigen::Vector4d& location)
   {
     if (fill_status_ == DSHVGFillStatus::CELL_FILLED)
@@ -487,7 +487,8 @@ public:
     }
   }
 
-  DSHVGSetStatus SetCellValue(const Eigen::Vector4d& location, const T& value)
+  DSHVGSetStatus SetCellLocation4d(
+      const Eigen::Vector4d& location, const T& value)
   {
     if (fill_status_ == DSHVGFillStatus::CHUNK_FILLED)
     {
@@ -514,7 +515,8 @@ public:
     }
   }
 
-  DSHVGSetStatus SetCellValue(const Eigen::Vector4d& location, T&& value)
+  DSHVGSetStatus SetCellLocation4d(
+      const Eigen::Vector4d& location, T&& value)
   {
     if (fill_status_ == DSHVGFillStatus::CHUNK_FILLED)
     {
@@ -830,20 +832,20 @@ public:
 
   bool IsInitialized() const { return initialized_; }
 
-  DynamicSpatialHashedGridQuery<const T> GetImmutable(
+  DynamicSpatialHashedGridQuery<const T> GetLocationImmutable(
       const double x, const double y, const double z) const
   {
-    return GetImmutable4d(Eigen::Vector4d(x, y, z, 1.0));
+    return GetLocationImmutable4d(Eigen::Vector4d(x, y, z, 1.0));
   }
 
-  DynamicSpatialHashedGridQuery<const T> GetImmutable3d(
+  DynamicSpatialHashedGridQuery<const T> GetLocationImmutable3d(
       const Eigen::Vector3d& location) const
   {
-    return GetImmutable4d(
+    return GetLocationImmutable4d(
         Eigen::Vector4d(location.x(), location.y(), location.z(), 1.0));
   }
 
-  DynamicSpatialHashedGridQuery<const T> GetImmutable4d(
+  DynamicSpatialHashedGridQuery<const T> GetLocationImmutable4d(
       const Eigen::Vector4d& location) const
   {
     const Eigen::Vector4d grid_frame_location
@@ -852,7 +854,8 @@ public:
     auto found_chunk_itr = chunks_.find(region);
     if (found_chunk_itr != chunks_.end())
     {
-      return found_chunk_itr->second.GetImmutable(grid_frame_location);
+      return found_chunk_itr->second.GetLocationImmutable4d(
+          grid_frame_location);
     }
     else
     {
@@ -860,20 +863,20 @@ public:
     }
   }
 
-  DynamicSpatialHashedGridQuery<T> GetMutable(
+  DynamicSpatialHashedGridQuery<T> GetLocationMutable(
       const double x, const double y, const double z)
   {
-    return GetMutable4d(Eigen::Vector4d(x, y, z, 1.0));
+    return GetLocationMutable4d(Eigen::Vector4d(x, y, z, 1.0));
   }
 
-  DynamicSpatialHashedGridQuery<T> GetMutable3d(
+  DynamicSpatialHashedGridQuery<T> GetLocationMutable3d(
       const Eigen::Vector3d& location)
   {
-    return GetMutable4d(
+    return GetLocationMutable4d(
         Eigen::Vector4d(location.x(), location.y(), location.z(), 1.0));
   }
 
-  DynamicSpatialHashedGridQuery<T> GetMutable4d(
+  DynamicSpatialHashedGridQuery<T> GetLocationMutable4d(
       const Eigen::Vector4d& location)
   {
     const Eigen::Vector4d grid_frame_location
@@ -883,7 +886,7 @@ public:
     if (found_chunk_itr != chunks_.end()
         && OnMutableAccess(grid_frame_location))
     {
-      return found_chunk_itr->second.GetMutable(grid_frame_location);
+      return found_chunk_itr->second.GetLocationMutable4d(grid_frame_location);
     }
     else
     {
@@ -891,23 +894,25 @@ public:
     }
   }
 
-  DSHVGSetStatus SetValue(
+  DSHVGSetStatus SetLocation(
       const double x, const double y, const double z,
       const DSHVGSetType set_type, const T& value)
   {
-    return SetValue4d(Eigen::Vector4d(x, y, z, 1.0), set_type, value);
+    return SetLocation4d(Eigen::Vector4d(x, y, z, 1.0), set_type, value);
   }
 
-  DSHVGSetStatus SetValue3d(const Eigen::Vector3d& location,
-                            const DSHVGSetType set_type, const T& value)
+  DSHVGSetStatus SetLocation3d(
+      const Eigen::Vector3d& location, const DSHVGSetType set_type,
+      const T& value)
   {
-    return SetValue4d(
+    return SetLocation4d(
         Eigen::Vector4d(location.x(), location.y(), location.z(), 1.0),
         set_type, value);
   }
 
-  DSHVGSetStatus SetValue4d(const Eigen::Vector4d& location,
-                            const DSHVGSetType set_type, const T& value)
+  DSHVGSetStatus SetLocation4d(
+      const Eigen::Vector4d& location, const DSHVGSetType set_type,
+      const T& value)
   {
     const Eigen::Vector4d grid_frame_location
         = inverse_origin_transform_ * location;
@@ -919,7 +924,7 @@ public:
       {
         if (set_type == DSHVGSetType::SET_CELL)
         {
-          return found_chunk_itr->second.SetCellValue(
+          return found_chunk_itr->second.SetCellLocation4d(
               grid_frame_location, value);
         }
         else
@@ -933,7 +938,7 @@ public:
             = (set_type == DSHVGSetType::SET_CELL)
                 ? DSHVGFillType::FILL_CELL : DSHVGFillType::FILL_CHUNK;
         AllocateChunkAt(region, fill_type);
-        return SetValue4d(location, set_type, value);
+        return SetLocation4d(location, set_type, value);
       }
     }
     else
@@ -942,23 +947,25 @@ public:
     }
   }
 
-  DSHVGSetStatus SetValue(
+  DSHVGSetStatus SetLocation(
       const double x, const double y, const double z,
       const DSHVGSetType set_type, T&& value)
   {
-    return SetValue4d(Eigen::Vector4d(x, y, z, 1.0), set_type, value);
+    return SetLocation4d(Eigen::Vector4d(x, y, z, 1.0), set_type, value);
   }
 
-  DSHVGSetStatus SetValue3d(const Eigen::Vector3d& location,
-                            const DSHVGSetType set_type, T&& value)
+  DSHVGSetStatus SetLocation3d(
+      const Eigen::Vector3d& location, const DSHVGSetType set_type,
+      T&& value)
   {
-    return SetValue4d(
+    return SetLocation4d(
         Eigen::Vector4d(location.x(), location.y(), location.z(), 1.0),
         set_type, value);
   }
 
-  DSHVGSetStatus SetValue4d(const Eigen::Vector4d& location,
-                            const DSHVGSetType set_type, T&& value)
+  DSHVGSetStatus SetLocation4d(
+      const Eigen::Vector4d& location, const DSHVGSetType set_type,
+      T&& value)
   {
     const Eigen::Vector4d grid_frame_location
         = inverse_origin_transform_ * location;
@@ -970,7 +977,7 @@ public:
       {
         if (set_type == DSHVGSetType::SET_CELL)
         {
-          return found_chunk_itr->second.SetCellValue(
+          return found_chunk_itr->second.SetCellLocation4d(
               grid_frame_location, value);
         }
         else
@@ -984,7 +991,7 @@ public:
             = (set_type == DSHVGSetType::SET_CELL)
                 ? DSHVGFillType::FILL_CELL : DSHVGFillType::FILL_CHUNK;
         AllocateChunkAt(region, fill_type);
-        return SetValue4d(location, set_type, value);
+        return SetLocation4d(location, set_type, value);
       }
     }
     else

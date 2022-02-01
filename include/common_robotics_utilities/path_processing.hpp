@@ -1,8 +1,12 @@
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <cstdint>
 #include <functional>
+#include <iostream>
+#include <random>
+#include <stdexcept>
 #include <vector>
 
 #include <common_robotics_utilities/utility.hpp>

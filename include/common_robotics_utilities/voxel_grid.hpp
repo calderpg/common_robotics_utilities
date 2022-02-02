@@ -649,15 +649,7 @@ public:
     Initialize(sizes, default_value, oob_value);
   }
 
-  VoxelGridBase()
-  {
-    origin_transform_ = Eigen::Isometry3d::Identity();
-    inverse_origin_transform_ = origin_transform_.inverse();
-    utility::RequireEigenAlignment(origin_transform_);
-    utility::RequireEigenAlignment(inverse_origin_transform_);
-    data_.clear();
-    initialized_ = false;
-  }
+  VoxelGridBase() = default;
 
   virtual ~VoxelGridBase() {}
 
@@ -668,13 +660,11 @@ public:
   {
     if (sizes.Valid())
     {
-      sizes_ = sizes;
       origin_transform_ = origin_transform;
       inverse_origin_transform_ = origin_transform_.inverse();
-      utility::RequireEigenAlignment(origin_transform_);
-      utility::RequireEigenAlignment(inverse_origin_transform_);
       default_value_ = default_value;
       oob_value_ = oob_value;
+      sizes_ = sizes;
       SetContents(default_value_);
       initialized_ = true;
     }

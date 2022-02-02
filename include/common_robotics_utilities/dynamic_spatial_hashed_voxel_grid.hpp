@@ -284,8 +284,7 @@ public:
     }
   }
 
-  DynamicSpatialHashedVoxelGridChunk()
-      : fill_status_(DSHVGFillStatus::NOT_FILLED) {}
+  DynamicSpatialHashedVoxelGridChunk() = default;
 
   uint64_t SerializeSelf(
       std::vector<uint8_t>& buffer,
@@ -778,8 +777,6 @@ public:
     {
       origin_transform_ = origin_transform;
       inverse_origin_transform_ = origin_transform_.inverse();
-      utility::RequireEigenAlignment(origin_transform_);
-      utility::RequireEigenAlignment(inverse_origin_transform_);
       chunk_sizes_ = chunk_sizes;
       default_value_ = default_value;
       chunks_.reserve(expected_chunks);
@@ -791,14 +788,7 @@ public:
     }
   }
 
-  DynamicSpatialHashedVoxelGridBase()
-  {
-    origin_transform_ = Eigen::Isometry3d::Identity();
-    inverse_origin_transform_ = origin_transform_.inverse();
-    utility::RequireEigenAlignment(origin_transform_);
-    utility::RequireEigenAlignment(inverse_origin_transform_);
-    initialized_ = false;
-  }
+  DynamicSpatialHashedVoxelGridBase() = default;
 
   virtual ~DynamicSpatialHashedVoxelGridBase() {}
 

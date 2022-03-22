@@ -476,6 +476,8 @@ Container PerformSingleTaskExecution(
     const std::function<void(
         const State&, const ActionPrimitiveSharedPtr<State, Container>&)>&
             user_pre_action_callback_fn = {},
+    const std::function<void(const Container&)>&
+        user_post_execution_callback = {},
     const std::function<void(const Container&, int64_t)>&
         user_post_outcome_callback_fn = {})
 {
@@ -537,9 +539,13 @@ Container PerformSingleTaskExecution(
 
     // Execute the primitive.
     num_primitive_executions++;
-    const auto primitive_outcomes = next_primitive->Execute(selected_outcome);
+    current_outcomes = next_primitive->Execute(selected_outcome);
 
-    current_outcomes = primitive_outcomes;
+    // Call the user-provided callback.
+    if (user_post_execution_callback)
+    {
+      user_post_execution_callback(current_outcomes);
+    }
   }
 
   return task_state_trace;
@@ -560,6 +566,8 @@ Container PerformSingleTaskExecution(
     const std::function<void(
         const State&, const ActionPrimitiveSharedPtr<State, Container>&)>&
             user_pre_action_callback_fn = {},
+    const std::function<void(const Container&)>&
+        user_post_execution_callback = {},
     const std::function<void(const Container&, int64_t)>&
         user_post_outcome_callback_fn = {})
 {
@@ -569,7 +577,7 @@ Container PerformSingleTaskExecution(
   return PerformSingleTaskExecution<State, Container, StateHash, StateEqual>(
       primitive_collection, task_sequence_complete_fn, start_states,
       max_primitive_executions, single_step, state_heuristic_fn, state_hasher,
-      state_equaler, user_pre_action_callback_fn,
+      state_equaler, user_pre_action_callback_fn, user_post_execution_callback,
       user_post_outcome_callback_fn);
 }
 }  // namespace simple_task_planner

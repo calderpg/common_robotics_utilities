@@ -12,6 +12,9 @@ set(Eigen3_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIR})
 find_package(OpenMP)
 find_package(ZLIB REQUIRED)
 
+## We don't depend on Drake, but we do use different build flags if present.
+find_package(drake)
+
 ###########
 ## Build ##
 ###########
@@ -33,7 +36,13 @@ add_compile_options(-flto)
 add_compile_options(-Werror=non-virtual-dtor)
 add_compile_options(-Wold-style-cast)
 add_compile_options(-Wmaybe-uninitialized)
-add_compile_options(-march=native)
+
+if(drake_FOUND)
+    message(STATUS "Drake found, disabling -march=native")
+else()
+    message(STATUS "Drake NOT found, enabling -march=native")
+    add_compile_options(-march=native)
+endif()
 
 add_definitions(-DCOMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION=2)
 

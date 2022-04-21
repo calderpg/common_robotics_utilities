@@ -170,23 +170,278 @@ public:
   }
 };
 
-/// Helper function type definitions
-
 template<typename StateType>
 using SimpleRRTPlannerStateAllocator =
     Eigen::aligned_allocator<SimpleRRTPlannerState<StateType>>;
 
 template<typename StateType>
-using PlanningTree = std::vector<SimpleRRTPlannerState<StateType>,
-                                 SimpleRRTPlannerStateAllocator<StateType>>;
+using SimpleRRTPlannerStateVector =
+    std::vector<SimpleRRTPlannerState<StateType>,
+                SimpleRRTPlannerStateAllocator<StateType>>;
 
+/// Basic templated tree type used in RRT planners.
+template<typename StateType>
+class SimpleRRTPlannerTree
+{
+private:
+   SimpleRRTPlannerStateVector<StateType> nodes_;
+
+public:
+  using NodeType = SimpleRRTPlannerState<StateType>;
+
+  static uint64_t Serialize(
+      const SimpleRRTPlannerTree<StateType>& tree,
+      std::vector<uint8_t>& buffer,
+      const serialization::Serializer<StateType>& value_serializer)
+  {
+    const serialization::Serializer<SimpleRRTPlannerState<StateType>>
+        element_serializer = [&] (
+            const SimpleRRTPlannerState<StateType>& state,
+            std::vector<uint8_t>& serialize_buffer)
+    {
+      return SimpleRRTPlannerState<StateType>::Serialize(
+          state, serialize_buffer, value_serializer);
+    };
+
+    return serialization::SerializeVectorLike<SimpleRRTPlannerState<StateType>>(
+        tree.GetNodes(), buffer, element_serializer);
+  }
+
+  static serialization::Deserialized<SimpleRRTPlannerTree<StateType>>
+  Deserialize(
+      const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
+      const serialization::Deserializer<StateType>& value_deserializer)
+  {
+    const serialization::Deserializer<SimpleRRTPlannerState<StateType>>
+        element_deserializer = [&] (
+            const std::vector<uint8_t>& deserialize_buffer,
+            const uint64_t element_starting_offset)
+    {
+      return SimpleRRTPlannerState<StateType>::Deserialize(
+          deserialize_buffer, element_starting_offset, value_deserializer);
+    };
+
+    const serialization::Deserialized<SimpleRRTPlannerStateVector<StateType>>
+        deserialized_nodes = serialization::DeserializeVectorLike
+            <SimpleRRTPlannerState<StateType>,
+             SimpleRRTPlannerStateVector<StateType>>(
+                buffer, starting_offset, element_deserializer);
+
+    const SimpleRRTPlannerTree<StateType> tree(deserialized_nodes.Value());
+
+    return serialization::MakeDeserialized(
+        tree, deserialized_nodes.BytesRead());
+  }
+
+
+  SimpleRRTPlannerTree() {}
+
+  explicit SimpleRRTPlannerTree(const int64_t anticipated_size)
+  {
+    nodes_.reserve(static_cast<size_t>(anticipated_size));
+  }
+
+  explicit SimpleRRTPlannerTree(
+      const SimpleRRTPlannerStateVector<StateType>& nodes)
+  {
+    if (!SetNodes(nodes))
+    {
+      throw std::invalid_argument("Provided nodes have invalid tree linkage");
+    }
+  }
+
+  int64_t Size() const { return static_cast<int64_t>(nodes_.size()); }
+
+  bool Empty() const { return nodes_.empty(); }
+
+  void Clear() { nodes_.clear(); }
+
+  const SimpleRRTPlannerState<StateType>& GetNodeImmutable(
+      const int64_t index) const
+  {
+    return nodes_.at(static_cast<size_t>(index));
+  }
+
+  SimpleRRTPlannerState<StateType>& GetNodeMutable(const int64_t index)
+  {
+    return nodes_.at(static_cast<size_t>(index));
+  }
+
+  int64_t AddNode(const StateType& value)
+  {
+    nodes_.emplace_back(value);
+    return static_cast<int64_t>(nodes_.size() - 1);
+  }
+
+  int64_t AddNodeAndConnect(const StateType& value, const int64_t parent_index)
+  {
+    nodes_.emplace_back(value, parent_index);
+    const int64_t new_node_index = static_cast<int64_t>(nodes_.size() - 1);
+    GetNodeMutable(parent_index).AddChildIndex(new_node_index);
+    return new_node_index;
+  }
+
+  const SimpleRRTPlannerStateVector<StateType>& GetNodes() const
+  {
+    return nodes_;
+  }
+
+  SimpleRRTPlannerStateVector<StateType>& GetNodesMutable() { return nodes_; }
+
+  bool SetNodes(const SimpleRRTPlannerStateVector<StateType>& nodes)
+  {
+    if (CheckNodeLinkage(nodes))
+    {
+      nodes_ = nodes;
+      return true;
+    }
+    else
+    {
+      return false;
+    }
+  }
+
+  /// Checks tree @param nodes to make sure the parent-child linkages are valid.
+  /// This conservatively enforces that the tree does not conatin cycles by
+  /// enforcing parent_index < state_index < child_indices. This is sufficient
+  /// to ensure that the tree does not contain cycles, but it does not work for
+  /// all trees generally. However, this is enough for all trees produced by the
+  /// RRT planners. Note that this does *NOT* ensure that all nodes in
+  /// @param nodes form a single connected tree, since it can be useful to store
+  /// multiple trees in the same container.
+  static bool CheckNodeLinkage(
+      const SimpleRRTPlannerStateVector<StateType>& nodes)
+  {
+    // Step through each state in nodes.
+    // Make sure that the linkage to the parent and child states are correct.
+    for (size_t current_index = 0; current_index < nodes.size();
+         current_index++)
+    {
+      // For every state, make sure all the parent<->child linkages are valid
+      const auto& current_state = nodes.at(current_index);
+      if (!current_state.IsInitialized())
+      {
+        std::cerr << "Tree contains uninitialized node(s): "
+                  << current_index << std::endl;
+        return false;
+      }
+      // Check the linkage to the parent state
+      const int64_t parent_index = current_state.GetParentIndex();
+      if (parent_index > static_cast<int64_t>(current_index))
+      {
+        std::cerr << "Invalid parent index " << parent_index << " for state "
+                  << current_index
+                  << " [Parent index cannot be greater than our own index]"
+                  << std::endl;
+        return false;
+      }
+      if ((parent_index >= 0)
+          && (parent_index < static_cast<int64_t>(nodes.size())))
+      {
+        if (parent_index != static_cast<int64_t>(current_index))
+        {
+          const auto& parent_state = nodes.at(parent_index);
+          // Make sure the parent state is initialized.
+          if (!parent_state.IsInitialized())
+          {
+            std::cerr << "Tree contains uninitialized node(s) "
+                      << parent_index << std::endl;
+            return false;
+          }
+          // Make sure the corresponding parent contains the current node in its
+          // list of child indices.
+          const std::vector<int64_t>& parent_child_indices
+              = parent_state.GetChildIndices();
+          auto index_found = std::find(parent_child_indices.begin(),
+                                       parent_child_indices.end(),
+                                       static_cast<int64_t>(current_index));
+          if (index_found == parent_child_indices.end())
+          {
+            std::cerr << "Parent state " << parent_index
+                      << " does not contain child index for current node "
+                      << current_index << std::endl;
+            return false;
+          }
+        }
+        else
+        {
+          std::cerr << "Invalid parent index " << parent_index << " for state "
+                    << current_index << " [Parent index cannot be our own index]"
+                    << std::endl;
+          return false;
+        }
+      }
+      else if (parent_index < -1)
+      {
+        std::cerr << "Invalid parent index " << parent_index << " for state "
+                  << current_index << " [Parent index < -1]" << std::endl;
+        return false;
+      }
+      // Check the linkage to the child states
+      const std::vector<int64_t>& current_child_indices
+          = current_state.GetChildIndices();
+      for (const int64_t current_child_index : current_child_indices)
+      {
+        if ((current_child_index > 0)
+            && (current_child_index < static_cast<int64_t>(nodes.size())))
+        {
+          if (current_child_index > static_cast<int64_t>(current_index))
+          {
+            const auto& child_state = nodes.at(current_child_index);
+            if (!child_state.IsInitialized())
+            {
+              std::cerr << "Tree contains uninitialized node(s) "
+                        << current_child_index << std::endl;
+              return false;
+            }
+            // Make sure the child node points to us as the parent index
+            const int64_t child_parent_index = child_state.GetParentIndex();
+            if (child_parent_index != static_cast<int64_t>(current_index))
+            {
+              std::cerr << "Parent index " << child_parent_index
+                        << " for current child state " << current_child_index
+                        << " does not match index " << current_index
+                        << " for current node " << std::endl;
+              return false;
+            }
+          }
+          else if (current_child_index == static_cast<int64_t>(current_index))
+          {
+            std::cerr << "Invalid child index " << current_child_index
+                      << " for state " << current_index
+                      << " [Child index cannot be our own index]" << std::endl;
+            return false;
+          }
+          else
+          {
+            std::cerr << "Invalid child index " << current_child_index
+                      << " for state " << current_index
+                      << " [Child index cannot be less than our own index]"
+                      << std::endl;
+            return false;
+          }
+        }
+        else
+        {
+          std::cerr << "Invalid child index " << current_child_index
+                    << " for state " << current_index << std::endl;
+          return false;
+        }
+      }
+    }
+    return true;
+  }
+};
+
+/// Helper function type definitions
 template<typename SampleType>
 using SamplingFunction = std::function<SampleType(void)>;
 
-template<typename StateType, typename SampleType=StateType>
+template<typename StateType, typename TreeType=SimpleRRTPlannerTree<StateType>,
+         typename SampleType=StateType>
 using RRTNearestNeighborFunction =
     std::function<int64_t(
-        const PlanningTree<StateType>&,  // Planner tree
+        const TreeType&,  // Planner tree
         const SampleType&)>;  // Sampled state
 
 template<typename StateType>
@@ -231,21 +486,22 @@ using RRTForwardPropagationFunction =
         const StateType&,  // Nearest state
         const SampleType&)>;  // Sampled state
 
-template<typename StateType>
+template<typename StateType, typename TreeType=SimpleRRTPlannerTree<StateType>>
 using RRTStateAddedCallbackFunction =
     std::function<void(
-        PlanningTree<StateType>&,  // Planner tree
+        TreeType&,  // Planner tree
         const int64_t)>;  // Index of added state in planner tree
 
 template<typename StateType>
 using CheckGoalReachedFunction = std::function<bool(const StateType&)>;
 
-template<typename StateType>
+template<typename StateType, typename TreeType=SimpleRRTPlannerTree<StateType>>
 using GoalReachedCallbackFunction =
     std::function<void(
-        PlanningTree<StateType>&,  // Planner tree
+        TreeType&,  // Planner tree
         const int64_t)>;  // Index of goal state in planner tree
 
+/// Termination check function for RRT planning.
 using RRTTerminationCheckFunction =
     std::function<bool(const int64_t)>;  // Size of planner tree
 
@@ -299,10 +555,10 @@ public:
   const PlanningStatistics& Statistics() const { return statistics_; }
 };
 
-template<typename StateType>
+template<typename StateType, typename TreeType=SimpleRRTPlannerTree<StateType>>
 using BiRRTNearestNeighborFunction =
     std::function<int64_t(
-        const PlanningTree<StateType>&,  // Active tree
+        const TreeType&,  // Active tree
         const StateType&,  // Sampled state
         const bool)>;  // Is the start tree the active tree?
 
@@ -313,10 +569,10 @@ using BiRRTPropagationFunction =
         const StateType&,  // Target state
         const bool)>;  // Is the start tree the active tree?
 
-template<typename StateType>
+template<typename StateType, typename TreeType=SimpleRRTPlannerTree<StateType>>
 using BiRRTStateAddedCallbackFunction =
     std::function<void(
-        PlanningTree<StateType>&,  // Active tree
+        TreeType&,  // Active tree
         const int64_t, // Index of added state in active tree
         const bool)>;  // Is the start tree the active tree?
 
@@ -327,164 +583,34 @@ using StatesConnectedFunction =
         const StateType&,  // Target state
         const bool)>;  // Is the start tree the active tree?
 
-template<typename StateType>
+template<typename StateType, typename TreeType=SimpleRRTPlannerTree<StateType>>
 using GoalBridgeCallbackFunction =
     std::function<void(
-        PlanningTree<StateType>&, const int64_t,  // Start tree + index
-        PlanningTree<StateType>&, const int64_t,  // Goal tree + index
+        TreeType&, const int64_t,  // Start tree + index
+        TreeType&, const int64_t,  // Goal tree + index
         const bool)>;  // Is the start tree the active tree?
 
+/// Termination check function for BiRRT planning.
 using BiRRTTerminationCheckFunction =
     std::function<bool(
         const int64_t,  // Size of start tree
         const int64_t)>;  // Size of goal tree
 
-/// Checks tree @param nodes to make sure the parent-child linkages are correct.
-/// This conservatively enforces that the tree does not conatin cycles by
-/// enforcing parent_index < state_index < child_indices. This is sufficient to
-/// ensure that the tree does not contain cycles, but it does not work for all
-/// trees generally. however, this is enough for all trees produced by the RRT
-/// planners. Note that this does *NOT* ensure that all nodes in @param nodes
-/// form a single connected tree, since it can be useful to store multiple
-/// trees in the same container.
-template<typename StateType>
-inline bool CheckTreeLinkage(const PlanningTree<StateType>& nodes)
-{
-  // Step through each state in the tree.
-  // Make sure that the linkage to the parent and child states are correct.
-  for (size_t current_index = 0; current_index < nodes.size(); current_index++)
-  {
-    // For every state, make sure all the parent<->child linkages are valid
-    const auto& current_state = nodes.at(current_index);
-    if (!current_state.IsInitialized())
-    {
-      std::cerr << "Tree contains uninitialized node(s): "
-                << current_index << std::endl;
-      return false;
-    }
-    // Check the linkage to the parent state
-    const int64_t parent_index = current_state.GetParentIndex();
-    if (parent_index > static_cast<int64_t>(current_index))
-    {
-      std::cerr << "Invalid parent index " << parent_index << " for state "
-                << current_index
-                << " [Parent index cannot be greater than our own index]"
-                << std::endl;
-      return false;
-    }
-    if ((parent_index >= 0)
-        && (parent_index < static_cast<int64_t>(nodes.size())))
-    {
-      if (parent_index != static_cast<int64_t>(current_index))
-      {
-        const auto& parent_state = nodes.at(parent_index);
-        // Make sure the parent state is initialized.
-        if (!parent_state.IsInitialized())
-        {
-          std::cerr << "Tree contains uninitialized node(s) "
-                    << parent_index << std::endl;
-          return false;
-        }
-        // Make sure the corresponding parent contains the current node in its
-        // list of child indices.
-        const std::vector<int64_t>& parent_child_indices
-            = parent_state.GetChildIndices();
-        auto index_found = std::find(parent_child_indices.begin(),
-                                     parent_child_indices.end(),
-                                     static_cast<int64_t>(current_index));
-        if (index_found == parent_child_indices.end())
-        {
-          std::cerr << "Parent state " << parent_index
-                    << " does not contain child index for current node "
-                    << current_index << std::endl;
-          return false;
-        }
-      }
-      else
-      {
-        std::cerr << "Invalid parent index " << parent_index << " for state "
-                  << current_index << " [Parent index cannot be our own index]"
-                  << std::endl;
-        return false;
-      }
-    }
-    else if (parent_index < -1)
-    {
-      std::cerr << "Invalid parent index " << parent_index << " for state "
-                << current_index << " [Parent index < -1]" << std::endl;
-      return false;
-    }
-    // Check the linkage to the child states
-    const std::vector<int64_t>& current_child_indices
-        = current_state.GetChildIndices();
-    for (const int64_t current_child_index : current_child_indices)
-    {
-      if ((current_child_index > 0)
-          && (current_child_index < static_cast<int64_t>(nodes.size())))
-      {
-        if (current_child_index > static_cast<int64_t>(current_index))
-        {
-          const auto& child_state = nodes.at(current_child_index);
-          if (!child_state.IsInitialized())
-          {
-            std::cerr << "Tree contains uninitialized node(s) "
-                      << current_child_index << std::endl;
-            return false;
-          }
-          // Make sure the child node points to us as the parent index
-          const int64_t child_parent_index = child_state.GetParentIndex();
-          if (child_parent_index != static_cast<int64_t>(current_index))
-          {
-            std::cerr << "Parent index " << child_parent_index
-                      << " for current child state " << current_child_index
-                      << " does not match index " << current_index
-                      << " for current node " << std::endl;
-            return false;
-          }
-        }
-        else if (current_child_index == static_cast<int64_t>(current_index))
-        {
-          std::cerr << "Invalid child index " << current_child_index
-                    << " for state " << current_index
-                    << " [Child index cannot be our own index]" << std::endl;
-          return false;
-        }
-        else
-        {
-          std::cerr << "Invalid child index " << current_child_index
-                    << " for state " << current_index
-                    << " [Child index cannot be less than our own index]"
-                    << std::endl;
-          return false;
-        }
-      }
-      else
-      {
-        std::cerr << "Invalid child index " << current_child_index
-                  << " for state " << current_index << std::endl;
-        return false;
-      }
-    }
-  }
-  return true;
-}
-
 /// Extracts a single solution path corresponding to the provided goal state.
-/// @param nodes tree produced by RRT planner.
-/// @param goal_state_index index of goal state in @param nodes.
-template<typename StateType, typename Container=std::vector<StateType>>
+/// @param tree tree produced by RRT planner.
+/// @param goal_state_index index of goal state in @param tree.
+template<typename StateType, typename TreeType=SimpleRRTPlannerTree<StateType>,
+         typename Container=std::vector<StateType>>
 inline Container ExtractSolutionPath(
-    const PlanningTree<StateType>& nodes, const int64_t goal_state_index)
+    const TreeType& tree, const int64_t goal_state_index)
 {
   Container solution_path;
-  const SimpleRRTPlannerState<StateType>& goal_state =
-      nodes.at(goal_state_index);
+  const auto& goal_state = tree.GetNodeImmutable(goal_state_index);
   solution_path.push_back(goal_state.GetValueImmutable());
   int64_t parent_index = goal_state.GetParentIndex();
   while (parent_index >= 0)
   {
-    const SimpleRRTPlannerState<StateType>& parent_state =
-        nodes.at(parent_index);
+    const auto& parent_state = tree.GetNodeImmutable(parent_index);
     const StateType& parent = parent_state.GetValueImmutable();
     solution_path.push_back(parent);
     parent_index = parent_state.GetParentIndex();
@@ -496,19 +622,20 @@ inline Container ExtractSolutionPath(
 
 /// Extracts the solution paths corresponding to each of the provided goal
 /// states.
-/// @param nodes tree produced by RRT planner.
-/// @param goal_state_indices indices of goal states in @param nodes.
-template<typename StateType, typename Container=std::vector<StateType>>
+/// @param tree tree produced by RRT planner.
+/// @param goal_state_indices indices of goal states in @param tree.
+template<typename StateType, typename TreeType=SimpleRRTPlannerTree<StateType>,
+         typename Container=std::vector<StateType>>
 inline PlannedPaths<StateType, Container> ExtractSolutionPaths(
-    const PlanningTree<StateType>& nodes,
-    const std::vector<int64_t>& goal_state_indices)
+    const TreeType& tree, const std::vector<int64_t>& goal_state_indices)
 {
   PlannedPaths<StateType, Container> solution_paths(
       goal_state_indices.size());
   for (size_t idx = 0; idx < goal_state_indices.size(); idx++)
   {
-    const Container solution_path = ExtractSolutionPath<StateType, Container>(
-        nodes, goal_state_indices.at(idx));
+    const Container solution_path =
+        ExtractSolutionPath<StateType, TreeType, Container>(
+            tree, goal_state_indices.at(idx));
     solution_paths.at(idx) = solution_path;
   }
   return solution_paths;
@@ -558,23 +685,26 @@ inline PlannedPaths<StateType, Container> ExtractSolutionPaths(
 ///     and statistics is a map<string, double> of useful statistics collected
 ///     while planning.
 template<typename StateType,
+         typename TreeType=SimpleRRTPlannerTree<StateType>,
          typename SampleType=StateType,
          typename Container=std::vector<StateType>>
 inline MultipleSolutionPlanningResults<StateType, Container>
 RRTPlanMultiPath(
-    PlanningTree<StateType>& tree,
+    TreeType& tree,
     const SamplingFunction<SampleType>& sampling_fn,
-    const RRTNearestNeighborFunction<StateType, SampleType>&
+    const RRTNearestNeighborFunction<StateType, TreeType, SampleType>&
         nearest_neighbor_fn,
     const RRTForwardPropagationFunction<StateType, SampleType>&
         forward_propagation_fn,
-    const RRTStateAddedCallbackFunction<StateType>& state_added_callback_fn,
+    const RRTStateAddedCallbackFunction<StateType, TreeType>&
+        state_added_callback_fn,
     const CheckGoalReachedFunction<StateType>& check_goal_reached_fn,
-    const GoalReachedCallbackFunction<StateType>& goal_reached_callback_fn,
+    const GoalReachedCallbackFunction<StateType, TreeType>&
+        goal_reached_callback_fn,
     const RRTTerminationCheckFunction& termination_check_fn)
 {
   // Make sure we've been given a start state
-  if (tree.empty())
+  if (tree.Empty())
   {
     throw std::invalid_argument(
         "Must be called with at least one node in tree");
@@ -587,21 +717,19 @@ RRTPlanMultiPath(
   // Storage for the goal states we reach
   std::vector<int64_t> goal_state_indices;
   // Safety check before doing real work
-  for (size_t idx = 0; idx < tree.size(); idx++)
+  for (int64_t idx = 0; idx < tree.Size(); idx++)
   {
-    if (check_goal_reached_fn(tree.at(idx).GetValueImmutable()))
+    if (check_goal_reached_fn(tree.GetNodeImmutable(idx).GetValueImmutable()))
     {
-      std::cerr << "Starting node " << idx
-                << " meets goal conditions, adding to goal states" << std::endl;
-      goal_state_indices.push_back(static_cast<int64_t>(idx));
-      goal_reached_callback_fn(tree, static_cast<int64_t>(idx));
+      goal_state_indices.push_back(idx);
+      goal_reached_callback_fn(tree, idx);
     }
   }
   // Update the start time
   const std::chrono::time_point<std::chrono::steady_clock> start_time
       = std::chrono::steady_clock::now();
   // Plan
-  while (!termination_check_fn(static_cast<int64_t>(tree.size())))
+  while (!termination_check_fn(tree.Size()))
   {
     // Sample a random goal
     const SampleType random_target = sampling_fn();
@@ -615,8 +743,8 @@ RRTPlanMultiPath(
     {
       break;
     }
-    const StateType& nearest_neighbor
-        = tree.at(nearest_neighbor_index).GetValueImmutable();
+    const StateType& nearest_neighbor =
+        tree.GetNodeImmutable(nearest_neighbor_index).GetValueImmutable();
     // Forward propagate towards the goal
     const ForwardPropagation<StateType> propagated
         = forward_propagation_fn(nearest_neighbor, random_target);
@@ -649,7 +777,7 @@ RRTPlanMultiPath(
           }
           const int64_t current_relative_offset
               = current_relative_parent_index - current_relative_index;
-          const int64_t current_nodes_size = static_cast<int64_t>(tree.size());
+          const int64_t current_nodes_size = tree.Size();
           // Remember that current_relative_offset is negative!
           node_parent_index = current_nodes_size + current_relative_offset;
         }
@@ -662,18 +790,16 @@ RRTPlanMultiPath(
         // Build the new state
         const StateType& current_propagated = current_propagation.State();
         // Add the state to the tree
-        tree.emplace_back(
-            SimpleRRTPlannerState<StateType>(current_propagated,
-                                             node_parent_index));
-        const int64_t new_node_index = static_cast<int64_t>(tree.size() - 1);
-        tree.at(node_parent_index).AddChildIndex(new_node_index);
+        const int64_t new_node_index =
+            tree.AddNodeAndConnect(current_propagated, node_parent_index);
         // Call the state added callback
         if (state_added_callback_fn)
         {
           state_added_callback_fn(tree, new_node_index);
         }
         // Check if we've reached the goal
-        if (check_goal_reached_fn(tree.at(new_node_index).GetValueImmutable()))
+        if (check_goal_reached_fn(
+                tree.GetNodeImmutable(new_node_index).GetValueImmutable()))
         {
           goal_state_indices.push_back(new_node_index);
           if (goal_reached_callback_fn)
@@ -690,12 +816,13 @@ RRTPlanMultiPath(
   }
   // Put together the results
   const PlannedPaths<StateType, Container> planned_paths
-      = ExtractSolutionPaths<StateType, Container>(tree, goal_state_indices);
+      = ExtractSolutionPaths<StateType, TreeType, Container>(
+          tree, goal_state_indices);
   const std::chrono::time_point<std::chrono::steady_clock> cur_time
       = std::chrono::steady_clock::now();
   const std::chrono::duration<double> planning_time(cur_time - start_time);
   statistics["planning_time"] = planning_time.count();
-  statistics["total_states"] = static_cast<double>(tree.size());
+  statistics["total_states"] = static_cast<double>(tree.Size());
   statistics["solutions"] = static_cast<double>(planned_paths.size());
   return MultipleSolutionPlanningResults<StateType, Container>(
       planned_paths, statistics);
@@ -757,17 +884,21 @@ RRTPlanMultiPath(
 ///     and statistics is a map<string, double> of useful statistics collected
 ///     while planning.
 template<typename RNG, typename StateType,
+         typename TreeType=SimpleRRTPlannerTree<StateType>,
          typename Container=std::vector<StateType>>
 inline MultipleSolutionPlanningResults<StateType, Container>
 BiRRTPlanMultiPath(
-    PlanningTree<StateType>& start_tree,
-    PlanningTree<StateType>& goal_tree,
+    TreeType& start_tree,
+    TreeType& goal_tree,
     const SamplingFunction<StateType>& state_sampling_fn,
-    const BiRRTNearestNeighborFunction<StateType>& nearest_neighbor_fn,
+    const BiRRTNearestNeighborFunction<StateType, TreeType>&
+        nearest_neighbor_fn,
     const BiRRTPropagationFunction<StateType>& propagation_fn,
-    const BiRRTStateAddedCallbackFunction<StateType>& state_added_callback_fn,
+    const BiRRTStateAddedCallbackFunction<StateType, TreeType>&
+        state_added_callback_fn,
     const StatesConnectedFunction<StateType>& states_connected_fn,
-    const GoalBridgeCallbackFunction<StateType>& goal_bridge_callback_fn,
+    const GoalBridgeCallbackFunction<StateType, TreeType>&
+        goal_bridge_callback_fn,
     const double tree_sampling_bias,
     const double p_switch_tree,
     const BiRRTTerminationCheckFunction& termination_check_fn,
@@ -783,12 +914,12 @@ BiRRTPlanMultiPath(
     throw std::invalid_argument(
         "p_switch_tree is not a valid probability");
   }
-  if (start_tree.empty())
+  if (start_tree.Empty())
   {
     throw std::invalid_argument(
         "Must be called with at least one node in start tree");
   }
-  if (goal_tree.empty())
+  if (goal_tree.Empty())
   {
     throw std::invalid_argument(
         "Must be called with at least one node in goal tree");
@@ -834,25 +965,20 @@ BiRRTPlanMultiPath(
   statistics["failed_samples"] = 0.0;
   statistics["active_tree_swaps"] = 0.0;
   // Safety check before doing real work
-  for (size_t start_tree_idx = 0; start_tree_idx < start_tree.size();
+  for (int64_t start_tree_idx = 0; start_tree_idx < start_tree.Size();
        start_tree_idx++)
   {
-    for (size_t goal_tree_idx = 0; goal_tree_idx < goal_tree.size();
+    for (int64_t goal_tree_idx = 0; goal_tree_idx < goal_tree.Size();
          goal_tree_idx++)
     {
-      if (states_connected_fn(start_tree.at(start_tree_idx).GetValueImmutable(),
-                              goal_tree.at(goal_tree_idx).GetValueImmutable(),
-                              start_tree_active))
+      if (states_connected_fn(
+              start_tree.GetNodeImmutable(start_tree_idx).GetValueImmutable(),
+              goal_tree.GetNodeImmutable(goal_tree_idx).GetValueImmutable(),
+              start_tree_active))
       {
-        std::cerr << "Starting pair (" << start_tree_idx << ", "
-                  << goal_tree_idx
-                  << ") meets goal conditions, adding to goal states"
-                  << std::endl;
         goal_bridges.emplace_back(start_tree_idx, goal_tree_idx);
-        goal_bridge_callback_fn(start_tree,
-                                static_cast<int64_t>(start_tree_idx),
-                                goal_tree,
-                                static_cast<int64_t>(goal_tree_idx), true);
+        goal_bridge_callback_fn(
+            start_tree, start_tree_idx, goal_tree, goal_tree_idx, true);
       }
     }
   }
@@ -860,28 +986,26 @@ BiRRTPlanMultiPath(
   const std::chrono::time_point<std::chrono::steady_clock> start_time
       = std::chrono::steady_clock::now();
   // Plan
-  while (!termination_check_fn(static_cast<int64_t>(start_tree.size()),
-                               static_cast<int64_t>(goal_tree.size())))
+  while (!termination_check_fn(start_tree.Size(), goal_tree.Size()))
   {
     // Get the current active/target trees
-    PlanningTree<StateType>& active_tree
-        = (start_tree_active) ? start_tree : goal_tree;
-    PlanningTree<StateType>& target_tree
-        = (start_tree_active) ? goal_tree : start_tree;
+    TreeType& active_tree = (start_tree_active) ? start_tree : goal_tree;
+    TreeType& target_tree = (start_tree_active) ? goal_tree : start_tree;
     // Select our sampling type
     const bool sample_from_tree
         = (unit_real_distribution(rng) <= tree_sampling_bias);
     int64_t target_tree_node_index = -1;
     if (sample_from_tree)
     {
-      std::uniform_int_distribution<int64_t> tree_sampling_distribution(
-          0, static_cast<int64_t>(target_tree.size() - 1));
+      std::uniform_int_distribution<int64_t>
+          tree_sampling_distribution(0, target_tree.Size() - 1);
       target_tree_node_index = tree_sampling_distribution(rng);
     }
     // Sample a target state
     const StateType target_state
         = (sample_from_tree)
-          ? target_tree.at(target_tree_node_index).GetValueImmutable()
+          ? target_tree.GetNodeImmutable(
+              target_tree_node_index).GetValueImmutable()
           : state_sampling_fn();
     // Get the nearest neighbor
     const int64_t nearest_neighbor_index
@@ -893,8 +1017,8 @@ BiRRTPlanMultiPath(
       break;
     }
     statistics["total_samples"] += 1.0;
-    const StateType& nearest_neighbor
-        = active_tree.at(nearest_neighbor_index).GetValueImmutable();
+    const StateType& nearest_neighbor = active_tree.GetNodeImmutable(
+        nearest_neighbor_index).GetValueImmutable();
     // Forward propagate towards the goal
     const ForwardPropagation<StateType> propagated
         = propagation_fn(nearest_neighbor, target_state, start_tree_active);
@@ -927,8 +1051,7 @@ BiRRTPlanMultiPath(
           }
           const int64_t current_relative_offset
               = current_relative_parent_index - current_relative_index;
-          const int64_t current_nodes_size
-              = static_cast<int64_t>(active_tree.size());
+          const int64_t current_nodes_size = active_tree.Size();
           // Remember that current_relative_offset is negative!
           node_parent_index = current_nodes_size + current_relative_offset;
         }
@@ -941,11 +1064,8 @@ BiRRTPlanMultiPath(
         // Build the new state
         const StateType& current_propagated = current_propagation.State();
         // Add the state to the tree
-        active_tree.emplace_back(SimpleRRTPlannerState<StateType>(
-                                     current_propagated, node_parent_index));
-        const int64_t new_node_index
-            = static_cast<int64_t>(active_tree.size() - 1);
-        active_tree.at(node_parent_index).AddChildIndex(new_node_index);
+        const int64_t new_node_index = active_tree.AddNodeAndConnect(
+            current_propagated, node_parent_index);
         // Call the state added callback
         if (state_added_callback_fn)
         {
@@ -957,8 +1077,9 @@ BiRRTPlanMultiPath(
         {
           // Check if we have connected the trees
           if (states_connected_fn(
-                active_tree.at(new_node_index).GetValueImmutable(),
-                target_state, start_tree_active))
+                  active_tree.GetNodeImmutable(
+                      new_node_index).GetValueImmutable(),
+                  target_state, start_tree_active))
           {
             if (start_tree_active)
             {
@@ -998,10 +1119,10 @@ BiRRTPlanMultiPath(
   for (const GoalBridge& goal_bridge : goal_bridges)
   {
     // Extract the portion in the start tree
-    Container start_path = ExtractSolutionPath<StateType, Container>(
+    Container start_path = ExtractSolutionPath<StateType, TreeType, Container>(
         start_tree, goal_bridge.StartTreeIndex());
     // Extract the portion in the goal tree
-    Container goal_path = ExtractSolutionPath<StateType, Container>(
+    Container goal_path = ExtractSolutionPath<StateType, TreeType, Container>(
         goal_tree, goal_bridge.GoalTreeIndex());
     // Reverse the goal tree part
     std::reverse(goal_path.begin(), goal_path.end());
@@ -1014,7 +1135,7 @@ BiRRTPlanMultiPath(
   const std::chrono::duration<double> planning_time(cur_time - start_time);
   statistics["planning_time"] = planning_time.count();
   statistics["total_states"]
-      = static_cast<double>(start_tree.size() + goal_tree.size());
+      = static_cast<double>(start_tree.Size() + goal_tree.Size());
   statistics["solutions"] = static_cast<double>(planned_paths.size());
   return MultipleSolutionPlanningResults<StateType, Container>(
       planned_paths, statistics);
@@ -1063,25 +1184,28 @@ BiRRTPlanMultiPath(
 ///     statistics is a map<string, double> of useful statistics collected while
 ///     planning.
 template<typename StateType,
+         typename TreeType=SimpleRRTPlannerTree<StateType>,
          typename SampleType=StateType,
          typename Container=std::vector<StateType>>
 inline SingleSolutionPlanningResults<StateType, Container>
 RRTPlanSinglePath(
-    PlanningTree<StateType>& tree,
+    TreeType& tree,
     const SamplingFunction<SampleType>& sampling_fn,
-    const RRTNearestNeighborFunction<StateType, SampleType>&
+    const RRTNearestNeighborFunction<StateType, TreeType, SampleType>&
         nearest_neighbor_fn,
     const RRTForwardPropagationFunction<StateType, SampleType>&
         forward_propagation_fn,
-    const RRTStateAddedCallbackFunction<StateType>& state_added_callback_fn,
+    const RRTStateAddedCallbackFunction<StateType, TreeType>&
+        state_added_callback_fn,
     const CheckGoalReachedFunction<StateType>& check_goal_reached_fn,
-    const GoalReachedCallbackFunction<StateType>& goal_reached_callback_fn,
+    const GoalReachedCallbackFunction<StateType, TreeType>&
+        goal_reached_callback_fn,
     const RRTTerminationCheckFunction& termination_check_fn)
 {
   bool solution_found = false;
-  const GoalReachedCallbackFunction<StateType> internal_goal_reached_callback_fn
-      = [&] (PlanningTree<StateType>& planning_tree,
-             const int64_t goal_node_index)
+  const GoalReachedCallbackFunction<StateType, TreeType>
+      internal_goal_reached_callback_fn
+          = [&] (TreeType& planning_tree, const int64_t goal_node_index)
   {
     solution_found = true;
     if (goal_reached_callback_fn)
@@ -1095,7 +1219,7 @@ RRTPlanSinglePath(
     return (solution_found || termination_check_fn(current_tree_size));
   };
   const auto rrt_result =
-      RRTPlanMultiPath<StateType, SampleType, Container>(
+      RRTPlanMultiPath<StateType, TreeType, SampleType, Container>(
           tree, sampling_fn, nearest_neighbor_fn, forward_propagation_fn,
           state_added_callback_fn, check_goal_reached_fn,
           internal_goal_reached_callback_fn, internal_termination_check_fn);
@@ -1166,28 +1290,32 @@ RRTPlanSinglePath(
 ///     statistics is a map<string, double> of useful statistics collected while
 ///     planning.
 template<typename RNG, typename StateType,
+         typename TreeType=SimpleRRTPlannerTree<StateType>,
          typename Container=std::vector<StateType>>
 inline SingleSolutionPlanningResults<StateType, Container>
 BiRRTPlanSinglePath(
-    PlanningTree<StateType>& start_tree,
-    PlanningTree<StateType>& goal_tree,
+    TreeType& start_tree,
+    TreeType& goal_tree,
     const SamplingFunction<StateType>& state_sampling_fn,
-    const BiRRTNearestNeighborFunction<StateType>& nearest_neighbor_fn,
+    const BiRRTNearestNeighborFunction<StateType, TreeType>&
+        nearest_neighbor_fn,
     const BiRRTPropagationFunction<StateType>& propagation_fn,
-    const BiRRTStateAddedCallbackFunction<StateType>& state_added_callback_fn,
+    const BiRRTStateAddedCallbackFunction<StateType, TreeType>&
+        state_added_callback_fn,
     const StatesConnectedFunction<StateType>& states_connected_fn,
-    const GoalBridgeCallbackFunction<StateType>& goal_bridge_callback_fn,
+    const GoalBridgeCallbackFunction<StateType, TreeType>&
+        goal_bridge_callback_fn,
     const double tree_sampling_bias,
     const double p_switch_tree,
     const BiRRTTerminationCheckFunction& termination_check_fn,
     RNG& rng)
 {
   bool solution_found = false;
-  const GoalBridgeCallbackFunction<StateType> internal_goal_bridge_callback_fn
-      = [&] (PlanningTree<StateType>& planning_start_tree,
-             const int64_t start_tree_index,
-             PlanningTree<StateType>& planning_goal_tree,
-             const int64_t goal_tree_index, const bool was_start_tree_active)
+  const GoalBridgeCallbackFunction<StateType, TreeType>
+      internal_goal_bridge_callback_fn
+          = [&] (TreeType& planning_start_tree, const int64_t start_tree_index,
+                 TreeType& planning_goal_tree, const int64_t goal_tree_index,
+                 const bool was_start_tree_active)
   {
     solution_found = true;
     if (goal_bridge_callback_fn)
@@ -1205,7 +1333,7 @@ BiRRTPlanSinglePath(
                                                    current_goal_tree_size));
   };
   const auto birrt_result =
-      BiRRTPlanMultiPath<RNG, StateType, Container>(
+      BiRRTPlanMultiPath<RNG, StateType, TreeType, Container>(
           start_tree, goal_tree, state_sampling_fn, nearest_neighbor_fn,
           propagation_fn, state_added_callback_fn, states_connected_fn,
           internal_goal_bridge_callback_fn, tree_sampling_bias, p_switch_tree,
@@ -1222,6 +1350,8 @@ BiRRTPlanSinglePath(
   }
 }
 
+/// Helper type to manage a timeout using std::chrono::steady_clock to measure
+/// elapsed time.
 class TimeoutCheckHelper
 {
 private:
@@ -1379,6 +1509,7 @@ inline SamplingFunction<SampleType> MakeStateAndGoalsSamplingFunction(
       }
     }
   };
+
   StateAndGoalsSamplingFunction sampling_fn_helper(
       goal_states, goal_bias, state_sampling_fn);
   std::function<SampleType(void)> sampling_function
@@ -1393,26 +1524,28 @@ inline SamplingFunction<SampleType> MakeStateAndGoalsSamplingFunction(
 /// function for use in RRT planner given the provided state-to-state distance
 /// function @param distance_fn and flag @param use_parallel which selects if
 /// parallel linear nearest neighbors should be performed.
-template<typename StateType, typename SampleType=StateType>
-inline RRTNearestNeighborFunction<StateType, SampleType>
+template<typename StateType, typename TreeType=SimpleRRTPlannerTree<StateType>,
+         typename SampleType=StateType>
+inline RRTNearestNeighborFunction<StateType, TreeType, SampleType>
 MakeLinearRRTNearestNeighborsFunction(
     const std::function<double(const StateType&,
                                const SampleType&)>& distance_fn,
     const bool use_parallel = true)
 {
-  RRTNearestNeighborFunction<StateType, SampleType> nearest_neighbors_function
-      = [=] (const PlanningTree<StateType>& tree, const SampleType& sampled)
+  RRTNearestNeighborFunction<StateType, TreeType, SampleType>
+      nearest_neighbors_function = [=] (
+          const TreeType& tree, const SampleType& sampled)
   {
-    std::function<double(const SimpleRRTPlannerState<StateType>&,
+    std::function<double(const typename TreeType::NodeType&,
                          const SampleType&)>
         real_distance_fn =
-            [&](const SimpleRRTPlannerState<StateType>& tree_state,
+            [&](const typename TreeType::NodeType& tree_node,
                 const SampleType& sample) {
-              const StateType& candidate_q = tree_state.GetValueImmutable();
+              const StateType& candidate_q = tree_node.GetValueImmutable();
               return distance_fn(candidate_q, sample);
             };
     const auto neighbors = simple_knearest_neighbors::GetKNearestNeighbors(
-        tree, sampled, real_distance_fn, 1, use_parallel);
+        tree.GetNodes(), sampled, real_distance_fn, 1, use_parallel);
     if (neighbors.size() > 0)
     {
       const auto& nearest_neighbor = neighbors.at(0);
@@ -1432,14 +1565,14 @@ MakeLinearRRTNearestNeighborsFunction(
 /// parallel linear nearest neighbors should be performed. Use this helper for
 /// kinematic planning problems, in which state type and sample type are the
 /// same.
-template<typename StateType>
-inline RRTNearestNeighborFunction<StateType, StateType>
+template<typename StateType, typename TreeType=SimpleRRTPlannerTree<StateType>>
+inline RRTNearestNeighborFunction<StateType, TreeType, StateType>
 MakeKinematicLinearRRTNearestNeighborsFunction(
     const std::function<double(const StateType&,
                                const StateType&)>& distance_fn,
     const bool use_parallel = true)
 {
-  return MakeLinearRRTNearestNeighborsFunction<StateType, StateType>(
+  return MakeLinearRRTNearestNeighborsFunction<StateType, TreeType, StateType>(
       distance_fn, use_parallel);
 }
 
@@ -1449,27 +1582,27 @@ MakeKinematicLinearRRTNearestNeighborsFunction(
 /// selects if parallel linear nearest neighbors should be performed. This is
 /// best used for kinematic planning problems, where nearest neighbors is the
 /// same for both start and goal tree.
-template<typename StateType>
-inline BiRRTNearestNeighborFunction<StateType>
+template<typename StateType, typename TreeType=SimpleRRTPlannerTree<StateType>>
+inline BiRRTNearestNeighborFunction<StateType, TreeType>
 MakeKinematicLinearBiRRTNearestNeighborsFunction(
     const std::function<double(const StateType&,
                                const StateType&)>& distance_fn,
     const bool use_parallel = true)
 {
-  BiRRTNearestNeighborFunction<StateType> nearest_neighbors_function
-      = [=] (const PlanningTree<StateType>& tree,
+  BiRRTNearestNeighborFunction<StateType, TreeType> nearest_neighbors_function
+      = [=] (const TreeType& tree,
              const StateType& sampled, const bool)
   {
-    std::function<double(const SimpleRRTPlannerState<StateType>&,
+    std::function<double(const typename TreeType::NodeType&,
                          const StateType&)>
         real_distance_fn =
-            [&](const SimpleRRTPlannerState<StateType>& tree_state,
+            [&](const typename TreeType::NodeType& tree_node,
                 const StateType& sample) {
-              const StateType& candidate_q = tree_state.GetValueImmutable();
+              const StateType& candidate_q = tree_node.GetValueImmutable();
               return distance_fn(candidate_q, sample);
             };
     const auto neighbors = simple_knearest_neighbors::GetKNearestNeighbors(
-        tree, sampled, real_distance_fn, 1, use_parallel);
+        tree.GetNodes(), sampled, real_distance_fn, 1, use_parallel);
     if (neighbors.size() > 0)
     {
       const auto& nearest_neighbor = neighbors.at(0);

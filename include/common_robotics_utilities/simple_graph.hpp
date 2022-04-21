@@ -713,7 +713,7 @@ public:
 
   int64_t AddNode(const NodeValueType& new_value)
   {
-    nodes_.push_back(GraphNodeType(new_value));
+    nodes_.emplace_back(new_value);
     return static_cast<int64_t>(nodes_.size() - 1);
   }
 

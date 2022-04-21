@@ -204,7 +204,7 @@ public:
     };
 
     return serialization::SerializeVectorLike<SimpleRRTPlannerState<StateType>>(
-        tree.GetNodes(), buffer, element_serializer);
+        tree.GetNodesImmutable(), buffer, element_serializer);
   }
 
   static serialization::Deserialized<SimpleRRTPlannerTree<StateType>>
@@ -281,7 +281,7 @@ public:
     return new_node_index;
   }
 
-  const SimpleRRTPlannerStateVector<StateType>& GetNodes() const
+  const SimpleRRTPlannerStateVector<StateType>& GetNodesImmutable() const
   {
     return nodes_;
   }
@@ -1545,7 +1545,7 @@ MakeLinearRRTNearestNeighborsFunction(
               return distance_fn(candidate_q, sample);
             };
     const auto neighbors = simple_knearest_neighbors::GetKNearestNeighbors(
-        tree.GetNodes(), sampled, real_distance_fn, 1, use_parallel);
+        tree.GetNodesImmutable(), sampled, real_distance_fn, 1, use_parallel);
     if (neighbors.size() > 0)
     {
       const auto& nearest_neighbor = neighbors.at(0);
@@ -1602,7 +1602,7 @@ MakeKinematicLinearBiRRTNearestNeighborsFunction(
               return distance_fn(candidate_q, sample);
             };
     const auto neighbors = simple_knearest_neighbors::GetKNearestNeighbors(
-        tree.GetNodes(), sampled, real_distance_fn, 1, use_parallel);
+        tree.GetNodesImmutable(), sampled, real_distance_fn, 1, use_parallel);
     if (neighbors.size() > 0)
     {
       const auto& nearest_neighbor = neighbors.at(0);

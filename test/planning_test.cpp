@@ -190,11 +190,10 @@ bool CheckEdgeCollisionFree(
   return true;
 }
 
-template<typename PRNG>
 WaypointVector SmoothWaypoints(
     const WaypointVector& waypoints,
     const std::function<bool(const Waypoint&, const Waypoint&)>& check_edge_fn,
-    PRNG& prng)
+    const utility::UniformUnitRealFunction& uniform_unit_real_fn)
 {
   // Parameters for shortcut smoothing
   const uint32_t max_iterations = 100;
@@ -203,11 +202,11 @@ WaypointVector SmoothWaypoints(
   const double max_shortcut_fraction = 0.5;
   const double resample_shortcuts_interval = 0.5;
   const bool check_for_marginal_shortcuts = false;
-  return path_processing::ShortcutSmoothPath<PRNG, Waypoint>(
+  return path_processing::ShortcutSmoothPath<Waypoint>(
       waypoints, max_iterations, max_failed_iterations, max_backtracking_steps,
       max_shortcut_fraction, resample_shortcuts_interval,
       check_for_marginal_shortcuts, check_edge_fn, WaypointDistance,
-      InterpolateWaypoint, prng);
+      InterpolateWaypoint, uniform_unit_real_fn);
 }
 
 void DrawRoadmap(
@@ -256,12 +255,15 @@ WaypointVector GenerateAllPossible8ConnectedChildren(
       Waypoint(waypoint.first + 1, waypoint.second + 1)};
 }
 
-template<typename PRNG>
-Waypoint SampleWaypoint(const TestMap& map, PRNG& rng)
+Waypoint SampleWaypoint(
+    const TestMap& map,
+    const utility::UniformUnitRealFunction& uniform_unit_real_fn)
 {
-  std::uniform_int_distribution<ssize_t> row_dist(1, map.rows() - 1);
-  std::uniform_int_distribution<ssize_t> col_dist(1, map.rows() - 1);
-  return Waypoint(row_dist(rng), col_dist(rng));
+  const ssize_t row = utility::GetUniformRandomInRange<ssize_t>(
+      uniform_unit_real_fn, 1, map.rows() - 1);
+  const ssize_t col = utility::GetUniformRandomInRange<ssize_t>(
+      uniform_unit_real_fn, 1, map.cols() - 1);
+  return Waypoint(row, col);
 }
 
 GTEST_TEST(PlanningTest, Test)
@@ -292,6 +294,12 @@ GTEST_TEST(PlanningTest, Test)
 
   const int64_t prng_seed = 42;
   std::mt19937_64 prng(prng_seed);
+  std::uniform_real_distribution<double> uniform_unit_dist(0.0, 1.0);
+  utility::UniformUnitRealFunction uniform_unit_real_fn = [&] ()
+  {
+    return uniform_unit_dist(prng);
+  };
+
   const WaypointVector keypoints
       = {Waypoint(1, 1), Waypoint(18, 18), Waypoint(7, 13), Waypoint(9, 5)};
 
@@ -313,7 +321,7 @@ GTEST_TEST(PlanningTest, Test)
 
   const std::function<Waypoint(void)> state_sampling_fn = [&] (void)
   {
-    return SampleWaypoint(test_env, prng);
+    return SampleWaypoint(test_env, uniform_unit_real_fn);
   };
 
   // Functions to check planning results
@@ -345,7 +353,7 @@ GTEST_TEST(PlanningTest, Test)
     std::cout << "Checking raw path" << std::endl;
     check_path(path);
     const auto smoothed_path =
-        SmoothWaypoints(path, check_edge_validity_fn, prng);
+        SmoothWaypoints(path, check_edge_validity_fn, uniform_unit_real_fn);
     std::cout << "Checking smoothed path" << std::endl;
     check_path(smoothed_path);
     const auto resampled_path = ResampleWaypoints(smoothed_path);
@@ -533,7 +541,7 @@ GTEST_TEST(PlanningTest, Test)
         // Query-specific RRT helpers
         const auto rrt_sample_fn
             = simple_rrt_planner::MakeStateAndGoalsSamplingFunction<Waypoint>(
-                state_sampling_fn, {goal}, rrt_goal_bias, prng);
+                state_sampling_fn, {goal}, rrt_goal_bias, uniform_unit_real_fn);
         const simple_rrt_planner::CheckGoalReachedFunction<Waypoint>
             rrt_goal_reached_fn = [&] (const Waypoint& state)
         {
@@ -582,14 +590,14 @@ GTEST_TEST(PlanningTest, Test)
 
         const auto birrt_extent_path
             = simple_rrt_planner::BiRRTPlanSinglePath<
-                std::mt19937_64, Waypoint, WaypointPlannerTree, WaypointVector>(
+                Waypoint, WaypointPlannerTree, WaypointVector>(
                     birrt_extend_start_tree, birrt_extend_goal_tree,
                     state_sampling_fn, birrt_nearest_neighbors_fn,
                     birrt_extend_fn, {}, birrt_states_connected_fn, {},
                     birrt_tree_sampling_bias, birrt_p_switch_trees,
                     simple_rrt_planner
                         ::MakeBiRRTTimeoutTerminationFunction(rrt_timeout),
-                    prng).Path();
+                    uniform_unit_real_fn).Path();
         check_plan(test_env, {start}, {goal}, birrt_extent_path);
 
         // Plan with BiRRT-Connect
@@ -602,14 +610,14 @@ GTEST_TEST(PlanningTest, Test)
 
         const auto birrt_connect_path
             = simple_rrt_planner::BiRRTPlanSinglePath<
-                std::mt19937_64, Waypoint, WaypointPlannerTree, WaypointVector>(
+                Waypoint, WaypointPlannerTree, WaypointVector>(
                     birrt_connect_start_tree, birrt_connect_goal_tree,
                     state_sampling_fn, birrt_nearest_neighbors_fn,
                     birrt_connect_fn, {}, birrt_states_connected_fn, {},
                     birrt_tree_sampling_bias, birrt_p_switch_trees,
                     simple_rrt_planner
                         ::MakeBiRRTTimeoutTerminationFunction(rrt_timeout),
-                    prng).Path();
+                    uniform_unit_real_fn).Path();
         check_plan(test_env, {start}, {goal}, birrt_connect_path);
       }
     }
@@ -641,14 +649,14 @@ GTEST_TEST(PlanningTest, Test)
 
   const auto birrt_connect_path
       = simple_rrt_planner::BiRRTPlanSinglePath<
-          std::mt19937_64, Waypoint, WaypointPlannerTree, WaypointVector>(
+          Waypoint, WaypointPlannerTree, WaypointVector>(
               birrt_connect_start_tree, birrt_connect_goal_tree,
               state_sampling_fn, birrt_nearest_neighbors_fn,
               birrt_connect_fn, {}, birrt_states_connected_fn, {},
               birrt_tree_sampling_bias, birrt_p_switch_trees,
               simple_rrt_planner
                   ::MakeBiRRTTimeoutTerminationFunction(rrt_timeout),
-              prng).Path();
+              uniform_unit_real_fn).Path();
   check_plan(test_env, starts, goals, birrt_connect_path);
 
   // Use one of the trees to check tree serialization & deserialization

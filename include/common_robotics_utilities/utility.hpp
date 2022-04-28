@@ -108,15 +108,13 @@ SizeType GetUniformRandomIndex(
       uniform_unit_real_fn() * static_cast<double>(container_size)));
 }
 
-/// Given a UniformUnitRealFunction @param uniform_unit_real_fn, returns an
-/// index in [start, end].
+/// Given a UniformUnitRealFunction @param uniform_unit_real_fn, returns a
+/// value in [start, end].
 template<typename SizeType>
 SizeType GetUniformRandomInRange(
     const UniformUnitRealFunction& uniform_unit_real_fn,
     const SizeType start, const SizeType end)
 {
-  static_assert(
-      std::is_integral<SizeType>::value, "SizeType must be an integral type");
   if (start > end)
   {
     throw std::invalid_argument("start must be <= end");

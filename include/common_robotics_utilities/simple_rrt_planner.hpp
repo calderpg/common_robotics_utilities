@@ -879,11 +879,12 @@ RRTPlanMultiPath(
 ///     terminated. The provided int64_t values are the current size of the
 ///     start and goal tree, respectively. These may be useful for a
 ///     size-limited planning problem.
-/// @param rng a PRNG for use in internal sampling and tree swaps.
+/// @param uniform_unit_real_fn Returns a uniformly distributed double from
+///     [0.0, 1.0). Used internally for tree sampling and swapping.
 /// @return paths + statistics where paths is the vector of solution paths
 ///     and statistics is a map<string, double> of useful statistics collected
 ///     while planning.
-template<typename RNG, typename StateType,
+template<typename StateType,
          typename TreeType=SimpleRRTPlannerTree<StateType>,
          typename Container=std::vector<StateType>>
 inline MultipleSolutionPlanningResults<StateType, Container>
@@ -902,7 +903,7 @@ BiRRTPlanMultiPath(
     const double tree_sampling_bias,
     const double p_switch_tree,
     const BiRRTTerminationCheckFunction& termination_check_fn,
-    RNG& rng)
+    const utility::UniformUnitRealFunction& uniform_unit_real_fn)
 {
   if ((tree_sampling_bias < 0.0) || (tree_sampling_bias > 1.0))
   {
@@ -993,13 +994,12 @@ BiRRTPlanMultiPath(
     TreeType& target_tree = (start_tree_active) ? goal_tree : start_tree;
     // Select our sampling type
     const bool sample_from_tree
-        = (unit_real_distribution(rng) <= tree_sampling_bias);
+        = (uniform_unit_real_fn() <= tree_sampling_bias);
     int64_t target_tree_node_index = -1;
     if (sample_from_tree)
     {
-      std::uniform_int_distribution<int64_t>
-          tree_sampling_distribution(0, target_tree.Size() - 1);
-      target_tree_node_index = tree_sampling_distribution(rng);
+      target_tree_node_index = utility::GetUniformRandomIndex(
+          uniform_unit_real_fn, target_tree.Size());
     }
     // Sample a target state
     const StateType target_state
@@ -1107,7 +1107,7 @@ BiRRTPlanMultiPath(
       statistics["failed_samples"] += 1.0;
     }
     // Decide if we should switch the active tree
-    if (unit_real_distribution(rng) <= p_switch_tree)
+    if (uniform_unit_real_fn() <= p_switch_tree)
     {
       start_tree_active = !start_tree_active;
       statistics["active_tree_swaps"] += 1.0;
@@ -1285,11 +1285,12 @@ RRTPlanSinglePath(
 ///     terminated. The provided int64_t values are the current size of the
 ///     start and goal tree, respectively. These may be useful for a
 ///     size-limited planning problem.
-/// @param rng a PRNG for use in internal sampling and tree swaps.
+/// @param uniform_unit_real_fn Returns a uniformly distributed double from
+///     [0.0, 1.0). Used internally for tree sampling and swapping.
 /// @return path + statistics where path is the solution path and
 ///     statistics is a map<string, double> of useful statistics collected while
 ///     planning.
-template<typename RNG, typename StateType,
+template<typename StateType,
          typename TreeType=SimpleRRTPlannerTree<StateType>,
          typename Container=std::vector<StateType>>
 inline SingleSolutionPlanningResults<StateType, Container>
@@ -1308,7 +1309,7 @@ BiRRTPlanSinglePath(
     const double tree_sampling_bias,
     const double p_switch_tree,
     const BiRRTTerminationCheckFunction& termination_check_fn,
-    RNG& rng)
+    const utility::UniformUnitRealFunction& uniform_unit_real_fn)
 {
   bool solution_found = false;
   const GoalBridgeCallbackFunction<StateType, TreeType>
@@ -1333,11 +1334,11 @@ BiRRTPlanSinglePath(
                                                    current_goal_tree_size));
   };
   const auto birrt_result =
-      BiRRTPlanMultiPath<RNG, StateType, TreeType, Container>(
+      BiRRTPlanMultiPath<StateType, TreeType, Container>(
           start_tree, goal_tree, state_sampling_fn, nearest_neighbor_fn,
           propagation_fn, state_added_callback_fn, states_connected_fn,
           internal_goal_bridge_callback_fn, tree_sampling_bias, p_switch_tree,
-          internal_termination_check_fn, rng);
+          internal_termination_check_fn, uniform_unit_real_fn);
   if (birrt_result.Paths().size() > 0)
   {
     return SingleSolutionPlanningResults<StateType, Container>(
@@ -1449,33 +1450,32 @@ inline BiRRTTerminationCheckFunction MakeBiRRTTimeoutTerminationFunction(
 /// direction RRT with fixed goal states, you interleave sampling random states
 /// (accomplished here by calling @param state_sampling_fn) and "sampling" the
 /// known goal states (here, @param goal_states) with probablity
-/// @param goal_bias. This helper function copies the provided
-/// @param state_sampling_fn, @param goal_states, and @param goal_bias, but
-/// passes @param rng by reference. Thus, the lifetime of @param rng must cover
-/// the entire lifetime of the std::function this returns!
-template<typename SampleType, typename PRNG,
-         typename Container=std::vector<SampleType>>
+/// @param goal_bias. @param uniform_unit_real_fn Returns a uniformly
+/// distributed double from [0.0, 1.0).
+template<typename SampleType, typename Container=std::vector<SampleType>>
 inline SamplingFunction<SampleType> MakeStateAndGoalsSamplingFunction(
     const std::function<SampleType(void)>& state_sampling_fn,
     const Container& goal_states,
-    const double goal_bias, PRNG& rng)
+    const double goal_bias,
+    const utility::UniformUnitRealFunction& uniform_unit_real_fn)
 {
   class StateAndGoalsSamplingFunction
   {
   private:
     Container goal_samples_;
     const double goal_bias_ = 0.0;
-    std::uniform_real_distribution<double> unit_real_dist_;
-    std::uniform_int_distribution<size_t> goal_sampling_dist_;
+    utility::UniformUnitRealFunction uniform_unit_real_fn_;
     const std::function<SampleType(void)> state_sampling_fn_;
 
   public:
     StateAndGoalsSamplingFunction(
-          const Container& goal_samples,
-          const double goal_bias,
-          const std::function<SampleType(void)>& state_sampling_fn)
+        const Container& goal_samples,
+        const double goal_bias,
+        const utility::UniformUnitRealFunction& uniform_unit_real_fn,
+        const std::function<SampleType(void)>& state_sampling_fn)
         : goal_samples_(goal_samples), goal_bias_(goal_bias),
-          unit_real_dist_(0.0, 1.0), state_sampling_fn_(state_sampling_fn)
+          uniform_unit_real_fn_(uniform_unit_real_fn),
+          state_sampling_fn_(state_sampling_fn)
     {
       if ((goal_bias_ < 0.0) || (goal_bias_ > 1.0))
       {
@@ -1486,13 +1486,11 @@ inline SamplingFunction<SampleType> MakeStateAndGoalsSamplingFunction(
       {
         throw std::invalid_argument("goal_samples is empty");
       }
-      goal_sampling_dist_ =
-          std::uniform_int_distribution<size_t>(0, goal_samples_.size() - 1);
     }
 
-    SampleType Sample(PRNG& rng)
+    SampleType Sample()
     {
-      if (unit_real_dist_(rng) > goal_bias_)
+      if (uniform_unit_real_fn_() > goal_bias_)
       {
         return state_sampling_fn_();
       }
@@ -1504,18 +1502,19 @@ inline SamplingFunction<SampleType> MakeStateAndGoalsSamplingFunction(
         }
         else
         {
-          return goal_samples_.at(goal_sampling_dist_(rng));
+          return goal_samples_.at(utility::GetUniformRandomIndex(
+              uniform_unit_real_fn_, goal_samples_.size()));
         }
       }
     }
   };
 
   StateAndGoalsSamplingFunction sampling_fn_helper(
-      goal_states, goal_bias, state_sampling_fn);
+      goal_states, goal_bias, uniform_unit_real_fn, state_sampling_fn);
   std::function<SampleType(void)> sampling_function
-      = [sampling_fn_helper, &rng] (void) mutable
+      = [sampling_fn_helper] (void) mutable
   {
-    return sampling_fn_helper.Sample(rng);
+    return sampling_fn_helper.Sample();
   };
   return sampling_function;
 }

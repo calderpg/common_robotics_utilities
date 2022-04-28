@@ -9,6 +9,7 @@
 #include <stdexcept>
 #include <vector>
 
+#include <common_robotics_utilities/math.hpp>
 #include <common_robotics_utilities/utility.hpp>
 
 namespace common_robotics_utilities
@@ -188,7 +189,7 @@ inline Container AttemptShortcut(
   return Container();
 }
 
-template<typename PRNG, typename Configuration,
+template<typename Configuration,
          typename Container=std::vector<Configuration>>
 inline Container ShortcutSmoothPath(
     const Container& path,
@@ -205,7 +206,7 @@ inline Container ShortcutSmoothPath(
     const std::function<Configuration(const Configuration&,
                                       const Configuration&,
                                       const double)>& state_interpolation_fn,
-    PRNG& prng)
+    const utility::UniformUnitRealFunction& uniform_unit_real_fn)
 {
   Container current_path = path;
   uint32_t num_iterations = 0;
@@ -216,21 +217,19 @@ inline Container ShortcutSmoothPath(
   {
     num_iterations++;
     // Attempt a shortcut
-    const int64_t base_index
-        = std::uniform_int_distribution<size_t>(
-            0, current_path.size() - 1)(prng);
+    const int64_t base_index = utility::GetUniformRandomIndex(
+        uniform_unit_real_fn, static_cast<int64_t>(current_path.size()));
     // Pick an offset fraction
-    const double offset_fraction
-        = std::uniform_real_distribution<double>(
-            -max_shortcut_fraction, max_shortcut_fraction)(prng);
+    const double offset_fraction = math::Interpolate(
+        -max_shortcut_fraction, max_shortcut_fraction, uniform_unit_real_fn());
     // Compute the offset index
     const int64_t offset_index
         = base_index + static_cast<int64_t>(std::floor(
             static_cast<double>(current_path.size()) * offset_fraction));
     // We need to clamp it to the bounds of the current path
-    const int64_t safe_offset_index
-        = utility::ClampValue(offset_index, INT64_C(0),
-                              static_cast<int64_t>(current_path.size() - 1));
+    const int64_t safe_offset_index = utility::ClampValue(
+        offset_index, INT64_C(0),
+        static_cast<int64_t>(current_path.size() - 1));
     // Get start & end indices
     const size_t start_index =
         static_cast<size_t>(std::min(base_index, safe_offset_index));

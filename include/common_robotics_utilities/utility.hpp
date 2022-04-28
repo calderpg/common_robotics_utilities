@@ -1,9 +1,11 @@
 #pragma once
 
 #include <cstdlib>
+#include <functional>
 #include <string>
 #include <map>
 #include <set>
+#include <type_traits>
 #include <utility>
 #include <vector>
 #include <iostream>
@@ -85,6 +87,44 @@ namespace common_robotics_utilities
 {
 namespace utility
 {
+/// Signature for function that returns a double uniformly sampled from
+/// the interval [0.0, 1.0).
+using UniformUnitRealFunction = std::function<double(void)>;
+
+/// Given a UniformUnitRealFunction @param uniform_unit_real_fn, returns an
+/// index in [0, container_size - 1].
+template<typename SizeType>
+SizeType GetUniformRandomIndex(
+    const UniformUnitRealFunction& uniform_unit_real_fn,
+    const SizeType container_size)
+{
+  static_assert(
+      std::is_integral<SizeType>::value, "SizeType must be an integral type");
+  if (container_size < 1)
+  {
+    throw std::invalid_argument("container_size must be >= 1");
+  }
+  return static_cast<SizeType>(std::floor(
+      uniform_unit_real_fn() * static_cast<double>(container_size)));
+}
+
+/// Given a UniformUnitRealFunction @param uniform_unit_real_fn, returns a
+/// value in [start, end].
+template<typename SizeType>
+SizeType GetUniformRandomInRange(
+    const UniformUnitRealFunction& uniform_unit_real_fn,
+    const SizeType start, const SizeType end)
+{
+  if (start > end)
+  {
+    throw std::invalid_argument("start must be <= end");
+  }
+  const SizeType range = end - start;
+  const SizeType offset =
+      GetUniformRandomIndex<SizeType>(uniform_unit_real_fn, range + 1);
+  return start + offset;
+}
+
 template <typename T>
 inline T ClampValue(const T& val, const T& min, const T& max)
 {

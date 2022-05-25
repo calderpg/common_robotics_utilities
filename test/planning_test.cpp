@@ -661,11 +661,11 @@ GTEST_TEST(PlanningTest, Test)
 
   // Use one of the trees to check tree serialization & deserialization
   std::vector<uint8_t> tree_serialization_buffer;
-  const int64_t bytes_written = WaypointPlannerTree::Serialize(
+  const uint64_t bytes_written = WaypointPlannerTree::Serialize(
       birrt_connect_start_tree, tree_serialization_buffer,
       serialize_waypoint_fn);
   ASSERT_EQ(
-      bytes_written, static_cast<int64_t>(tree_serialization_buffer.size()));
+      bytes_written, static_cast<uint64_t>(tree_serialization_buffer.size()));
 
   const auto deserialized_tree = WaypointPlannerTree::Deserialize(
       tree_serialization_buffer, 0, deserialize_waypoint_fn);

@@ -30,11 +30,28 @@ namespace internal
 #if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
 struct ROSMessagePrinter
 {
+  // Approach inspired by https://stackoverflow.com/a/52878611.
+  struct NoFlowStyle {};
+  struct HasFlowStyle : NoFlowStyle {};
+
+  template <typename T>
+  static auto DoPrint(
+      NoFlowStyle, const T& message) -> decltype(to_yaml(message))
+  {
+    return to_yaml(message);
+  }
+
+  template <typename T>
+  static auto DoPrint(
+      HasFlowStyle, const T& message) -> decltype(to_yaml(message, true))
+  {
+    return to_yaml(message, true);
+  }
+
   template <typename T>
   static std::string Print(const T& message)
   {
-    constexpr bool use_flow_style = true;
-    return to_yaml(message, use_flow_style);
+    return DoPrint(HasFlowStyle{}, message);
   }
 };
 #endif

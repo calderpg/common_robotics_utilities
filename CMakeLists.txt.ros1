@@ -10,7 +10,7 @@ set(Eigen3_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIR})
 find_package(OpenMP)
 
 ## We don't depend on Drake, but we do use different build flags if present.
-find_package(drake)
+find_package(drake QUIET)
 
 ###################################
 ## catkin specific configuration ##

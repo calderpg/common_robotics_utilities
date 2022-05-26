@@ -24,7 +24,7 @@
 // header is only present in Humble or later, so we use the absence of the file
 // to detect earlier distributions.
 #if !__has_include(<rclcpp/version.h>)
-#include <std_msgs/msg/header.hpp>
+#include <builtin_interfaces/msg/duration.hpp>
 #endif
 #endif
 

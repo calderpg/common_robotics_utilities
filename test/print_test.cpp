@@ -21,13 +21,13 @@ struct DummyType
 {
   int32_t value = 0;
 };
-}  // namespace test
 
 std::ostream& operator<<(
     std::ostream& os, const test::DummyType& dummy)
 {
   return os << dummy.value;
 }
+}  // namespace test
 }  // namespace
 
 namespace common_robotics_utilities

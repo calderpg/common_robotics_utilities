@@ -19,6 +19,7 @@
 
 #if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
 #include <rosidl_runtime_cpp/traits.hpp>
+#include <std_msgs/msg/header.hpp>
 #endif
 
 namespace common_robotics_utilities
@@ -36,9 +37,9 @@ struct ROSMessagePrinter
 
   template <typename T>
   static auto DoPrint(
-      NoFlowStyle, const T& message) -> decltype(to_yaml(message))
+      NoFlowStyle, const T& message) -> decltype(rosidl_generator_traits::to_yaml(message))
   {
-    return to_yaml(message);
+    return rosidl_generator_traits::to_yaml(message);
   }
 
   template <typename T>

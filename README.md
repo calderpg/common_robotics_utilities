@@ -14,7 +14,9 @@ git clone https://github.com/calderpg/common_robotics_utilities.git
 ```
 
 This package supports [ROS 1 Kinetic+](http://wiki.ros.org/ROS/Installation)
-and [ROS 2 Dashing+](https://index.ros.org/doc/ros2/Installation/) distributions.
+and [ROS 2 Galactic+](https://index.ros.org/doc/ros2/Installation/) distributions.
+Prior distributions of ROS 2 can be supported by removing ROS 2 message printing
+support from `include/common_robotics_utilities/print.hpp`.
 Make sure to symlink the corresponding `CMakeLists.txt` and `package.xml` files
 for the ROS distribution of choice:
 
@@ -25,7 +27,7 @@ ln -sT CMakeLists.txt.ros1 CMakeLists.txt
 ln -sT package.xml.ros1 package.xml
 ```
 
-*For ROS 2 Dashing+*
+*For ROS 2 Galactic+*
 ```sh
 cd ~/ws/src/common_robotics_utilities
 ln -sT CMakeLists.txt.ros2 CMakeLists.txt
@@ -52,7 +54,7 @@ catkin_make  # the entire workspace
 catkin_make --pkg common_robotics_utilities  # the package only
 ```
 
-*For ROS 2 Dashing +*
+*For ROS 2 Galactic+*
 ```sh
 cd ~/ws
 colcon build  # the entire workspace
@@ -71,7 +73,7 @@ catkin_make run_tests  # the entire workspace
 catkin_make run_tests_common_robotics_utilities  # the package only
 ```
 
-*For ROS 2 Dashing +*
+*For ROS 2 Galactic+*
 ```sh
 cd ~/ws
 colcon test --event-handlers=console_direct+  # the entire workspace

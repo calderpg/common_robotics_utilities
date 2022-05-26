@@ -19,7 +19,13 @@
 
 #if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
 #include <rosidl_runtime_cpp/traits.hpp>
+// On pre-Humble distributions, a single message header is included to ensure
+// that rosidl_generator_traits::to_yaml is found by the compiler. The version
+// header is only present in Humble or later, so we use the absence of the file
+// to detect earlier distributions.
+#if !__has_include(<rclcpp/version.h>)
 #include <std_msgs/msg/header.hpp>
+#endif
 #endif
 
 namespace common_robotics_utilities
@@ -35,16 +41,18 @@ struct ROSMessagePrinter
   struct NoFlowStyle {};
   struct HasFlowStyle : NoFlowStyle {};
 
+  // ROS 2 Galactic only supports block-style output.
   template <typename T>
-  static auto DoPrint(
-      NoFlowStyle, const T& message) -> decltype(rosidl_generator_traits::to_yaml(message))
+  static auto DoPrint(NoFlowStyle, const T& message)
+      -> decltype(rosidl_generator_traits::to_yaml(message))
   {
     return rosidl_generator_traits::to_yaml(message);
   }
 
+  // ROS 2 Humble and later support optional flow-style output found via ADL.
   template <typename T>
-  static auto DoPrint(
-      HasFlowStyle, const T& message) -> decltype(to_yaml(message, true))
+  static auto DoPrint(HasFlowStyle, const T& message)
+      -> decltype(to_yaml(message, true))
   {
     return to_yaml(message, true);
   }

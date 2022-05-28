@@ -37,30 +37,17 @@ namespace internal
 #if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
 struct ROSMessagePrinter
 {
-  // Approach inspired by https://stackoverflow.com/a/52878611.
-  struct NoFlowStyle {};
-  struct HasFlowStyle : NoFlowStyle {};
-
-  // ROS 2 Galactic only supports block-style output.
-  template <typename T>
-  static auto DoPrint(NoFlowStyle, const T& message)
-      -> decltype(rosidl_generator_traits::to_yaml(message))
-  {
-    return rosidl_generator_traits::to_yaml(message);
-  }
-
-  // ROS 2 Humble and later support optional flow-style output found via ADL.
-  template <typename T>
-  static auto DoPrint(HasFlowStyle, const T& message)
-      -> decltype(to_yaml(message, true))
-  {
-    return to_yaml(message, true);
-  }
-
   template <typename T>
   static std::string Print(const T& message)
   {
-    return DoPrint(HasFlowStyle{}, message);
+#if !__has_include(<rclcpp/version.h>)
+    // ROS 2 Galactic only supports block-style output.
+    return rosidl_generator_traits::to_yaml(message);
+#else
+    // ROS 2 Humble and later support optional flow-style output found via ADL.
+    constexpr bool use_flow_style = true;
+    return to_yaml(message, use_flow_style);
+#endif
   }
 };
 #endif

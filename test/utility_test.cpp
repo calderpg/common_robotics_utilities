@@ -1,5 +1,6 @@
 #include <cstdint>
 #include <iostream>
+#include <random>
 #include <unordered_map>
 #include <unordered_set>
 #include <stdlib.h>
@@ -12,6 +13,45 @@ namespace common_robotics_utilities
 {
 namespace utility_test
 {
+GTEST_TEST(UtilityTest, GetUniformRandom)
+{
+  std::mt19937_64 rng(42);
+  std::uniform_real_distribution<double> uniform_unit_real_dist(0.0, 1.0);
+
+  const utility::UniformUnitRealFunction uniform_unit_real_fn = [&] ()
+  {
+    return uniform_unit_real_dist(rng);
+  };
+
+  constexpr int64_t num_samples = 1000000;
+
+  for (int64_t sample_num = 0; sample_num < num_samples; sample_num++)
+  {
+    for (int64_t container_size : {10, 100, 1000, 1000000, 1000000000})
+    {
+      const int64_t random_index = utility::GetUniformRandomIndex(
+          uniform_unit_real_fn, container_size);
+      ASSERT_GE(random_index, 0);
+      ASSERT_LT(random_index, container_size);
+
+      const int64_t range_start = container_size;
+      const int64_t range_end = container_size * 2;
+
+      const int64_t random_val = utility::GetUniformRandomInRange(
+          uniform_unit_real_fn, range_start, range_end);
+      ASSERT_GE(random_val, range_start);
+      ASSERT_LE(random_val, range_end);
+    }
+  }
+
+  ASSERT_THROW(
+      utility::GetUniformRandomIndex(uniform_unit_real_fn, 0),
+      std::invalid_argument);
+  ASSERT_THROW(
+      utility::GetUniformRandomInRange(uniform_unit_real_fn, 10, 9),
+      std::invalid_argument);
+}
+
 GTEST_TEST(UtilityTest, ClampAndSpread)
 {
   ASSERT_EQ(utility::ClampValue(1.0, -0.5, 0.5), 0.5);

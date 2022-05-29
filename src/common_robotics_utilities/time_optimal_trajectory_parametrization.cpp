@@ -1,6 +1,6 @@
 #include <common_robotics_utilities/time_optimal_trajectory_parametrization.hpp>
 
-/* ORIGINAL LICENSE TEXT:
+/* ORIGINAL LICENSE TEXT FOR TOTP:
  *
  * Copyright (c) 2011, Georgia Tech Research Corporation
  * All rights reserved.
@@ -41,6 +41,9 @@
 
 #include <fstream>
 #include <list>
+#include <memory>
+#include <stdexcept>
+#include <vector>
 
 #include <Eigen/Geometry>
 #include <common_robotics_utilities/math.hpp>
@@ -50,6 +53,35 @@ namespace common_robotics_utilities
 {
 namespace time_optimal_trajectory_parametrization
 {
+namespace {
+// Class declarations formerly in header.
+class PathSegment
+{
+public:
+
+  PathSegment(const double length = 0.0) : length_(length) {}
+
+  virtual ~PathSegment() {}
+
+  double Length() const { return length_; }
+
+  virtual Eigen::VectorXd GetConfig(const double s) const = 0;
+
+  virtual Eigen::VectorXd GetTangent(const double s) const = 0;
+
+  virtual Eigen::VectorXd GetCurvature(const double s) const = 0;
+
+  virtual std::list<double> GetSwitchingPoints() const = 0;
+
+  virtual PathSegment* Clone() const = 0;
+
+  double position;
+
+protected:
+
+  double length_;
+};
+
 class LinearPathSegment : public PathSegment
 {
 public:
@@ -191,6 +223,140 @@ private:
   Eigen::VectorXd y_;
 };
 
+class Path
+{
+public:
+
+  Path(const std::list<Eigen::VectorXd>& path,
+       const double maxDeviation = 0.0);
+
+  Path(const Path& path);
+
+  ~Path();
+
+  double Length() const;
+
+  Eigen::VectorXd GetConfig(const double s) const;
+
+  Eigen::VectorXd GetTangent(const double s) const;
+
+  Eigen::VectorXd GetCurvature(const double s) const;
+
+  double GetNextSwitchingPoint(const double s, bool& discontinuity) const;
+
+  std::list<std::pair<double, bool>> SwitchingPoints() const;
+
+private:
+
+  PathSegment* GetPathSegment(double& s) const;
+
+  double length_;
+
+  std::list<std::pair<double, bool>> switching_points_;
+
+  std::list<PathSegment*> path_segments_;
+};
+
+class Trajectory
+{
+public:
+  // Generates a time-optimal trajectory
+  Trajectory(const std::list<Eigen::VectorXd>& waypoints,
+             const Eigen::VectorXd& max_velocity,
+             const Eigen::VectorXd& max_acceleration,
+             const double max_deviation = 0.0,
+             const double timestep = 0.001);
+
+  Trajectory(const Path& path,
+             const Eigen::VectorXd& max_velocity,
+             const Eigen::VectorXd& max_acceleration,
+             const double timestep = 0.001);
+
+  // Returns the optimal duration of the trajectory
+  double Duration() const;
+
+  // Return the position vector and velocity vector of the
+  // robot for a given point in time within the trajectory.
+  // !!! NOT THREAD SAFE - MUTABLE CACHE INSIDE !!!
+  std::pair<Eigen::VectorXd, Eigen::VectorXd> GetPositionVelocity(
+      const double time) const;
+
+  /* Part of the original TOTP implementation, disabled here since it is unused.
+  // Outputs the phase trajectory and the velocity limit curve
+  // in 2 files for debugging purposes.
+  void OutputPhasePlaneTrajectory() const;
+  */
+
+private:
+
+  struct TrajectoryStep
+  {
+    TrajectoryStep() {}
+
+    TrajectoryStep(double path_pos, double path_vel)
+      : path_pos_(path_pos), path_vel_(path_vel) {}
+
+    double path_pos_;
+    double path_vel_;
+    double time_;
+  };
+
+  bool GetNextSwitchingPoint(const double path_pos,
+                             TrajectoryStep& next_switching_point,
+                             double& before_acceleration,
+                             double& after_acceleration);
+
+  bool GetNextAccelerationSwitchingPoint(const double path_pos,
+                                         TrajectoryStep& next_switching_point,
+                                         double& before_acceleration,
+                                         double& after_acceleration);
+
+  bool GetNextVelocitySwitchingPoint(const double path_pos,
+                                     TrajectoryStep& next_switching_point,
+                                     double& before_acceleration,
+                                     double& after_acceleration);
+
+  bool IntegrateForward(std::list<TrajectoryStep>& trajectory,
+                        const double acceleration);
+
+  void IntegrateBackward(std::list<TrajectoryStep>& start_trajectory,
+                         const double path_pos,
+                         const double path_vel,
+                         const double acceleration);
+
+  double GetMinMaxPathAcceleration(const double path_position,
+                                   const double path_velocity,
+                                   const bool max);
+
+  double GetMinMaxPhaseSlope(const double path_position,
+                             const double path_velocity,
+                             const bool max);
+
+  double GetAccelerationMaxPathVelocity(const double path_pos) const;
+
+  double GetVelocityMaxPathVelocity(const double path_pos) const;
+
+  double GetAccelerationMaxPathVelocityDeriv(const double path_pos);
+
+  double GetVelocityMaxPathVelocityDeriv(const double path_pos);
+
+  std::list<TrajectoryStep>::const_iterator GetTrajectorySegment(
+      const double time) const;
+
+  Path path_;
+  Eigen::VectorXd max_velocity_;
+  Eigen::VectorXd max_acceleration_;
+  uint32_t n_ = 0u;
+  std::list<TrajectoryStep> trajectory_;
+
+  static const double eps;
+  const double time_step_;
+
+  mutable double cached_time_;
+  mutable std::list<TrajectoryStep>::const_iterator cached_trajectory_segment_;
+};
+
+// Class method definitions
 Path::Path(const std::list<Eigen::VectorXd>& path, const double max_deviation)
   : length_(0.0)
 {
@@ -354,7 +520,6 @@ Trajectory::Trajectory(const std::list<Eigen::VectorXd>& waypoints,
                max_acceleration,
                timestep) {}
 
-
 Trajectory::Trajectory(const Path& path,
                        const Eigen::VectorXd& max_velocity,
                        const Eigen::VectorXd& max_acceleration,
@@ -414,6 +579,7 @@ Trajectory::Trajectory(const Path& path,
   }
 }
 
+/* Part of the original TOTP implementation, disabled here since it is unused.
 void Trajectory::OutputPhasePlaneTrajectory() const
 {
   std::ofstream velocity_file("max_velocity.txt");
@@ -437,6 +603,7 @@ void Trajectory::OutputPhasePlaneTrajectory() const
   }
   trajectory_file.close();
 }
+*/
 
 // Returns true if end of path is reached.
 bool Trajectory::GetNextSwitchingPoint(const double path_pos,
@@ -970,6 +1137,59 @@ std::pair<Eigen::VectorXd, Eigen::VectorXd> Trajectory::GetPositionVelocity(
   const double path_vel = previous->path_vel_ + timestep * acceleration;
   return std::make_pair(path_.GetConfig(path_pos),
                         path_.GetTangent(path_pos) * path_vel);
+}
+
+std::list<Eigen::VectorXd> MakeWaypointListFromWaypointVector(
+    const std::vector<Eigen::VectorXd>& path)
+{
+  std::list<Eigen::VectorXd> waypoint_list;
+  waypoint_list.insert(waypoint_list.end(), path.begin(), path.end());
+  return waypoint_list;
+}
+
+/// Implementation of PositionVelocityTrajectoryInterface for TOTP trajectories.
+class TOTPTrajectoryImpl : public PositionVelocityTrajectoryInterface
+{
+public:
+  TOTPTrajectoryImpl(
+      const std::vector<Eigen::VectorXd>& path,
+      const Eigen::VectorXd& max_velocity,
+      const Eigen::VectorXd& max_acceleration,
+      const double max_deviation, const double timestep)
+      : totp_trajectory_(Trajectory(
+          MakeWaypointListFromWaypointVector(path), max_velocity,
+          max_acceleration, max_deviation, timestep)) {}
+
+  std::unique_ptr<PositionVelocityTrajectoryInterface> Clone() const override
+  {
+    return std::unique_ptr<PositionVelocityTrajectoryInterface>(
+        new TOTPTrajectoryImpl(*this));
+  }
+
+  double Duration() const override { return totp_trajectory_.Duration(); }
+
+  PositionVelocityTimePoint GetPositionVelocityTimePoint(
+      const double time) const override
+  {
+    const auto position_velocity = totp_trajectory_.GetPositionVelocity(time);
+    return PositionVelocityTimePoint(
+        position_velocity.first, position_velocity.second, time);
+  }
+
+private:
+  Trajectory totp_trajectory_;
+};
+}  // namespace
+
+std::unique_ptr<PositionVelocityTrajectoryInterface> ParametrizePathTOTP(
+    const std::vector<Eigen::VectorXd>& path,
+    const Eigen::VectorXd& max_velocity,
+    const Eigen::VectorXd& max_acceleration,
+    const double max_deviation, const double timestep)
+{
+  return std::unique_ptr<PositionVelocityTrajectoryInterface>(
+      new TOTPTrajectoryImpl(
+          path, max_velocity, max_acceleration, max_deviation, timestep));
 }
 }  // namespace time_optimal_trajectory_parametrization
 }  // namespace common_robotics_utilities

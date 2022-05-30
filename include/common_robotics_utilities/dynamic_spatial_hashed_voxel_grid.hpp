@@ -10,7 +10,6 @@
 #include <vector>
 
 #include <Eigen/Geometry>
-#include <common_robotics_utilities/math.hpp>
 #include <common_robotics_utilities/serialization.hpp>
 #include <common_robotics_utilities/utility.hpp>
 #include <common_robotics_utilities/voxel_grid.hpp>
@@ -62,7 +61,8 @@ public:
 
   bool operator==(const ChunkRegion& other) const
   {
-    if (math::Equal4d(Base(), other.Base()))
+    if (Base()(0) == other.Base()(0) && Base()(1) == other.Base()(1) &&
+        Base()(2) == other.Base()(2) && Base()(3) == other.Base()(3))
     {
       return true;
     }
@@ -78,11 +78,12 @@ enum class DSHVGFillType : uint8_t {FILL_CHUNK, FILL_CELL};
 
 enum class DSHVGFillStatus : uint8_t {NOT_FILLED, CHUNK_FILLED, CELL_FILLED};
 
-enum class DSHVGFoundStatus {NOT_FOUND, FOUND_IN_CHUNK, FOUND_IN_CELL};
+enum class DSHVGFoundStatus
+    : uint8_t {NOT_FOUND, FOUND_IN_CHUNK, FOUND_IN_CELL};
 
-enum class DSHVGSetType {SET_CHUNK, SET_CELL};
+enum class DSHVGSetType : uint8_t {SET_CHUNK, SET_CELL};
 
-enum class DSHVGSetStatus {NOT_SET, SET_CHUNK, SET_CELL};
+enum class DSHVGSetStatus : uint8_t {NOT_SET, SET_CHUNK, SET_CELL};
 
 // Forward-declare for use in GridQuery.
 template<typename T, typename BackingStore=std::vector<T>>

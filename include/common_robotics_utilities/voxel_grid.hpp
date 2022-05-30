@@ -460,18 +460,28 @@ class VoxelGridBase;
 // unlike std::optional<T>, since it needs to pass the caller a const/mutable
 // reference to the item in the voxel grid.
 template<typename T>
-class GridQuery : public ReferencingMaybe<T>
+class GridQuery
 {
 private:
   template<typename Item, typename BackingStore> friend class VoxelGridBase;
 
+  ReferencingMaybe<T> item_;
+
   // This constructor is private because users should not be able to create
   // GridQuery<T> with a value on their own, creation should only be possible
   // within a VoxelGridBase<T> to which the GridQuery<T> references.
-  explicit GridQuery(T& item) : ReferencingMaybe<T>(item) {}
+  explicit GridQuery(T& item) : item_(item) {}
 
 public:
-  GridQuery() : ReferencingMaybe<T>() {}
+  GridQuery() = default;
+
+  T& Value() const { return item_.Value(); }
+
+  T& Value() { return item_.Value(); }
+
+  bool HasValue() const { return item_.HasValue(); }
+
+  explicit operator bool() const { return item_.HasValue(); }
 };
 
 /// This is the base class for all voxel grid classes. It is pure virtual to

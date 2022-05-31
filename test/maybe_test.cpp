@@ -31,10 +31,10 @@ public:
 GTEST_TEST(OwningMaybeTest, DefaultConstructMoveAndAssign)
 {
   // Test basic construction.
-  OwningMaybe<DefaultConstructibleWrapper> maybe_not;
+  const OwningMaybe<DefaultConstructibleWrapper> maybe_not;
   OwningMaybe<DefaultConstructibleWrapper> maybe_default(
       std::move(DefaultConstructibleWrapper()));
-  OwningMaybe<DefaultConstructibleWrapper> maybe_1(
+  const OwningMaybe<DefaultConstructibleWrapper> maybe_1(
       DefaultConstructibleWrapper(1));
 
   EXPECT_FALSE(maybe_not);
@@ -50,8 +50,8 @@ GTEST_TEST(OwningMaybeTest, DefaultConstructMoveAndAssign)
   EXPECT_EQ(maybe_default.Value().Value(), 5);
 
   // Test copy and move constructors.
-  OwningMaybe<DefaultConstructibleWrapper> copy_maybe_1(maybe_1);
-  OwningMaybe<DefaultConstructibleWrapper> copy_temp_maybe(
+  const OwningMaybe<DefaultConstructibleWrapper> copy_maybe_1(maybe_1);
+  const OwningMaybe<DefaultConstructibleWrapper> copy_temp_maybe(
       std::move(OwningMaybe<DefaultConstructibleWrapper>(
           DefaultConstructibleWrapper(2))));
 
@@ -120,6 +120,47 @@ GTEST_TEST(OwningMaybeTest, NoDefaultConstructMoveAndAssign)
   // Test copy & move assignment.
   OwningMaybe<NonDefaultConstructibleWrapper> maybe_not_copied;
   OwningMaybe<NonDefaultConstructibleWrapper> maybe_not_moved;
+
+  EXPECT_FALSE(maybe_not_copied);
+  EXPECT_FALSE(maybe_not_moved);
+
+  maybe_not_copied = maybe_1;
+
+  EXPECT_TRUE(maybe_not_copied);
+  EXPECT_EQ(maybe_not_copied.Value().Value(), 1);
+
+  maybe_not_moved = std::move(maybe_not_copied);
+
+  EXPECT_TRUE(maybe_not_moved);
+  EXPECT_EQ(maybe_not_moved.Value().Value(), 1);
+}
+
+GTEST_TEST(OwningMaybeTest, ConstNoDefaultConstructMoveAndAssign)
+{
+  // Test basic construction.
+  const OwningMaybe<const NonDefaultConstructibleWrapper> maybe_not;
+  const OwningMaybe<const NonDefaultConstructibleWrapper> maybe_1(
+      NonDefaultConstructibleWrapper(1));
+
+  EXPECT_FALSE(maybe_not);
+  EXPECT_TRUE(maybe_1);
+  EXPECT_EQ(maybe_1.Value().Value(), 1);
+
+  // Test copy and move constructors.
+  const OwningMaybe<const NonDefaultConstructibleWrapper> copy_maybe_1(maybe_1);
+  const OwningMaybe<const NonDefaultConstructibleWrapper> copy_temp_maybe(
+      std::move(OwningMaybe<const NonDefaultConstructibleWrapper>(
+          NonDefaultConstructibleWrapper(2))));
+
+  EXPECT_TRUE(copy_maybe_1);
+  EXPECT_TRUE(copy_temp_maybe);
+
+  EXPECT_EQ(copy_maybe_1.Value().Value(), 1);
+  EXPECT_EQ(copy_temp_maybe.Value().Value(), 2);
+
+  // Test copy & move assignment.
+  OwningMaybe<const NonDefaultConstructibleWrapper> maybe_not_copied;
+  OwningMaybe<const NonDefaultConstructibleWrapper> maybe_not_moved;
 
   EXPECT_FALSE(maybe_not_copied);
   EXPECT_FALSE(maybe_not_moved);

@@ -159,7 +159,10 @@ private:
     char dummy{};
   };
 
-  internal::TaggedUnion<DummyType, T> item_storage_;
+  using StorageType =
+      internal::TaggedUnion<DummyType, typename std::remove_const<T>::type>;
+
+  StorageType item_storage_;
 
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -202,15 +205,9 @@ public:
     }
   }
 
-  void Reset()
-  {
-    item_storage_ = internal::TaggedUnion<DummyType, T>(DummyType());
-  }
+  void Reset() { item_storage_ = StorageType(DummyType()); }
 
-  bool HasValue() const
-  {
-    return (item_storage_.type_ == internal::TaggedUnion<DummyType, T>::TYPE_B);
-  }
+  bool HasValue() const { return (item_storage_.type_ == StorageType::TYPE_B); }
 
   explicit operator bool() const { return HasValue(); }
 };

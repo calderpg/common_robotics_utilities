@@ -148,13 +148,13 @@ GTEST_TEST(OwningMaybeTest, NonTrivialConstructMoveAndAssign)
   EXPECT_TRUE(maybe_default);
   EXPECT_TRUE(maybe_1);
 
-  EXPECT_EQ(maybe_default.Value().size(), 0);
-  EXPECT_EQ(maybe_1.Value().size(), 1);
+  EXPECT_EQ(maybe_default.Value().size(), static_cast<size_t>(0));
+  EXPECT_EQ(maybe_1.Value().size(), static_cast<size_t>(1));
 
   // Test value modification.
   maybe_default.Value().push_back(5);
 
-  EXPECT_EQ(maybe_default.Value().size(), 1);
+  EXPECT_EQ(maybe_default.Value().size(), static_cast<size_t>(1));
   EXPECT_EQ(maybe_default.Value().at(0), 5);
 
   // Test copy and move constructors.
@@ -166,8 +166,8 @@ GTEST_TEST(OwningMaybeTest, NonTrivialConstructMoveAndAssign)
   EXPECT_TRUE(copy_maybe_1);
   EXPECT_TRUE(copy_temp_maybe);
 
-  EXPECT_EQ(copy_maybe_1.Value().size(), 1);
-  EXPECT_EQ(copy_temp_maybe.Value().size(), 2);
+  EXPECT_EQ(copy_maybe_1.Value().size(), static_cast<size_t>(1));
+  EXPECT_EQ(copy_temp_maybe.Value().size(), static_cast<size_t>(2));
 
   // Test copy & move assignment.
   OwningMaybe<std::vector<int32_t>> maybe_not_copied;
@@ -179,12 +179,12 @@ GTEST_TEST(OwningMaybeTest, NonTrivialConstructMoveAndAssign)
   maybe_not_copied = maybe_1;
 
   EXPECT_TRUE(maybe_not_copied);
-  EXPECT_EQ(maybe_not_copied.Value().size(), 1);
+  EXPECT_EQ(maybe_not_copied.Value().size(), static_cast<size_t>(1));
 
   maybe_not_moved = std::move(maybe_not_copied);
 
   EXPECT_TRUE(maybe_not_moved);
-  EXPECT_EQ(maybe_not_moved.Value().size(), 1);
+  EXPECT_EQ(maybe_not_moved.Value().size(), static_cast<size_t>(1));
 }
 
 GTEST_TEST(OwningMaybeTest, EigenTypeAlignment)

@@ -18,7 +18,9 @@ namespace common_robotics_utilities
 /// beyond the lifetime of the Maybe, consider using a ReferencingMaybe<T>
 /// instead.
 #if __cplusplus >= 201703L
-// If we are compiling in C++17 or later, just wrap std::optional<T>.
+// If we are compiling in C++17 or later, just wrap std::optional<T> with
+// stronger behavior on move-from (moved-from OwningMaybe<T> does not contain a
+// value, unlike std::optional<T>.
 template<typename T>
 class OwningMaybe
 {
@@ -36,11 +38,23 @@ public:
 
   OwningMaybe(const OwningMaybe<T>& other) = default;
 
-  OwningMaybe(OwningMaybe<T>&& other) = default;
+  OwningMaybe(OwningMaybe<T>&& other)
+      : item_storage_(std::move(other.item_storage_))
+  {
+    other.Reset();
+  }
 
   OwningMaybe<T>& operator=(const OwningMaybe<T>& other) = default;
 
-  OwningMaybe<T>& operator=(OwningMaybe<T>&& other) = default;
+  OwningMaybe<T>& operator=(OwningMaybe<T>&& other)
+  {
+    if (this != std::addressof(other))
+    {
+      item_storage_ = std::move(other.item_storage_);
+      other.Reset();
+    }
+    return *this;
+  }
 
   ~OwningMaybe() = default;
 

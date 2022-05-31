@@ -109,6 +109,9 @@ if(BUILD_TESTING)
     # Tests
     find_package(ament_cmake_gtest REQUIRED)
 
+    ament_add_gtest(maybe_test test/maybe_test.cpp)
+    target_link_libraries(maybe_test ${PROJECT_NAME})
+
     ament_add_gtest(planning_test test/planning_test.cpp)
     target_link_libraries(planning_test ${PROJECT_NAME})
 

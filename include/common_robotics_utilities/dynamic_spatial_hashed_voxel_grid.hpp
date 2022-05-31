@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/maybe.hpp>
 #include <common_robotics_utilities/serialization.hpp>
 #include <common_robotics_utilities/utility.hpp>
 #include <common_robotics_utilities/voxel_grid.hpp>
@@ -78,79 +79,94 @@ enum class DSHVGFillType : uint8_t {FILL_CHUNK, FILL_CELL};
 
 enum class DSHVGFillStatus : uint8_t {NOT_FILLED, CHUNK_FILLED, CELL_FILLED};
 
-enum class DSHVGFoundStatus
-    : uint8_t {NOT_FOUND, FOUND_IN_CHUNK, FOUND_IN_CELL};
+enum class DSHVGFoundStatus : uint8_t
+    {NOT_FOUND, FOUND_IN_CHUNK, FOUND_IN_CELL, MUTABLE_ACCESS_PROHIBITED};
 
 enum class DSHVGSetType : uint8_t {SET_CHUNK, SET_CELL};
 
-enum class DSHVGSetStatus : uint8_t {NOT_SET, SET_CHUNK, SET_CELL};
-
-// Forward-declare for use in GridQuery.
-template<typename T, typename BackingStore=std::vector<T>>
-class DynamicSpatialHashedVoxelGridChunk;
+enum class DSHVGSetStatus : uint8_t
+    {MUTABLE_ACCESS_PROHIBITED, SET_CHUNK, SET_CELL};
 
 template<typename T>
 class DynamicSpatialHashedGridQuery
 {
 private:
-  template<typename Item, typename BackingStore> friend class
-      DynamicSpatialHashedVoxelGridChunk;
-
-  // This constructor is private because users should not be able to create
-  // DynamicSpatialHashedGridQuery<T> with a value on their own, creation should
-  // only be possible within a DynamicSpatialHashedVoxelGridBase<T> to which the
-  // DynamicSpatialHashedGridQuery<T> references.
-  DynamicSpatialHashedGridQuery(T& item, const DSHVGFoundStatus found_status)
-      : item_ptr_(std::addressof(item)), found_status_(found_status)
-  {
-    if (HasValue() && (FoundStatus() == DSHVGFoundStatus::NOT_FOUND))
-    {
-      throw std::invalid_argument("Cannot return value and NOT_FOUND together");
-    }
-  }
-
-  T* const item_ptr_ = nullptr;
-
+  ReferencingMaybe<T> value_;
   DSHVGFoundStatus found_status_ = DSHVGFoundStatus::NOT_FOUND;
 
+  DynamicSpatialHashedGridQuery(T& value, const DSHVGFoundStatus found_status)
+      : value_(value), found_status_(found_status)
+  {
+    if (FoundStatus() == DSHVGFoundStatus::NOT_FOUND &&
+        FoundStatus() == DSHVGFoundStatus::MUTABLE_ACCESS_PROHIBITED)
+    {
+      throw std::invalid_argument(
+          "Cannot return value with NOT_FOUND or MUTABLE_ACCESS_PROHIBITED");
+    }
+  }
+
+  DynamicSpatialHashedGridQuery(const DSHVGFoundStatus found_status)
+      : found_status_(found_status)
+  {
+    if (FoundStatus() == DSHVGFoundStatus::FOUND_IN_CHUNK ||
+        FoundStatus() == DSHVGFoundStatus::FOUND_IN_CELL)
+    {
+      throw std::invalid_argument(
+          "Cannot return FOUND_IN_CHUNK or FOUND_IN_CELL without value");
+    }
+  }
+
 public:
+  static DynamicSpatialHashedGridQuery<T> FoundInChunk(T& value)
+  {
+    return DynamicSpatialHashedGridQuery<T>(
+        value, DSHVGFoundStatus::FOUND_IN_CHUNK);
+  }
+
+  static DynamicSpatialHashedGridQuery<T> FoundInCell(T& value)
+  {
+    return DynamicSpatialHashedGridQuery<T>(
+        value, DSHVGFoundStatus::FOUND_IN_CELL);
+  }
+
+  static DynamicSpatialHashedGridQuery<T> NotFound()
+  {
+    return DynamicSpatialHashedGridQuery<T>(DSHVGFoundStatus::NOT_FOUND);
+  }
+
+  static DynamicSpatialHashedGridQuery<T> MutableAccessProhibited()
+  {
+    return DynamicSpatialHashedGridQuery<T>(
+        DSHVGFoundStatus::MUTABLE_ACCESS_PROHIBITED);
+  }
+
   DynamicSpatialHashedGridQuery()
-    : item_ptr_(nullptr), found_status_(DSHVGFoundStatus::NOT_FOUND) {}
+      : found_status_(DSHVGFoundStatus::NOT_FOUND) {}
 
-  T& Value()
-  {
-    if (HasValue())
-    {
-      return *item_ptr_;
-    }
-    else
-    {
-      throw std::runtime_error(
-          "DynamicSpatialHashedGridQuery does not have value");
-    }
-  }
+  DynamicSpatialHashedGridQuery(
+      const DynamicSpatialHashedGridQuery<T>& other) = default;
 
-  T& Value() const
-  {
-    if (HasValue())
-    {
-      return *item_ptr_;
-    }
-    else
-    {
-      throw std::runtime_error(
-          "DynamicSpatialHashedGridQuery does not have value");
-    }
-  }
+  DynamicSpatialHashedGridQuery(
+      DynamicSpatialHashedGridQuery<T>&& other) = default;
+
+  DynamicSpatialHashedGridQuery<T>& operator=(
+      const DynamicSpatialHashedGridQuery<T>& other) = default;
+
+  DynamicSpatialHashedGridQuery<T>& operator=(
+      DynamicSpatialHashedGridQuery<T>&& other) = default;
+
+  T& Value() { return value_.Value(); }
+
+  T& Value() const { return value_.Value(); }
 
   DSHVGFoundStatus FoundStatus() const { return found_status_; }
 
-  bool HasValue() const { return item_ptr_ != nullptr; }
+  bool HasValue() const { return value_.HasValue(); }
 
   explicit operator bool() const { return HasValue(); }
 };
 
-template<typename T, typename BackingStore>
+template<typename T, typename BackingStore=std::vector<T>>
 class DynamicSpatialHashedVoxelGridChunk
 {
 private:
@@ -372,25 +388,24 @@ public:
     {
       if (sizes_.IndexInBounds(internal_cell_index))
       {
-        return DynamicSpatialHashedGridQuery<const T>(
-            AccessIndex(sizes_.GetDataIndex(internal_cell_index)),
-            DSHVGFoundStatus::FOUND_IN_CELL);
+        return DynamicSpatialHashedGridQuery<const T>::FoundInCell(
+            AccessIndex(sizes_.GetDataIndex(internal_cell_index)));
       }
       else
       {
-        return DynamicSpatialHashedGridQuery<const T>();
+        throw std::runtime_error("internal_cell_index not in chunk");
       }
     }
     else if (fill_status_ == DSHVGFillStatus::CHUNK_FILLED)
     {
       if (internal_cell_index == GridIndex(0, 0, 0))
       {
-        return DynamicSpatialHashedGridQuery<const T>(
-            AccessIndex(0), DSHVGFoundStatus::FOUND_IN_CHUNK);
+        return DynamicSpatialHashedGridQuery<const T>::FoundInChunk(
+            AccessIndex(0));
       }
       else
       {
-        return DynamicSpatialHashedGridQuery<const T>();
+        throw std::runtime_error("internal_cell_index not in chunk");
       }
     }
     else
@@ -406,25 +421,23 @@ public:
     {
       if (sizes_.IndexInBounds(internal_cell_index))
       {
-        return DynamicSpatialHashedGridQuery<T>(
-            AccessIndex(sizes_.GetDataIndex(internal_cell_index)),
-            DSHVGFoundStatus::FOUND_IN_CELL);
+        return DynamicSpatialHashedGridQuery<T>::FoundInCell(
+            AccessIndex(sizes_.GetDataIndex(internal_cell_index)));
       }
       else
       {
-        return DynamicSpatialHashedGridQuery<T>();
+        throw std::runtime_error("internal_cell_index not in chunk");
       }
     }
     else if (fill_status_ == DSHVGFillStatus::CHUNK_FILLED)
     {
       if (internal_cell_index == GridIndex(0, 0, 0))
       {
-        return DynamicSpatialHashedGridQuery<T>(
-            AccessIndex(0), DSHVGFoundStatus::FOUND_IN_CHUNK);
+        return DynamicSpatialHashedGridQuery<T>::FoundInChunk(AccessIndex(0));
       }
       else
       {
-        return DynamicSpatialHashedGridQuery<T>();
+        throw std::runtime_error("internal_cell_index not in chunk");
       }
     }
     else
@@ -441,18 +454,18 @@ public:
       const int64_t data_index = GetLocationDataIndex(location);
       if (data_index >= 0)
       {
-        return DynamicSpatialHashedGridQuery<const T>(
-            AccessIndex(data_index), DSHVGFoundStatus::FOUND_IN_CELL);
+        return DynamicSpatialHashedGridQuery<const T>::FoundInCell(
+            AccessIndex(data_index));
       }
       else
       {
-        return DynamicSpatialHashedGridQuery<const T>();
+        throw std::runtime_error("location not in chunk");
       }
     }
     else if (fill_status_ == DSHVGFillStatus::CHUNK_FILLED)
     {
-      return DynamicSpatialHashedGridQuery<const T>(
-          AccessIndex(0), DSHVGFoundStatus::FOUND_IN_CHUNK);
+      return DynamicSpatialHashedGridQuery<const T>::FoundInChunk(
+          AccessIndex(0));
     }
     else
     {
@@ -468,8 +481,8 @@ public:
       const int64_t data_index = GetLocationDataIndex(location);
       if (data_index >= 0)
       {
-        return DynamicSpatialHashedGridQuery<T>(
-            AccessIndex(data_index), DSHVGFoundStatus::FOUND_IN_CELL);
+        return DynamicSpatialHashedGridQuery<T>::FoundInCell(
+            AccessIndex(data_index));
       }
       else
       {
@@ -478,8 +491,7 @@ public:
     }
     else if (fill_status_ == DSHVGFillStatus::CHUNK_FILLED)
     {
-      return DynamicSpatialHashedGridQuery<T>(
-          AccessIndex(0), DSHVGFoundStatus::FOUND_IN_CHUNK);
+      return DynamicSpatialHashedGridQuery<T>::FoundInChunk(AccessIndex(0));
     }
     else
     {
@@ -850,7 +862,7 @@ public:
     }
     else
     {
-      return DynamicSpatialHashedGridQuery<const T>();
+      return DynamicSpatialHashedGridQuery<const T>::NotFound();
     }
   }
 
@@ -874,14 +886,20 @@ public:
         = inverse_origin_transform_ * location;
     const ChunkRegion region = GetContainingChunkRegion(grid_frame_location);
     auto found_chunk_itr = chunks_.find(region);
-    if (found_chunk_itr != chunks_.end()
-        && OnMutableAccess(grid_frame_location))
+    if (found_chunk_itr != chunks_.end())
     {
-      return found_chunk_itr->second.GetLocationMutable4d(grid_frame_location);
+      if (OnMutableAccess(grid_frame_location))
+      {
+        return found_chunk_itr->second.GetLocationMutable4d(grid_frame_location);
+      }
+      else
+      {
+        return DynamicSpatialHashedGridQuery<T>::MutableAccessProhibited();
+      }
     }
     else
     {
-      return DynamicSpatialHashedGridQuery<T>();
+      return DynamicSpatialHashedGridQuery<T>::NotFound();
     }
   }
 
@@ -934,7 +952,7 @@ public:
     }
     else
     {
-      return DSHVGSetStatus::NOT_SET;
+      return DSHVGSetStatus::MUTABLE_ACCESS_PROHIBITED;
     }
   }
 
@@ -987,7 +1005,7 @@ public:
     }
     else
     {
-      return DSHVGSetStatus::NOT_SET;
+      return DSHVGSetStatus::MUTABLE_ACCESS_PROHIBITED;
     }
   }
 

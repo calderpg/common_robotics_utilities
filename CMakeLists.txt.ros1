@@ -127,6 +127,10 @@ target_link_libraries(dtw_example ${PROJECT_NAME})
 
 if(CATKIN_ENABLE_TESTING)
     # Tests
+    catkin_add_gtest(maybe_test test/maybe_test.cpp)
+    add_dependencies(maybe_test ${PROJECT_NAME})
+    target_link_libraries(maybe_test ${PROJECT_NAME})
+
     catkin_add_gtest(planning_test test/planning_test.cpp)
     add_dependencies(planning_test ${PROJECT_NAME})
     target_link_libraries(planning_test ${PROJECT_NAME})

@@ -1,4 +1,5 @@
 #include <cstdint>
+#include <vector>
 
 #include <Eigen/Geometry>
 #include <common_robotics_utilities/maybe.hpp>
@@ -36,17 +37,17 @@ GTEST_TEST(OwningMaybeTest, DefaultConstructMoveAndAssign)
   OwningMaybe<DefaultConstructibleWrapper> maybe_1(
       DefaultConstructibleWrapper(1));
 
-  ASSERT_FALSE(maybe_not);
-  ASSERT_TRUE(maybe_default);
-  ASSERT_TRUE(maybe_1);
+  EXPECT_FALSE(maybe_not);
+  EXPECT_TRUE(maybe_default);
+  EXPECT_TRUE(maybe_1);
 
-  ASSERT_EQ(maybe_default.Value().Value(), kDefaultValue);
-  ASSERT_EQ(maybe_1.Value().Value(), 1);
+  EXPECT_EQ(maybe_default.Value().Value(), kDefaultValue);
+  EXPECT_EQ(maybe_1.Value().Value(), 1);
 
   // Test value modification.
   maybe_default.Value().Value() = 5;
 
-  ASSERT_EQ(maybe_default.Value().Value(), 5);
+  EXPECT_EQ(maybe_default.Value().Value(), 5);
 
   // Test copy and move constructors.
   OwningMaybe<DefaultConstructibleWrapper> copy_maybe_1(maybe_1);
@@ -54,29 +55,28 @@ GTEST_TEST(OwningMaybeTest, DefaultConstructMoveAndAssign)
       std::move(OwningMaybe<DefaultConstructibleWrapper>(
           DefaultConstructibleWrapper(2))));
 
-  ASSERT_TRUE(copy_maybe_1);
-  ASSERT_TRUE(copy_temp_maybe);
+  EXPECT_TRUE(copy_maybe_1);
+  EXPECT_TRUE(copy_temp_maybe);
 
-  ASSERT_EQ(copy_maybe_1.Value().Value(), 1);
-  ASSERT_EQ(copy_temp_maybe.Value().Value(), 2);
+  EXPECT_EQ(copy_maybe_1.Value().Value(), 1);
+  EXPECT_EQ(copy_temp_maybe.Value().Value(), 2);
 
   // Test copy & move assignment.
   OwningMaybe<DefaultConstructibleWrapper> maybe_not_copied;
   OwningMaybe<DefaultConstructibleWrapper> maybe_not_moved;
 
-  ASSERT_FALSE(maybe_not_copied);
-  ASSERT_FALSE(maybe_not_moved);
+  EXPECT_FALSE(maybe_not_copied);
+  EXPECT_FALSE(maybe_not_moved);
 
   maybe_not_copied = maybe_1;
 
-  ASSERT_TRUE(maybe_not_copied);
-  ASSERT_EQ(maybe_not_copied.Value().Value(), 1);
+  EXPECT_TRUE(maybe_not_copied);
+  EXPECT_EQ(maybe_not_copied.Value().Value(), 1);
 
   maybe_not_moved = std::move(maybe_not_copied);
 
-  ASSERT_TRUE(maybe_not_moved);
-  ASSERT_FALSE(maybe_not_copied);
-  ASSERT_EQ(maybe_not_moved.Value().Value(), 1);
+  EXPECT_TRUE(maybe_not_moved);
+  EXPECT_EQ(maybe_not_moved.Value().Value(), 1);
 }
 
 class NonDefaultConstructibleWrapper
@@ -101,9 +101,9 @@ GTEST_TEST(OwningMaybeTest, NoDefaultConstructMoveAndAssign)
   OwningMaybe<NonDefaultConstructibleWrapper> maybe_1(
       NonDefaultConstructibleWrapper(1));
 
-  ASSERT_FALSE(maybe_not);
-  ASSERT_TRUE(maybe_1);
-  ASSERT_EQ(maybe_1.Value().Value(), 1);
+  EXPECT_FALSE(maybe_not);
+  EXPECT_TRUE(maybe_1);
+  EXPECT_EQ(maybe_1.Value().Value(), 1);
 
   // Test copy and move constructors.
   OwningMaybe<NonDefaultConstructibleWrapper> copy_maybe_1(maybe_1);
@@ -111,29 +111,80 @@ GTEST_TEST(OwningMaybeTest, NoDefaultConstructMoveAndAssign)
       std::move(OwningMaybe<NonDefaultConstructibleWrapper>(
           NonDefaultConstructibleWrapper(2))));
 
-  ASSERT_TRUE(copy_maybe_1);
-  ASSERT_TRUE(copy_temp_maybe);
+  EXPECT_TRUE(copy_maybe_1);
+  EXPECT_TRUE(copy_temp_maybe);
 
-  ASSERT_EQ(copy_maybe_1.Value().Value(), 1);
-  ASSERT_EQ(copy_temp_maybe.Value().Value(), 2);
+  EXPECT_EQ(copy_maybe_1.Value().Value(), 1);
+  EXPECT_EQ(copy_temp_maybe.Value().Value(), 2);
 
   // Test copy & move assignment.
   OwningMaybe<NonDefaultConstructibleWrapper> maybe_not_copied;
   OwningMaybe<NonDefaultConstructibleWrapper> maybe_not_moved;
 
-  ASSERT_FALSE(maybe_not_copied);
-  ASSERT_FALSE(maybe_not_moved);
+  EXPECT_FALSE(maybe_not_copied);
+  EXPECT_FALSE(maybe_not_moved);
 
   maybe_not_copied = maybe_1;
 
-  ASSERT_TRUE(maybe_not_copied);
-  ASSERT_EQ(maybe_not_copied.Value().Value(), 1);
+  EXPECT_TRUE(maybe_not_copied);
+  EXPECT_EQ(maybe_not_copied.Value().Value(), 1);
 
   maybe_not_moved = std::move(maybe_not_copied);
 
-  ASSERT_TRUE(maybe_not_moved);
-  ASSERT_FALSE(maybe_not_copied);
-  ASSERT_EQ(maybe_not_moved.Value().Value(), 1);
+  EXPECT_TRUE(maybe_not_moved);
+  EXPECT_EQ(maybe_not_moved.Value().Value(), 1);
+}
+
+GTEST_TEST(OwningMaybeTest, NonTrivialConstructMoveAndAssign)
+{
+  // Test basic construction.
+  OwningMaybe<std::vector<int32_t>> maybe_not;
+  OwningMaybe<std::vector<int32_t>> maybe_default(
+      std::move(std::vector<int32_t>()));
+  OwningMaybe<std::vector<int32_t>> maybe_1(
+      std::vector<int32_t>(1, 1));
+
+  EXPECT_FALSE(maybe_not);
+  EXPECT_TRUE(maybe_default);
+  EXPECT_TRUE(maybe_1);
+
+  EXPECT_EQ(maybe_default.Value().size(), 0);
+  EXPECT_EQ(maybe_1.Value().size(), 1);
+
+  // Test value modification.
+  maybe_default.Value().push_back(5);
+
+  EXPECT_EQ(maybe_default.Value().size(), 1);
+  EXPECT_EQ(maybe_default.Value().at(0), 5);
+
+  // Test copy and move constructors.
+  OwningMaybe<std::vector<int32_t>> copy_maybe_1(maybe_1);
+  OwningMaybe<std::vector<int32_t>> copy_temp_maybe(
+      std::move(OwningMaybe<std::vector<int32_t>>(
+          std::vector<int32_t>(2, 2))));
+
+  EXPECT_TRUE(copy_maybe_1);
+  EXPECT_TRUE(copy_temp_maybe);
+
+  EXPECT_EQ(copy_maybe_1.Value().size(), 1);
+  EXPECT_EQ(copy_temp_maybe.Value().size(), 2);
+
+  // Test copy & move assignment.
+  OwningMaybe<std::vector<int32_t>> maybe_not_copied;
+  OwningMaybe<std::vector<int32_t>> maybe_not_moved;
+
+  EXPECT_FALSE(maybe_not_copied);
+  EXPECT_FALSE(maybe_not_moved);
+
+  maybe_not_copied = maybe_1;
+
+  EXPECT_TRUE(maybe_not_copied);
+  EXPECT_EQ(maybe_not_copied.Value().size(), 1);
+
+  maybe_not_moved = std::move(maybe_not_copied);
+
+  EXPECT_TRUE(maybe_not_moved);
+  EXPECT_EQ(maybe_not_moved.Value().size(), 1);
 }
 
 GTEST_TEST(OwningMaybeTest, EigenTypeAlignment)
@@ -145,13 +196,13 @@ GTEST_TEST(OwningMaybeTest, EigenTypeAlignment)
   const OwningMaybe<Eigen::Isometry3d> stack_maybe_transform(
       Eigen::Isometry3d::Identity());
 
-  ASSERT_TRUE(
+  EXPECT_TRUE(
       utility::CheckAlignment(stack_maybe_transform.Value(), eigen_alignment));
 
   const std::unique_ptr<OwningMaybe<Eigen::Isometry3d>> heap_maybe_transform(
       new OwningMaybe<Eigen::Isometry3d>(Eigen::Isometry3d::Identity()));
 
-  ASSERT_TRUE(
+  EXPECT_TRUE(
       utility::CheckAlignment(heap_maybe_transform->Value(), eigen_alignment));
 }
 
@@ -165,78 +216,76 @@ GTEST_TEST(ReferencingMaybeTest, ConstructMoveAndAssign)
   ReferencingMaybe<int32_t> maybe_1(value_1);
   ReferencingMaybe<int32_t> maybe_2(value_2);
 
-  ASSERT_FALSE(maybe_not);
-  ASSERT_TRUE(maybe_1);
-  ASSERT_TRUE(maybe_2);
+  EXPECT_FALSE(maybe_not);
+  EXPECT_TRUE(maybe_1);
+  EXPECT_TRUE(maybe_2);
 
-  ASSERT_EQ(maybe_1.Value(), value_1);
-  ASSERT_EQ(maybe_2.Value(), value_2);
+  EXPECT_EQ(maybe_1.Value(), value_1);
+  EXPECT_EQ(maybe_2.Value(), value_2);
 
-  ASSERT_EQ(std::addressof(maybe_1.Value()), std::addressof(value_1));
-  ASSERT_EQ(std::addressof(maybe_2.Value()), std::addressof(value_2));
+  EXPECT_EQ(std::addressof(maybe_1.Value()), std::addressof(value_1));
+  EXPECT_EQ(std::addressof(maybe_2.Value()), std::addressof(value_2));
 
   // Test value modification & assignment.
   value_1 = 10;
 
-  ASSERT_EQ(maybe_1.Value(), value_1);
+  EXPECT_EQ(maybe_1.Value(), value_1);
 
   maybe_1.Value() = 11;
 
-  ASSERT_EQ(value_1, 11);
-  ASSERT_EQ(maybe_1.Value(), 11);
+  EXPECT_EQ(value_1, 11);
+  EXPECT_EQ(maybe_1.Value(), 11);
 
   // Test copy and move constructors.
   ReferencingMaybe<int32_t> copy_maybe(maybe_1);
   ReferencingMaybe<int32_t> copy_temp_maybe(
       std::move(ReferencingMaybe<int32_t>(value_2)));
 
-  ASSERT_EQ(copy_maybe.Value(), value_1);
-  ASSERT_EQ(copy_temp_maybe.Value(), value_2);
+  EXPECT_EQ(copy_maybe.Value(), value_1);
+  EXPECT_EQ(copy_temp_maybe.Value(), value_2);
 
-  ASSERT_EQ(std::addressof(copy_maybe.Value()), std::addressof(value_1));
-  ASSERT_EQ(std::addressof(copy_temp_maybe.Value()), std::addressof(value_2));
+  EXPECT_EQ(std::addressof(copy_maybe.Value()), std::addressof(value_1));
+  EXPECT_EQ(std::addressof(copy_temp_maybe.Value()), std::addressof(value_2));
 
   // Test copy & move assignment.
   ReferencingMaybe<int32_t> copied_from_maybe_1 = maybe_1;
   ReferencingMaybe<int32_t> moved_from_maybe_2 = std::move(maybe_2);
 
-  ASSERT_TRUE(copied_from_maybe_1);
-  ASSERT_TRUE(moved_from_maybe_2);
-  ASSERT_FALSE(maybe_2);
+  EXPECT_TRUE(copied_from_maybe_1);
+  EXPECT_TRUE(moved_from_maybe_2);
 
-  ASSERT_EQ(copied_from_maybe_1.Value(), value_1);
-  ASSERT_EQ(moved_from_maybe_2.Value(), value_2);
+  EXPECT_EQ(copied_from_maybe_1.Value(), value_1);
+  EXPECT_EQ(moved_from_maybe_2.Value(), value_2);
 
-  ASSERT_EQ(
+  EXPECT_EQ(
       std::addressof(copied_from_maybe_1.Value()), std::addressof(value_1));
-  ASSERT_EQ(
+  EXPECT_EQ(
       std::addressof(moved_from_maybe_2.Value()), std::addressof(value_2));
 
   ReferencingMaybe<int32_t> maybe_not_copied;
   ReferencingMaybe<int32_t> maybe_not_moved;
 
-  ASSERT_FALSE(maybe_not_copied);
-  ASSERT_FALSE(maybe_not_moved);
+  EXPECT_FALSE(maybe_not_copied);
+  EXPECT_FALSE(maybe_not_moved);
 
   maybe_not_copied = maybe_1;
 
-  ASSERT_TRUE(maybe_not_copied);
-  ASSERT_EQ(maybe_not_copied.Value(), value_1);
-  ASSERT_EQ(
+  EXPECT_TRUE(maybe_not_copied);
+  EXPECT_EQ(maybe_not_copied.Value(), value_1);
+  EXPECT_EQ(
       std::addressof(maybe_not_copied.Value()), std::addressof(value_1));
 
   maybe_not_moved = std::move(maybe_not_copied);
 
-  ASSERT_TRUE(maybe_not_moved);
-  ASSERT_FALSE(maybe_not_copied);
-  ASSERT_EQ(maybe_not_moved.Value(), value_1);
-  ASSERT_EQ(
+  EXPECT_TRUE(maybe_not_moved);
+  EXPECT_EQ(maybe_not_moved.Value(), value_1);
+  EXPECT_EQ(
       std::addressof(maybe_not_moved.Value()), std::addressof(value_1));
 
   // Test reset.
   maybe_1.Reset();
 
-  ASSERT_FALSE(maybe_1);
+  EXPECT_FALSE(maybe_1);
 }
 
 

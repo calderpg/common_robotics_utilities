@@ -9,6 +9,7 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/maybe.hpp>
 #include <common_robotics_utilities/serialization.hpp>
 #include <common_robotics_utilities/utility.hpp>
 
@@ -454,10 +455,6 @@ public:
 enum class AccessStatus
     : uint8_t {SUCCESS, OUT_OF_BOUNDS, MUTABLE_ACCESS_PROHIBITED, UNKNOWN};
 
-// Forward-declare for use in GridQuery.
-template<typename T, typename BackingStore=std::vector<T>>
-class VoxelGridBase;
-
 // While this looks like a std::optional<T>, it *does not own* the item of T,
 // unlike std::optional<T>, since it needs to pass the caller a const/mutable
 // reference to the item in the voxel grid.
@@ -465,19 +462,17 @@ template<typename T>
 class GridQuery
 {
 private:
-  template<typename Item, typename BackingStore> friend class VoxelGridBase;
-
-  T* const item_ptr_ = nullptr;
+  ReferencingMaybe<T> value_;
   AccessStatus status_ = AccessStatus::UNKNOWN;
 
-  // These constructors are private because users should not be able to create
-  // GridQuery<T> with a value on their own, creation should only be possible
-  // within a VoxelGridBase<T> to which the GridQuery<T> references.
-  explicit GridQuery(T& item)
-      : item_ptr_(std::addressof(item)), status_(AccessStatus::SUCCESS) {}
+  // This struct (and its uses) exists to disambiguate between the value-found
+  // and status constructors.
+  struct AccessStatusSuccess {};
 
-  explicit GridQuery(const AccessStatus status)
-      : item_ptr_(nullptr), status_(status)
+  explicit GridQuery(T& value, AccessStatusSuccess)
+      : value_(value), status_(AccessStatus::SUCCESS) {}
+
+  explicit GridQuery(const AccessStatus status) : status_(status)
   {
     if (status_ == AccessStatus::SUCCESS)
     {
@@ -487,35 +482,49 @@ private:
   }
 
 public:
-  GridQuery() : item_ptr_(nullptr), status_(AccessStatus::UNKNOWN) {}
-
-  T& Value() const
+  static GridQuery<T> Success(T& value)
   {
-    if (HasValue())
-    {
-      return *item_ptr_;
-    }
-    else
-    {
-      throw std::runtime_error("GridQuery does not have value");
-    }
+    return GridQuery<T>(value, AccessStatusSuccess{});
   }
 
-  T& Value()
+  static GridQuery<T> OutOfBounds()
   {
-    if (HasValue())
-    {
-      return *item_ptr_;
-    }
-    else
-    {
-      throw std::runtime_error("GridQuery does not have value");
-    }
+    return GridQuery<T>(AccessStatus::OUT_OF_BOUNDS);
   }
+
+  static GridQuery<T> MutableAccessProhibited()
+  {
+    return GridQuery<T>(AccessStatus::MUTABLE_ACCESS_PROHIBITED);
+  }
+
+  static GridQuery<T> Unknown()
+  {
+    return GridQuery<T>(AccessStatus::UNKNOWN);
+  }
+
+  GridQuery() : status_(AccessStatus::UNKNOWN) {}
+
+  GridQuery(const GridQuery<T>& other) = default;
+
+  GridQuery(GridQuery<T>&& other) = default;
+
+  GridQuery<T>& operator=(const GridQuery<T>& other) = default;
+
+  GridQuery<T>& operator=(GridQuery<T>&& other) = default;
+
+  void Reset()
+  {
+    value_.Reset();
+    status_ = AccessStatus::UNKNOWN;
+  }
+
+  T& Value() const { return value_.Value(); }
+
+  T& Value() { return value_.Value(); }
 
   AccessStatus Status() const { return status_; }
 
-  bool HasValue() const { return item_ptr_ != nullptr; }
+  bool HasValue() const { return value_.HasValue(); }
 
   explicit operator bool() const { return HasValue(); }
 };
@@ -525,7 +534,7 @@ public:
 /// derived-class memeber de/serialization) in concrete implementations. This is
 /// the class to inherit from if you want a VoxelGrid-like type. If all you want
 /// is a voxel grid of T, see VoxelGrid<T, BackingStore> below.
-template<typename T, typename BackingStore>
+template<typename T, typename BackingStore=std::vector<T>>
 class VoxelGridBase
 {
 private:
@@ -839,11 +848,12 @@ public:
   {
     if (sizes_.IndexInBounds(index))
     {
-      return GridQuery<const T>(AccessIndex(sizes_.GetDataIndex(index)));
+      return GridQuery<const T>::Success(
+          AccessIndex(sizes_.GetDataIndex(index)));
     }
     else
     {
-      return GridQuery<const T>(AccessStatus::OUT_OF_BOUNDS);
+      return GridQuery<const T>::OutOfBounds();
     }
   }
 
@@ -852,12 +862,12 @@ public:
   {
     if (sizes_.IndexInBounds(x_index, y_index, z_index))
     {
-      return GridQuery<const T>(
-            AccessIndex(sizes_.GetDataIndex(x_index, y_index, z_index)));
+      return GridQuery<const T>::Success(
+          AccessIndex(sizes_.GetDataIndex(x_index, y_index, z_index)));
     }
     else
     {
-      return GridQuery<const T>(AccessStatus::OUT_OF_BOUNDS);
+      return GridQuery<const T>::OutOfBounds();
     }
   }
 
@@ -888,16 +898,16 @@ public:
     {
       if (OnMutableAccess(index))
       {
-        return GridQuery<T>(AccessIndex(sizes_.GetDataIndex(index)));
+        return GridQuery<T>::Success(AccessIndex(sizes_.GetDataIndex(index)));
       }
       else
       {
-        return GridQuery<T>(AccessStatus::MUTABLE_ACCESS_PROHIBITED);
+        return GridQuery<T>::MutableAccessProhibited();
       }
     }
     else
     {
-      return GridQuery<T>(AccessStatus::OUT_OF_BOUNDS);
+      return GridQuery<T>::OutOfBounds();
     }
   }
 
@@ -908,17 +918,17 @@ public:
     {
       if (OnMutableAccess(x_index, y_index, z_index))
       {
-        return GridQuery<T>(
+        return GridQuery<T>::Success(
             AccessIndex(sizes_.GetDataIndex(x_index, y_index, z_index)));
       }
       else
       {
-        return GridQuery<T>(AccessStatus::MUTABLE_ACCESS_PROHIBITED);
+        return GridQuery<T>::MutableAccessProhibited();
       }
     }
     else
     {
-      return GridQuery<T>(AccessStatus::OUT_OF_BOUNDS);
+      return GridQuery<T>::OutOfBounds();
     }
   }
 

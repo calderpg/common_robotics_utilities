@@ -202,24 +202,17 @@ public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
   OutcomeWithPrimitiveIndex(const State& outcome, const int64_t primitive_index)
-      : outcome_(OwningMaybe<State>(outcome)),
-        primitive_index_(primitive_index) {}
+      : outcome_(outcome), primitive_index_(primitive_index) {}
 
   explicit OutcomeWithPrimitiveIndex(const State& outcome)
       : OutcomeWithPrimitiveIndex(outcome, -1) {}
 
-  OutcomeWithPrimitiveIndex() {}
-
-  const State& Outcome() const { return outcome_.Value(); }
+  const State& Outcome() const { return outcome_; }
 
   int64_t PrimitiveIndex() const { return primitive_index_; }
 
 private:
-  // TODO(calderpg) This is only here to enable the default constructor, and
-  // can be removed along with it once C++17 is required and std::optional can
-  // be used instead of OwningMaybe OR OwningMaybe gains the ability to handle
-  // types without default constructors.
-  OwningMaybe<State> outcome_;
+  State outcome_;
   int64_t primitive_index_ = -1;
 };
 

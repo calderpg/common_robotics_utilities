@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdexcept>
+#include <type_traits>
 
 #include <Eigen/Geometry>
 
@@ -241,7 +242,7 @@ public:
 
   void Reset() { item_ptr_ = nullptr; }
 
-  T& Value() const
+  const T& Value() const
   {
     if (HasValue())
     {

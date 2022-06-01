@@ -329,7 +329,55 @@ GTEST_TEST(ReferencingMaybeTest, ConstructMoveAndAssign)
   EXPECT_FALSE(maybe_1);
 }
 
+GTEST_TEST(OwningMaybeTest, ConstHandling)
+{
+  int32_t mutable_value = 1;
+  const int32_t const_value = 2;
 
+  OwningMaybe<int32_t> mutable_maybe_mutable_value(mutable_value);
+  const OwningMaybe<int32_t> const_maybe_mutable_value(mutable_value);
+  OwningMaybe<const int32_t> mutable_maybe_const_value(const_value);
+  const OwningMaybe<const int32_t> const_maybe_const_value(const_value);
+
+  EXPECT_EQ(mutable_maybe_mutable_value.Value(), mutable_value);
+  EXPECT_EQ(const_maybe_mutable_value.Value(), mutable_value);
+  EXPECT_EQ(mutable_maybe_const_value.Value(), const_value);
+  EXPECT_EQ(const_maybe_const_value.Value(), const_value);
+
+  EXPECT_FALSE(std::is_const<typename std::remove_reference<decltype(
+      mutable_maybe_mutable_value.Value())>::type>::value);
+  EXPECT_TRUE(std::is_const<typename std::remove_reference<decltype(
+      const_maybe_mutable_value.Value())>::type>::value);
+  EXPECT_TRUE(std::is_const<typename std::remove_reference<decltype(
+      mutable_maybe_const_value.Value())>::type>::value);
+  EXPECT_TRUE(std::is_const<typename std::remove_reference<decltype(
+      const_maybe_const_value.Value())>::type>::value);
+}
+
+GTEST_TEST(ReferencingMaybeTest, ConstHandling)
+{
+  int32_t mutable_value = 1;
+  const int32_t const_value = 2;
+
+  ReferencingMaybe<int32_t> mutable_maybe_mutable_value(mutable_value);
+  const ReferencingMaybe<int32_t> const_maybe_mutable_value(mutable_value);
+  ReferencingMaybe<const int32_t> mutable_maybe_const_value(const_value);
+  const ReferencingMaybe<const int32_t> const_maybe_const_value(const_value);
+
+  EXPECT_EQ(mutable_maybe_mutable_value.Value(), mutable_value);
+  EXPECT_EQ(const_maybe_mutable_value.Value(), mutable_value);
+  EXPECT_EQ(mutable_maybe_const_value.Value(), const_value);
+  EXPECT_EQ(const_maybe_const_value.Value(), const_value);
+
+  EXPECT_FALSE(std::is_const<typename std::remove_reference<decltype(
+      mutable_maybe_mutable_value.Value())>::type>::value);
+  EXPECT_TRUE(std::is_const<typename std::remove_reference<decltype(
+      const_maybe_mutable_value.Value())>::type>::value);
+  EXPECT_TRUE(std::is_const<typename std::remove_reference<decltype(
+      mutable_maybe_const_value.Value())>::type>::value);
+  EXPECT_TRUE(std::is_const<typename std::remove_reference<decltype(
+      const_maybe_const_value.Value())>::type>::value);
+}
 }  // namespace maybe_test
 }  // namespace common_robotics_utilities
 

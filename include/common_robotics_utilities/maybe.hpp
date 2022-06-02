@@ -15,6 +15,44 @@ template<typename A, typename B>
 struct TaggedUnion
 {
 private:
+  void ConstructFrom(const TaggedUnion<A, B>& other)
+  {
+    switch (other.type_)
+    {
+      case TYPE_A:
+      {
+        ::new(&value_a_) A(other.value_a_);
+        type_ = TYPE_A;
+        break;
+      }
+      case TYPE_B:
+      {
+        ::new(&value_b_) B(other.value_b_);
+        type_ = TYPE_B;
+        break;
+      }
+    }
+  }
+
+  void ConstructFrom(TaggedUnion<A, B>&& other)
+  {
+    switch (other.type_)
+    {
+      case TYPE_A:
+      {
+        ::new(&value_a_) A(std::move(other.value_a_));
+        type_ = TYPE_A;
+        break;
+      }
+      case TYPE_B:
+      {
+        ::new(&value_b_) B(std::move(other.value_b_));
+        type_ = TYPE_B;
+        break;
+      }
+    }
+  }
+
   void Cleanup()
   {
     switch (type_)
@@ -22,12 +60,12 @@ private:
       case TYPE_A:
       {
         value_a_.~A();
-        return;
+        break;
       }
       case TYPE_B:
       {
         value_b_.~B();
-        return;
+        break;
       }
     }
   }
@@ -53,43 +91,9 @@ public:
   explicit TaggedUnion(B&& value_b)
       : value_b_(std::move(value_b)), type_(TYPE_B) {}
 
-  TaggedUnion(const TaggedUnion<A, B>& other)
-  {
-    switch (other.type_)
-    {
-      case TYPE_A:
-      {
-        ::new(&value_a_) A(other.value_a_);
-        type_ = TYPE_A;
-        break;
-      }
-      case TYPE_B:
-      {
-        ::new(&value_b_) B(other.value_b_);
-        type_ = TYPE_B;
-        break;
-      }
-    }
-  }
+  TaggedUnion(const TaggedUnion<A, B>& other) { ConstructFrom(other); }
 
-  TaggedUnion(TaggedUnion<A, B>&& other)
-  {
-    switch (other.type_)
-    {
-      case TYPE_A:
-      {
-        ::new(&value_a_) A(std::move(other.value_a_));
-        type_ = TYPE_A;
-        break;
-      }
-      case TYPE_B:
-      {
-        ::new(&value_b_) B(std::move(other.value_b_));
-        type_ = TYPE_B;
-        break;
-      }
-    }
-  }
+  TaggedUnion(TaggedUnion<A, B>&& other) { ConstructFrom(std::move(other)); }
 
   ~TaggedUnion() { Cleanup(); }
 
@@ -99,21 +103,7 @@ public:
     {
       Cleanup();
 
-      switch (other.type_)
-      {
-        case TYPE_A:
-        {
-          ::new(&value_a_) A(other.value_a_);
-          type_ = TYPE_A;
-          break;
-        }
-        case TYPE_B:
-        {
-          ::new(&value_b_) B(other.value_b_);
-          type_ = TYPE_B;
-          break;
-        }
-      }
+      ConstructFrom(other);
     }
     return *this;
   }
@@ -124,21 +114,7 @@ public:
     {
       Cleanup();
 
-      switch (other.type_)
-      {
-        case TYPE_A:
-        {
-          ::new(&value_a_) A(std::move(other.value_a_));
-          type_ = TYPE_A;
-          break;
-        }
-        case TYPE_B:
-        {
-          ::new(&value_b_) B(std::move(other.value_b_));
-          type_ = TYPE_B;
-          break;
-        }
-      }
+      ConstructFrom(std::move(other));
     }
     return *this;
   }

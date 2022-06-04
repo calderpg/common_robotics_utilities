@@ -467,11 +467,10 @@ GTEST_TEST(PlanningTest, Test)
             << "New roadmap nodes: " << loaded_roadmap.Size() << "\n"
             << "New roadmap binary size: " << load_buffer.size() << std::endl;
 
-  for (size_t idx = 0; idx < loaded_roadmap.Size(); idx++)
+  for (int64_t idx = 0; idx < loaded_roadmap.Size(); idx++)
   {
-    const auto& old_node = roadmap.GetNodeImmutable(static_cast<int64_t>(idx));
-    const auto& new_node
-        = loaded_roadmap.GetNodeImmutable(static_cast<int64_t>(idx));
+    const auto& old_node = roadmap.GetNodeImmutable(idx);
+    const auto& new_node = loaded_roadmap.GetNodeImmutable(idx);
     const Waypoint& old_waypoint = old_node.GetValueImmutable();
     const Waypoint& new_waypoint = new_node.GetValueImmutable();
     ASSERT_EQ(old_waypoint.first, new_waypoint.first);

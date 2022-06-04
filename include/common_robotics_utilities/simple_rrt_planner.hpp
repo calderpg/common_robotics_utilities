@@ -50,9 +50,8 @@ public:
       const serialization::Deserializer<StateType>& value_deserializer)
   {
     SimpleRRTPlannerState<StateType> temp_state;
-    const uint64_t bytes_read
-        = temp_state.DeserializeSelf(buffer, starting_offset,
-                                     value_deserializer);
+    const uint64_t bytes_read = temp_state.DeserializeSelf(
+        buffer, starting_offset, value_deserializer);
     return serialization::MakeDeserialized(temp_state, bytes_read);
   }
 
@@ -184,7 +183,7 @@ template<typename StateType>
 class SimpleRRTPlannerTree
 {
 private:
-   SimpleRRTPlannerStateVector<StateType> nodes_;
+  SimpleRRTPlannerStateVector<StateType> nodes_;
 
 public:
   using NodeType = SimpleRRTPlannerState<StateType>;
@@ -232,7 +231,6 @@ public:
     return serialization::MakeDeserialized(
         tree, deserialized_nodes.BytesRead());
   }
-
 
   SimpleRRTPlannerTree() {}
 

@@ -76,11 +76,13 @@ inline int64_t AddNodeToRoadmap(
       return distance_fn(query_state, node.GetValueImmutable());
     };
   }
+
   // Call KNN with the distance function
   const auto nearest_neighbors =
       simple_knearest_neighbors::GetKNearestNeighbors(
           roadmap.GetNodesImmutable(), state, graph_distance_fn, K,
           use_parallel);
+
   // Check if we already have this state in the roadmap
   // (and we don't want to add duplicates)
   if (add_duplicate_states == false)
@@ -93,14 +95,20 @@ inline int64_t AddNodeToRoadmap(
       }
     }
   }
+
   // Add the new node AFTER KNN is performed
   const int64_t new_node_index = roadmap.AddNode(state);
+
   // Parallelize the collision-checking and distance computation
   // Because we don't need any special caching here, we define the loop contents
   // as a lambda and then call branch between parfor/for loops that call it.
   std::vector<std::pair<double, double>> nearest_neighbors_distances(
       nearest_neighbors.size());
-  auto collision_check_and_distance_fn = [&] (const size_t idx)
+
+#if defined(_OPENMP)
+#pragma omp parallel for if (use_parallel)
+#endif
+  for (size_t idx = 0; idx < nearest_neighbors.size(); idx++)
   {
     const auto& nearest_neighbor = nearest_neighbors.at(idx);
     const int64_t nearest_neighbor_index = nearest_neighbor.Index();
@@ -149,23 +157,7 @@ inline int64_t AddNodeToRoadmap(
       nearest_neighbors_distances.at(idx) = std::make_pair(-1.0, -1.0);
     }
   };
-  if (use_parallel)
-  {
-#if defined(_OPENMP)
-#pragma omp parallel for
-#endif
-    for (size_t idx = 0; idx < nearest_neighbors.size(); idx++)
-    {
-      collision_check_and_distance_fn(idx);
-    }
-  }
-  else
-  {
-    for (size_t idx = 0; idx < nearest_neighbors.size(); idx++)
-    {
-      collision_check_and_distance_fn(idx);
-    }
-  }
+
   // THIS MUST BE SERIAL - add edges to roadmap
   for (size_t idx = 0; idx < nearest_neighbors.size(); idx++)
   {
@@ -185,6 +177,7 @@ inline int64_t AddNodeToRoadmap(
                                   nearest_neighbor_distances.second);
     }
   }
+
   return new_node_index;
 }
 
@@ -233,18 +226,18 @@ inline std::map<std::string, double> GrowRoadMap(
   // Update the start time
   const std::chrono::time_point<std::chrono::steady_clock> start_time
       = std::chrono::steady_clock::now();
-  while (!termination_check_fn(static_cast<int64_t>(roadmap.Size())))
+  while (!termination_check_fn(roadmap.Size()))
   {
     const T random_state = sampling_fn();
     statistics["total_samples"] += 1.0;
     if (state_validity_check_fn(random_state))
     {
-      const size_t pre_size = roadmap.Size();
+      const int64_t pre_size = roadmap.Size();
       AddNodeToRoadmap(random_state, NNDistanceDirection::ROADMAP_TO_NEW_STATE,
                        roadmap, distance_fn, edge_validity_check_fn, K,
                        use_parallel, distance_is_symmetric,
                        add_duplicate_states);
-      const size_t post_size = roadmap.Size();
+      const int64_t post_size = roadmap.Size();
       if (post_size > pre_size)
       {
         statistics["successful_samples"] += 1.0;
@@ -284,9 +277,12 @@ inline void UpdateRoadMapEdges(
   {
     throw std::invalid_argument("Provided roadmap has invalid linkage");
   }
-  // Because we don't need any special caching here, we define the loop contents
-  // as a lambda and then call branch between parfor/for loops that call it.
-  auto update_node_fn = [&] (const size_t current_node_index)
+
+#if defined(_OPENMP)
+#pragma omp parallel for if (use_parallel)
+#endif
+  for (int64_t current_node_index = 0; current_node_index < roadmap.Size();
+       current_node_index++)
   {
     simple_graph::GraphNode<T>& current_node
         = roadmap.GetNodeMutable(current_node_index);
@@ -310,33 +306,13 @@ inline void UpdateRoadMapEdges(
       // Update the other node's in edges
       for (auto& other_in_edge : other_node_in_edges)
       {
-        if (other_in_edge.GetFromIndex()
-            == static_cast<int64_t>(current_node_index))
+        if (other_in_edge.GetFromIndex() == current_node_index)
         {
           other_in_edge.SetWeight(updated_weight);
         }
       }
     }
   };
-  if (use_parallel)
-  {
-#if defined(_OPENMP)
-#pragma omp parallel for
-#endif
-    for (size_t current_node_index = 0; current_node_index < roadmap.Size();
-         current_node_index++)
-    {
-      update_node_fn(current_node_index);
-    }
-  }
-  else
-  {
-    for (size_t current_node_index = 0; current_node_index < roadmap.Size();
-         current_node_index++)
-    {
-      update_node_fn(current_node_index);
-    }
-  }
 }
 
 /// Extracts the solution path from the roadmap.

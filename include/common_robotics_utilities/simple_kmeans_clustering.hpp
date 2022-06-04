@@ -33,7 +33,11 @@ inline std::vector<int32_t> PerformSingleClusteringIteration(
     const bool use_parallel)
 {
   std::vector<int32_t> new_cluster_labels(data.size());
-  const auto loop_body = [&] (const size_t idx)
+
+#if defined(_OPENMP)
+#pragma omp parallel for if (use_parallel)
+#endif
+  for (size_t idx = 0; idx < data.size(); idx++)
   {
     const DataType& datapoint = data.at(idx);
     const int64_t closest_cluster_index
@@ -41,23 +45,7 @@ inline std::vector<int32_t> PerformSingleClusteringIteration(
             current_cluster_centers, datapoint, distance_fn, 1).at(0).Index();
     new_cluster_labels.at(idx) = static_cast<int32_t>(closest_cluster_index);
   };
-  if (use_parallel)
-  {
-#if defined(_OPENMP)
-#pragma omp parallel for
-#endif
-    for (size_t idx = 0; idx < data.size(); idx++)
-    {
-      loop_body(idx);
-    }
-  }
-  else
-  {
-    for (size_t idx = 0; idx < data.size(); idx++)
-    {
-      loop_body(idx);
-    }
-  }
+
   return new_cluster_labels;
 }
 
@@ -91,9 +79,14 @@ inline Container ComputeClusterCentersWeighted(
       clustered_data.at(label).push_back(datapoint);
       clustered_data_weights.at(label).push_back(data_weights.at(idx));
     }
+
     // Compute the center of each cluster
     Container cluster_centers(num_clusters);
-    const auto loop_body = [&] (const size_t cluster)
+
+#if defined(_OPENMP)
+#pragma omp parallel for if (use_parallel)
+#endif
+    for (size_t cluster = 0; cluster < clustered_data.size(); cluster++)
     {
       const Container& cluster_data = clustered_data.at(cluster);
       const std::vector<double>& cluster_data_weights
@@ -101,23 +94,7 @@ inline Container ComputeClusterCentersWeighted(
       cluster_centers.at(cluster)
           = weighted_average_fn(cluster_data, cluster_data_weights);
     };
-    if (use_parallel)
-    {
-#if defined(_OPENMP)
-#pragma omp parallel for
-#endif
-      for (size_t cluster = 0; cluster < clustered_data.size(); cluster++)
-      {
-        loop_body(cluster);
-      }
-    }
-    else
-    {
-      for (size_t cluster = 0; cluster < clustered_data.size(); cluster++)
-      {
-        loop_body(cluster);
-      }
-    }
+
     return cluster_centers;
   }
   else
@@ -128,8 +105,9 @@ inline Container ComputeClusterCentersWeighted(
 
 /// Checks for convergence - i.e. if @param old_labels and @param new_labels are
 /// the same. @returns if the labels are the same.
-inline bool CheckForConvergence(const std::vector<int32_t>& old_labels,
-                         const std::vector<int32_t>& new_labels)
+inline bool CheckForConvergence(
+    const std::vector<int32_t>& old_labels,
+    const std::vector<int32_t>& new_labels)
 {
   if (old_labels.size() == new_labels.size())
   {

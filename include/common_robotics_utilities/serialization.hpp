@@ -441,7 +441,8 @@ inline uint64_t SerializeMemcpyableVectorLike(
   const uint64_t size = static_cast<uint64_t>(vec_to_serialize.size());
   SerializeMemcpyable<uint64_t>(size, buffer);
   // Expand the buffer to handle everything
-  const size_t serialized_length = sizeof(T) * vec_to_serialize.size();
+  const size_t serialized_length =
+      sizeof(T) * static_cast<size_t>(vec_to_serialize.size());
   const size_t previous_buffer_size = buffer.size();
   buffer.resize(previous_buffer_size + serialized_length, 0x00);
   // Serialize the contained items

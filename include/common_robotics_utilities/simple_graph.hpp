@@ -472,7 +472,7 @@ public:
 
   Graph(const int64_t expected_size)
   {
-    nodes_.reserve(static_cast<int64_t>(expected_size));
+    nodes_.reserve(static_cast<size_t>(expected_size));
   }
 
   Graph() {}

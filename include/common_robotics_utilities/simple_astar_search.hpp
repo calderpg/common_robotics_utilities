@@ -242,7 +242,7 @@ inline AstarResult<T, Container> PerformAstarSearch(
   int64_t best_start_meeting_goal_index = -1;
   double best_start_meeting_goal_cost = std::numeric_limits<double>::infinity();
 
-  for (int64_t idx = 0; idx < static_cast<int64_t>(start_states.size()); idx++)
+  for (size_t idx = 0; idx < start_states.size(); idx++)
   {
     const T& start_state = start_states.at(idx).State();
     const double start_cost = start_states.at(idx).Cost();
@@ -250,7 +250,7 @@ inline AstarResult<T, Container> PerformAstarSearch(
     {
       if (start_cost < best_start_meeting_goal_cost)
       {
-        best_start_meeting_goal_index = idx;
+        best_start_meeting_goal_index = static_cast<int64_t>(idx);
         best_start_meeting_goal_cost = start_cost;
       }
     }
@@ -260,7 +260,7 @@ inline AstarResult<T, Container> PerformAstarSearch(
   if (best_start_meeting_goal_index >= 0)
   {
     const auto& best_start_meeting_goal =
-        start_states.at(best_start_meeting_goal_index);
+        start_states.at(static_cast<size_t>(best_start_meeting_goal_index));
 
     Container solution;
     solution.push_back(best_start_meeting_goal.State());

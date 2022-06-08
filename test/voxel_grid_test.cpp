@@ -37,7 +37,7 @@ GTEST_TEST(VoxelGridTest, IndexLookup)
       = voxel_grid::VoxelGrid<int32_t>::Deserialize(
           buffer, 0, serialization::DeserializeMemcpyable<int32_t>).Value();
   // Check the values
-  int32_t check_index = 0;
+  size_t check_index = 0;
   for (int64_t x_index = 0; x_index < read_grid.GetNumXCells(); x_index++)
   {
     for (int64_t y_index = 0; y_index < read_grid.GetNumYCells(); y_index++)
@@ -88,7 +88,7 @@ GTEST_TEST(VoxelGridTest, LocationLookup)
       = voxel_grid::VoxelGrid<int32_t>::Deserialize(
           buffer, 0, serialization::DeserializeMemcpyable<int32_t>).Value();
   // Check the values
-  int32_t check_index = 0;
+  size_t check_index = 0;
   for (double x_pos = -9.5; x_pos <= 9.5; x_pos += 1.0)
   {
     for (double y_pos = -9.5; y_pos <= 9.5; y_pos += 1.0)
@@ -160,7 +160,7 @@ GTEST_TEST(VoxelGridTest, DshvgLookup)
       = voxel_grid::DynamicSpatialHashedVoxelGrid<int32_t>::Deserialize(
           buffer, 0, serialization::DeserializeMemcpyable<int32_t>).Value();
   // Check the values
-  int32_t check_index = 0;
+  size_t check_index = 0;
   for (double x_pos = -9.5; x_pos <= 9.5; x_pos += 1.0)
   {
     for (double y_pos = -9.5; y_pos <= 9.5; y_pos += 1.0)

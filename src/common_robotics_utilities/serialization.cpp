@@ -140,7 +140,8 @@ Deserialized<Eigen::MatrixXd> DeserializeMatrixXd(
   {
     throw std::invalid_argument("Not enough room in the provided buffer");
   }
-  Eigen::MatrixXd deserialized = Eigen::MatrixXd::Zero(rows, cols);
+  Eigen::MatrixXd deserialized = Eigen::MatrixXd::Zero(
+      static_cast<ssize_t>(rows), static_cast<ssize_t>(cols));
   memcpy(deserialized.data(), &buffer[current_position], serialized_length);
   current_position += serialized_length;
   // Figure out how many bytes were read

@@ -338,7 +338,8 @@ public:
       {
         if (parent_index != static_cast<int64_t>(current_index))
         {
-          const auto& parent_state = nodes.at(parent_index);
+          const auto& parent_state =
+              nodes.at(static_cast<size_t>(parent_index));
           // Make sure the parent state is initialized.
           if (!parent_state.IsInitialized())
           {
@@ -385,7 +386,8 @@ public:
         {
           if (current_child_index > static_cast<int64_t>(current_index))
           {
-            const auto& child_state = nodes.at(current_child_index);
+            const auto& child_state =
+                nodes.at(static_cast<size_t>(current_child_index));
             if (!child_state.IsInitialized())
             {
               std::cerr << "Tree contains uninitialized node(s) "

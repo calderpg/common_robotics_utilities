@@ -70,18 +70,20 @@ inline Container ComputeClusterCentersWeighted(
     // TODO: improve this to avoid copies. It's possible right now, but it would
     // result in the average functions being more complicated and slower.
     // Separate the datapoints into their clusters
-    std::vector<Container> clustered_data(num_clusters);
-    std::vector<std::vector<double>> clustered_data_weights(num_clusters);
+    std::vector<Container> clustered_data(static_cast<size_t>(num_clusters));
+    std::vector<std::vector<double>> clustered_data_weights(
+        static_cast<size_t>(num_clusters));
     for (size_t idx = 0; idx < data.size(); idx++)
     {
       const DataType& datapoint = data[idx];
       const int32_t label = cluster_labels.at(idx);
-      clustered_data.at(label).push_back(datapoint);
-      clustered_data_weights.at(label).push_back(data_weights.at(idx));
+      clustered_data.at(static_cast<size_t>(label)).push_back(datapoint);
+      clustered_data_weights.at(
+          static_cast<size_t>(label)).push_back(data_weights.at(idx));
     }
 
     // Compute the center of each cluster
-    Container cluster_centers(num_clusters);
+    Container cluster_centers(static_cast<size_t>(num_clusters));
 
 #if defined(_OPENMP)
 #pragma omp parallel for if (use_parallel)
@@ -181,7 +183,8 @@ inline std::vector<int32_t> ClusterWeighted(
     }
   }
   // Prepare an RNG for cluster initialization
-  std::mt19937_64 prng(prng_seed);
+  std::mt19937_64 prng(
+      static_cast<typename std::mt19937_64::result_type>(prng_seed));
   std::uniform_int_distribution<size_t> initialization_distribution(
       0, data.size() - 1);
   // Initialize cluster centers
@@ -235,7 +238,7 @@ inline std::vector<int32_t> ClusterWeighted(
       const size_t random_index = initialization_distribution(prng);
       index_map[random_index] = 1u;
     }
-    cluster_centers.reserve(num_clusters);
+    cluster_centers.reserve(static_cast<size_t>(num_clusters));
     for (auto itr = index_map.begin(); itr != index_map.end(); ++itr)
     {
       if (itr->second == 1u)

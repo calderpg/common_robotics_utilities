@@ -15,7 +15,7 @@ template<typename A, typename B>
 struct TaggedUnion
 {
 private:
-  void ConstructFrom(const TaggedUnion<A, B>& other)
+  void ConstructCopy(const TaggedUnion<A, B>& other)
   {
     switch (other.type_)
     {
@@ -34,7 +34,7 @@ private:
     }
   }
 
-  void ConstructFrom(TaggedUnion<A, B>&& other)
+  void ConstructMove(TaggedUnion<A, B>&& other)
   {
     switch (other.type_)
     {
@@ -77,7 +77,7 @@ public:
     B value_b_;
   };
 
-  enum {TYPE_A, TYPE_B} type_;
+  enum {TYPE_A, TYPE_B} type_{};
 
   explicit TaggedUnion(const A& value_a)
       : value_a_(value_a), type_(TYPE_A) {}
@@ -91,9 +91,9 @@ public:
   explicit TaggedUnion(B&& value_b)
       : value_b_(std::move(value_b)), type_(TYPE_B) {}
 
-  TaggedUnion(const TaggedUnion<A, B>& other) { ConstructFrom(other); }
+  TaggedUnion(const TaggedUnion<A, B>& other) { ConstructCopy(other); }
 
-  TaggedUnion(TaggedUnion<A, B>&& other) { ConstructFrom(std::move(other)); }
+  TaggedUnion(TaggedUnion<A, B>&& other) { ConstructMove(std::move(other)); }
 
   ~TaggedUnion() { Cleanup(); }
 
@@ -103,7 +103,7 @@ public:
     {
       Cleanup();
 
-      ConstructFrom(other);
+      ConstructCopy(other);
     }
     return *this;
   }
@@ -114,7 +114,7 @@ public:
     {
       Cleanup();
 
-      ConstructFrom(std::move(other));
+      ConstructMove(std::move(other));
     }
     return *this;
   }

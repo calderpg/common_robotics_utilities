@@ -46,6 +46,9 @@ private:
 public:
   Item() : index_(-1), is_cluster_(false) {}
 
+  Item(const size_t index, const bool is_cluster)
+      : Item(static_cast<int64_t>(index), is_cluster) {}
+
   Item(const int64_t index, const bool is_cluster)
       : index_(index), is_cluster_(is_cluster)
   {
@@ -122,7 +125,7 @@ inline ClosestPair GetClosestClustersParallel(
     const ClusterStrategy strategy)
 {
   std::vector<ClosestPair> per_thread_closest_clusters(
-      openmp_helpers::GetNumOmpThreads(), ClosestPair());
+      static_cast<size_t>(openmp_helpers::GetNumOmpThreads()), ClosestPair());
 #if defined(_OPENMP)
 #pragma omp parallel for
 #endif
@@ -150,8 +153,9 @@ inline ClosestPair GetClosestClustersParallel(
           {
             for (const int64_t& cluster2_index : second_cluster)
             {
-              const double distance
-                  = distance_matrix(cluster1_index, cluster2_index);
+              const double distance = distance_matrix(
+                  static_cast<ssize_t>(cluster1_index),
+                  static_cast<ssize_t>(cluster2_index));
               minimum_distance = std::min(minimum_distance, distance);
               maximum_distance = std::max(maximum_distance, distance);
             }
@@ -159,7 +163,8 @@ inline ClosestPair GetClosestClustersParallel(
           const double cluster_distance
               = (strategy == ClusterStrategy::COMPLETE_LINK) ? maximum_distance
                                                              : minimum_distance;
-          const int32_t thread_num = openmp_helpers::GetContextOmpThreadNum();
+          const size_t thread_num =
+              static_cast<size_t>(openmp_helpers::GetContextOmpThreadNum());
           const double current_closest_distance
               = per_thread_closest_clusters.at(thread_num).Distance();
           if (cluster_distance < current_closest_distance)
@@ -219,8 +224,9 @@ inline ClosestPair GetClosestClustersSerial(
           {
             for (const int64_t& cluster2_index : second_cluster)
             {
-              const double distance
-                  = distance_matrix(cluster1_index, cluster2_index);
+              const double distance = distance_matrix(
+                  static_cast<ssize_t>(cluster1_index),
+                  static_cast<ssize_t>(cluster2_index));
               minimum_distance = std::min(minimum_distance, distance);
               maximum_distance = std::max(maximum_distance, distance);
             }
@@ -273,7 +279,7 @@ inline ClosestPair GetClosestValueToOtherParallel(
     const ClusterStrategy strategy)
 {
   std::vector<ClosestPair> per_thread_closest_value_other(
-      openmp_helpers::GetNumOmpThreads(), ClosestPair());
+      static_cast<size_t>(openmp_helpers::GetNumOmpThreads()), ClosestPair());
 #if defined(_OPENMP)
 #pragma omp parallel for
 #endif
@@ -282,7 +288,8 @@ inline ClosestPair GetClosestValueToOtherParallel(
     // Make sure we're not already clustered
     if (datapoint_mask.at(value_idx) == 0x00)
     {
-      const int32_t thread_num = openmp_helpers::GetContextOmpThreadNum();
+      const size_t thread_num =
+          static_cast<size_t>(openmp_helpers::GetContextOmpThreadNum());
       // Check against other values
       for (size_t other_value_idx = value_idx + 1;
            other_value_idx < datapoint_mask.size(); other_value_idx++)
@@ -290,7 +297,9 @@ inline ClosestPair GetClosestValueToOtherParallel(
         // Make sure it's not already clustered
         if (datapoint_mask.at(other_value_idx) == 0x00)
         {
-          const double distance = distance_matrix(value_idx, other_value_idx);
+          const double distance = distance_matrix(
+              static_cast<ssize_t>(value_idx),
+              static_cast<ssize_t>(other_value_idx));
           const double current_closest_distance
               = per_thread_closest_value_other.at(thread_num).Distance();
           if (distance < current_closest_distance)
@@ -314,8 +323,9 @@ inline ClosestPair GetClosestValueToOtherParallel(
           double maximum_distance = 0.0;
           for (const int64_t& cluster_element_idx : cluster)
           {
-            const double distance
-                = distance_matrix(value_idx, cluster_element_idx);
+            const double distance = distance_matrix(
+                static_cast<ssize_t>(value_idx),
+                static_cast<ssize_t>(cluster_element_idx));
             minimum_distance = std::min(minimum_distance, distance);
             maximum_distance = std::max(maximum_distance, distance);
           }
@@ -370,7 +380,9 @@ inline ClosestPair GetClosestValueToOtherSerial(
         // Make sure it's not already clustered
         if (datapoint_mask.at(other_value_idx) == 0x00)
         {
-          const double distance = distance_matrix(value_idx, other_value_idx);
+          const double distance = distance_matrix(
+              static_cast<ssize_t>(value_idx),
+              static_cast<ssize_t>(other_value_idx));
           if (distance < closest_value_other.Distance())
           {
             closest_value_other = ClosestPair(Item(value_idx, false),
@@ -391,8 +403,9 @@ inline ClosestPair GetClosestValueToOtherSerial(
           double maximum_distance = 0.0;
           for (const int64_t& cluster_element_idx : cluster)
           {
-            const double distance
-                = distance_matrix(value_idx, cluster_element_idx);
+            const double distance = distance_matrix(
+                static_cast<ssize_t>(value_idx),
+                static_cast<ssize_t>(cluster_element_idx));
             minimum_distance = std::min(minimum_distance, distance);
             maximum_distance = std::max(maximum_distance, distance);
           }
@@ -518,7 +531,8 @@ inline IndexClusteringResult IndexClusterWithDistanceMatrix(
   {
     throw std::invalid_argument("distance_matrix is empty");
   }
-  std::vector<uint8_t> datapoint_mask(distance_matrix.rows(), 0u);
+  std::vector<uint8_t> datapoint_mask(
+      static_cast<size_t>(distance_matrix.rows()), 0u);
   std::vector<std::vector<int64_t>> cluster_indices;
   double closest_distance = 0.0;
   bool complete = false;

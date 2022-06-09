@@ -50,9 +50,8 @@ public:
       const serialization::Deserializer<StateType>& value_deserializer)
   {
     SimpleRRTPlannerState<StateType> temp_state;
-    const uint64_t bytes_read
-        = temp_state.DeserializeSelf(buffer, starting_offset,
-                                     value_deserializer);
+    const uint64_t bytes_read = temp_state.DeserializeSelf(
+        buffer, starting_offset, value_deserializer);
     return serialization::MakeDeserialized(temp_state, bytes_read);
   }
 
@@ -184,7 +183,7 @@ template<typename StateType>
 class SimpleRRTPlannerTree
 {
 private:
-   SimpleRRTPlannerStateVector<StateType> nodes_;
+  SimpleRRTPlannerStateVector<StateType> nodes_;
 
 public:
   using NodeType = SimpleRRTPlannerState<StateType>;
@@ -232,7 +231,6 @@ public:
     return serialization::MakeDeserialized(
         tree, deserialized_nodes.BytesRead());
   }
-
 
   SimpleRRTPlannerTree() {}
 
@@ -340,7 +338,8 @@ public:
       {
         if (parent_index != static_cast<int64_t>(current_index))
         {
-          const auto& parent_state = nodes.at(parent_index);
+          const auto& parent_state =
+              nodes.at(static_cast<size_t>(parent_index));
           // Make sure the parent state is initialized.
           if (!parent_state.IsInitialized())
           {
@@ -387,7 +386,8 @@ public:
         {
           if (current_child_index > static_cast<int64_t>(current_index))
           {
-            const auto& child_state = nodes.at(current_child_index);
+            const auto& child_state =
+                nodes.at(static_cast<size_t>(current_child_index));
             if (!child_state.IsInitialized())
             {
               std::cerr << "Tree contains uninitialized node(s) "

@@ -75,7 +75,8 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsParallel(
   if (items.size() > K)
   {
     std::vector<std::vector<IndexAndDistance>> per_thread_nearests(
-        openmp_helpers::GetNumOmpThreads(), std::vector<IndexAndDistance>(K));
+        static_cast<size_t>(openmp_helpers::GetNumOmpThreads()),
+        std::vector<IndexAndDistance>(K));
 #if defined(_OPENMP)
 #pragma omp parallel for
 #endif
@@ -83,7 +84,8 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsParallel(
     {
       const Item& item = items[idx];
       const double distance = distance_fn(item, current);
-      const auto thread_num = openmp_helpers::GetContextOmpThreadNum();
+      const size_t thread_num =
+          static_cast<size_t>(openmp_helpers::GetContextOmpThreadNum());
       std::vector<IndexAndDistance>& current_thread_nearests =
           per_thread_nearests.at(thread_num);
       auto itr = std::max_element(current_thread_nearests.begin(),

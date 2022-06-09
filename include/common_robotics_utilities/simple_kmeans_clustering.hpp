@@ -33,7 +33,11 @@ inline std::vector<int32_t> PerformSingleClusteringIteration(
     const bool use_parallel)
 {
   std::vector<int32_t> new_cluster_labels(data.size());
-  const auto loop_body = [&] (const size_t idx)
+
+#if defined(_OPENMP)
+#pragma omp parallel for if (use_parallel)
+#endif
+  for (size_t idx = 0; idx < data.size(); idx++)
   {
     const DataType& datapoint = data.at(idx);
     const int64_t closest_cluster_index
@@ -41,23 +45,7 @@ inline std::vector<int32_t> PerformSingleClusteringIteration(
             current_cluster_centers, datapoint, distance_fn, 1).at(0).Index();
     new_cluster_labels.at(idx) = static_cast<int32_t>(closest_cluster_index);
   };
-  if (use_parallel)
-  {
-#if defined(_OPENMP)
-#pragma omp parallel for
-#endif
-    for (size_t idx = 0; idx < data.size(); idx++)
-    {
-      loop_body(idx);
-    }
-  }
-  else
-  {
-    for (size_t idx = 0; idx < data.size(); idx++)
-    {
-      loop_body(idx);
-    }
-  }
+
   return new_cluster_labels;
 }
 
@@ -82,18 +70,25 @@ inline Container ComputeClusterCentersWeighted(
     // TODO: improve this to avoid copies. It's possible right now, but it would
     // result in the average functions being more complicated and slower.
     // Separate the datapoints into their clusters
-    std::vector<Container> clustered_data(num_clusters);
-    std::vector<std::vector<double>> clustered_data_weights(num_clusters);
+    std::vector<Container> clustered_data(static_cast<size_t>(num_clusters));
+    std::vector<std::vector<double>> clustered_data_weights(
+        static_cast<size_t>(num_clusters));
     for (size_t idx = 0; idx < data.size(); idx++)
     {
       const DataType& datapoint = data[idx];
       const int32_t label = cluster_labels.at(idx);
-      clustered_data.at(label).push_back(datapoint);
-      clustered_data_weights.at(label).push_back(data_weights.at(idx));
+      clustered_data.at(static_cast<size_t>(label)).push_back(datapoint);
+      clustered_data_weights.at(
+          static_cast<size_t>(label)).push_back(data_weights.at(idx));
     }
+
     // Compute the center of each cluster
-    Container cluster_centers(num_clusters);
-    const auto loop_body = [&] (const size_t cluster)
+    Container cluster_centers(static_cast<size_t>(num_clusters));
+
+#if defined(_OPENMP)
+#pragma omp parallel for if (use_parallel)
+#endif
+    for (size_t cluster = 0; cluster < clustered_data.size(); cluster++)
     {
       const Container& cluster_data = clustered_data.at(cluster);
       const std::vector<double>& cluster_data_weights
@@ -101,23 +96,7 @@ inline Container ComputeClusterCentersWeighted(
       cluster_centers.at(cluster)
           = weighted_average_fn(cluster_data, cluster_data_weights);
     };
-    if (use_parallel)
-    {
-#if defined(_OPENMP)
-#pragma omp parallel for
-#endif
-      for (size_t cluster = 0; cluster < clustered_data.size(); cluster++)
-      {
-        loop_body(cluster);
-      }
-    }
-    else
-    {
-      for (size_t cluster = 0; cluster < clustered_data.size(); cluster++)
-      {
-        loop_body(cluster);
-      }
-    }
+
     return cluster_centers;
   }
   else
@@ -128,8 +107,9 @@ inline Container ComputeClusterCentersWeighted(
 
 /// Checks for convergence - i.e. if @param old_labels and @param new_labels are
 /// the same. @returns if the labels are the same.
-inline bool CheckForConvergence(const std::vector<int32_t>& old_labels,
-                         const std::vector<int32_t>& new_labels)
+inline bool CheckForConvergence(
+    const std::vector<int32_t>& old_labels,
+    const std::vector<int32_t>& new_labels)
 {
   if (old_labels.size() == new_labels.size())
   {
@@ -203,7 +183,8 @@ inline std::vector<int32_t> ClusterWeighted(
     }
   }
   // Prepare an RNG for cluster initialization
-  std::mt19937_64 prng(prng_seed);
+  std::mt19937_64 prng(
+      static_cast<typename std::mt19937_64::result_type>(prng_seed));
   std::uniform_int_distribution<size_t> initialization_distribution(
       0, data.size() - 1);
   // Initialize cluster centers
@@ -257,7 +238,7 @@ inline std::vector<int32_t> ClusterWeighted(
       const size_t random_index = initialization_distribution(prng);
       index_map[random_index] = 1u;
     }
-    cluster_centers.reserve(num_clusters);
+    cluster_centers.reserve(static_cast<size_t>(num_clusters));
     for (auto itr = index_map.begin(); itr != index_map.end(); ++itr)
     {
       if (itr->second == 1u)

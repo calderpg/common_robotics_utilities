@@ -23,6 +23,17 @@ public:
 
   DefaultConstructibleWrapper(const int32_t value) : value_(value) {}
 
+  DefaultConstructibleWrapper(
+      const DefaultConstructibleWrapper& other) = default;
+
+  DefaultConstructibleWrapper(DefaultConstructibleWrapper&& other) = default;
+
+  DefaultConstructibleWrapper& operator=(
+      const DefaultConstructibleWrapper& other) = default;
+
+  DefaultConstructibleWrapper& operator=(
+      DefaultConstructibleWrapper&& other) = default;
+
   int32_t& Value() { return value_; }
 
   const int32_t& Value() const { return value_; }
@@ -33,7 +44,7 @@ GTEST_TEST(OwningMaybeTest, DefaultConstructMoveAndAssign)
   // Test basic construction.
   const OwningMaybe<DefaultConstructibleWrapper> maybe_not;
   OwningMaybe<DefaultConstructibleWrapper> maybe_default(
-      std::move(DefaultConstructibleWrapper()));
+      DefaultConstructibleWrapper{});
   const OwningMaybe<DefaultConstructibleWrapper> maybe_1(
       DefaultConstructibleWrapper(1));
 
@@ -52,8 +63,8 @@ GTEST_TEST(OwningMaybeTest, DefaultConstructMoveAndAssign)
   // Test copy and move constructors.
   const OwningMaybe<DefaultConstructibleWrapper> copy_maybe_1(maybe_1);
   const OwningMaybe<DefaultConstructibleWrapper> copy_temp_maybe(
-      std::move(OwningMaybe<DefaultConstructibleWrapper>(
-          DefaultConstructibleWrapper(2))));
+      OwningMaybe<DefaultConstructibleWrapper>(
+          DefaultConstructibleWrapper(2)));
 
   EXPECT_TRUE(copy_maybe_1);
   EXPECT_TRUE(copy_temp_maybe);
@@ -89,6 +100,18 @@ public:
 
   NonDefaultConstructibleWrapper(const int32_t value) : value_(value) {}
 
+  NonDefaultConstructibleWrapper(
+      const NonDefaultConstructibleWrapper& other) = default;
+
+  NonDefaultConstructibleWrapper(
+      NonDefaultConstructibleWrapper&& other) = default;
+
+  NonDefaultConstructibleWrapper& operator=(
+      const NonDefaultConstructibleWrapper& other) = default;
+
+  NonDefaultConstructibleWrapper& operator=(
+      NonDefaultConstructibleWrapper&& other) = default;
+
   int32_t& Value() { return value_; }
 
   const int32_t& Value() const { return value_; }
@@ -108,8 +131,8 @@ GTEST_TEST(OwningMaybeTest, NoDefaultConstructMoveAndAssign)
   // Test copy and move constructors.
   OwningMaybe<NonDefaultConstructibleWrapper> copy_maybe_1(maybe_1);
   OwningMaybe<NonDefaultConstructibleWrapper> copy_temp_maybe(
-      std::move(OwningMaybe<NonDefaultConstructibleWrapper>(
-          NonDefaultConstructibleWrapper(2))));
+      OwningMaybe<NonDefaultConstructibleWrapper>(
+          NonDefaultConstructibleWrapper(2)));
 
   EXPECT_TRUE(copy_maybe_1);
   EXPECT_TRUE(copy_temp_maybe);
@@ -149,8 +172,8 @@ GTEST_TEST(OwningMaybeTest, ConstNoDefaultConstructMoveAndAssign)
   // Test copy and move constructors.
   const OwningMaybe<const NonDefaultConstructibleWrapper> copy_maybe_1(maybe_1);
   const OwningMaybe<const NonDefaultConstructibleWrapper> copy_temp_maybe(
-      std::move(OwningMaybe<const NonDefaultConstructibleWrapper>(
-          NonDefaultConstructibleWrapper(2))));
+      OwningMaybe<const NonDefaultConstructibleWrapper>(
+          NonDefaultConstructibleWrapper(2)));
 
   EXPECT_TRUE(copy_maybe_1);
   EXPECT_TRUE(copy_temp_maybe);
@@ -181,7 +204,7 @@ GTEST_TEST(OwningMaybeTest, NonTrivialConstructMoveAndAssign)
   // Test basic construction.
   OwningMaybe<std::vector<int32_t>> maybe_not;
   OwningMaybe<std::vector<int32_t>> maybe_default(
-      std::move(std::vector<int32_t>()));
+      std::vector<int32_t>{});
   OwningMaybe<std::vector<int32_t>> maybe_1(
       std::vector<int32_t>(1, 1));
 
@@ -201,8 +224,8 @@ GTEST_TEST(OwningMaybeTest, NonTrivialConstructMoveAndAssign)
   // Test copy and move constructors.
   OwningMaybe<std::vector<int32_t>> copy_maybe_1(maybe_1);
   OwningMaybe<std::vector<int32_t>> copy_temp_maybe(
-      std::move(OwningMaybe<std::vector<int32_t>>(
-          std::vector<int32_t>(2, 2))));
+      OwningMaybe<std::vector<int32_t>>(
+          std::vector<int32_t>(2, 2)));
 
   EXPECT_TRUE(copy_maybe_1);
   EXPECT_TRUE(copy_temp_maybe);
@@ -279,8 +302,7 @@ GTEST_TEST(ReferencingMaybeTest, ConstructMoveAndAssign)
 
   // Test copy and move constructors.
   ReferencingMaybe<int32_t> copy_maybe(maybe_1);
-  ReferencingMaybe<int32_t> copy_temp_maybe(
-      std::move(ReferencingMaybe<int32_t>(value_2)));
+  ReferencingMaybe<int32_t> copy_temp_maybe(ReferencingMaybe<int32_t>{value_2});
 
   EXPECT_EQ(copy_maybe.Value(), value_1);
   EXPECT_EQ(copy_temp_maybe.Value(), value_2);

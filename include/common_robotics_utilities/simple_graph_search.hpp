@@ -99,7 +99,10 @@ public:
     return bytes_read;
   }
 
-  size_t Size() const { return previous_index_map_.size(); }
+  int64_t Size() const
+  {
+    return static_cast<int64_t>(previous_index_map_.size());
+  }
 
   int64_t GetPreviousIndex(const int64_t node_index) const
   {

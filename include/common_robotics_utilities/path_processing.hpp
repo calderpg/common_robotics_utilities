@@ -146,37 +146,39 @@ inline Container AttemptShortcut(
       Container shortcut;
       if (first_half_shortcut.size() > 0 && second_half_shortcut.size() > 0)
       {
-        shortcut.insert(shortcut.end(),
-                        first_half_shortcut.begin(),
-                        first_half_shortcut.end());
+        shortcut.insert(
+            shortcut.end(), first_half_shortcut.begin(),
+            first_half_shortcut.end());
         // Skip the first configuration, since this is a duplicate of the last
         // configuration in the first half shortcut
-        shortcut.insert(shortcut.end(),
-                        second_half_shortcut.begin() + 1,
-                        second_half_shortcut.end());
+        shortcut.insert(
+            shortcut.end(), second_half_shortcut.begin() + 1,
+            second_half_shortcut.end());
       }
       else if (first_half_shortcut.size() > 0)
       {
-        shortcut.insert(shortcut.end(),
-                        first_half_shortcut.begin(),
-                        first_half_shortcut.end());
+        shortcut.insert(
+            shortcut.end(), first_half_shortcut.begin(),
+            first_half_shortcut.end());
         // Skip the middle configuration, since this is a duplicate of the
         // last configuration in the first half shortcut, but include the end
         // index
-        shortcut.insert(shortcut.end(),
-                        current_path.begin() + middle_index + 1,
-                        current_path.begin() + end_index + 1);
+        shortcut.insert(
+            shortcut.end(),
+            current_path.begin() + static_cast<ptrdiff_t>(middle_index) + 1,
+            current_path.begin() + static_cast<ptrdiff_t>(end_index) + 1);
       }
       else if (second_half_shortcut.size() > 0)
       {
         // Skip the middle configuration, since this is a duplicate of the
         // first configuration in the second half shortcut
-        shortcut.insert(shortcut.end(),
-                        current_path.begin() + start_index,
-                        current_path.begin() + middle_index);
-        shortcut.insert(shortcut.end(),
-                        second_half_shortcut.begin(),
-                        second_half_shortcut.end());
+        shortcut.insert(
+            shortcut.end(),
+            current_path.begin() + static_cast<ptrdiff_t>(start_index),
+            current_path.begin() + static_cast<ptrdiff_t>(middle_index));
+        shortcut.insert(
+            shortcut.end(), second_half_shortcut.begin(),
+            second_half_shortcut.end());
       }
       return shortcut;
     }
@@ -251,20 +253,20 @@ inline Container ShortcutSmoothPath(
       if (start_index > 0)
       {
         // Copy the path before the shortcut (excluding start_index)
-        shortened_path.insert(shortened_path.end(),
-                              current_path.begin(),
-                              current_path.begin() + start_index);
+        shortened_path.insert(
+            shortened_path.end(), current_path.begin(),
+            current_path.begin() + static_cast<ptrdiff_t>(start_index));
       }
       // Copy the shortcut
-      shortened_path.insert(shortened_path.end(),
-                            shortcut.begin(),
-                            shortcut.end());
+      shortened_path.insert(
+          shortened_path.end(), shortcut.begin(), shortcut.end());
       if (end_index < current_path.size() - 1)
       {
         // Copy the path after the shortcut (excluding end_index)
-        shortened_path.insert(shortened_path.end(),
-                              current_path.begin() + end_index + 1,
-                              current_path.end());
+        shortened_path.insert(
+            shortened_path.end(),
+            current_path.begin() + static_cast<ptrdiff_t>(end_index) + 1,
+            current_path.end());
       }
       // Swap in as the new current path
       current_path = shortened_path;

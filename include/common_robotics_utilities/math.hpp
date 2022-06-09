@@ -467,127 +467,56 @@ GetArbitraryOrthogonalVectorToPlane(
 }
 
 template<typename DataType, typename Container=std::vector<DataType>>
-Eigen::MatrixXd BuildPairwiseDistanceMatrixParallel(
-    const Container& data,
-    const std::function<double(const DataType&, const DataType&)>& distance_fn)
-{
-  Eigen::MatrixXd distance_matrix(data.size(), data.size());
-#if defined(_OPENMP)
-#pragma omp parallel for
-#endif
-  for (size_t idx = 0; idx < data.size(); idx++)
-  {
-    for (size_t jdx = idx; jdx < data.size(); jdx++)
-    {
-      if (idx != jdx)
-      {
-        const double distance = distance_fn(data[idx], data[jdx]);
-        distance_matrix(static_cast<ssize_t>(idx), static_cast<ssize_t>(jdx))
-            = distance;
-        distance_matrix(static_cast<ssize_t>(jdx), static_cast<ssize_t>(idx))
-            = distance;
-      }
-      else
-      {
-        distance_matrix(static_cast<ssize_t>(idx), static_cast<ssize_t>(jdx))
-            = 0.0;
-        distance_matrix(static_cast<ssize_t>(jdx), static_cast<ssize_t>(idx))
-            = 0.0;
-      }
-    }
-  }
-  return distance_matrix;
-}
-
-template<typename DataType, typename Container=std::vector<DataType>>
-Eigen::MatrixXd BuildPairwiseDistanceMatrixSerial(
-    const Container& data,
-    const std::function<double(const DataType&, const DataType&)>& distance_fn)
-{
-  Eigen::MatrixXd distance_matrix(data.size(), data.size());
-  for (size_t idx = 0; idx < data.size(); idx++)
-  {
-    for (size_t jdx = idx; jdx < data.size(); jdx++)
-    {
-      if (idx != jdx)
-      {
-        const double distance = distance_fn(data[idx], data[jdx]);
-        distance_matrix(static_cast<ssize_t>(idx), static_cast<ssize_t>(jdx))
-            = distance;
-        distance_matrix(static_cast<ssize_t>(jdx), static_cast<ssize_t>(idx))
-            = distance;
-      }
-      else
-      {
-        distance_matrix(static_cast<ssize_t>(idx), static_cast<ssize_t>(jdx))
-            = 0.0;
-        distance_matrix(static_cast<ssize_t>(jdx), static_cast<ssize_t>(idx))
-            = 0.0;
-      }
-    }
-  }
-  return distance_matrix;
-}
-
-template<typename DataType, typename Container=std::vector<DataType>>
 Eigen::MatrixXd BuildPairwiseDistanceMatrix(
     const Container& data,
     const std::function<double(const DataType&, const DataType&)>& distance_fn,
     const bool use_parallel = false)
 {
-  if (use_parallel)
-  {
-    return BuildPairwiseDistanceMatrixParallel(data, distance_fn);
-  }
-  else
-  {
-    return BuildPairwiseDistanceMatrixSerial(data, distance_fn);
-  }
-}
+  Eigen::MatrixXd distance_matrix(data.size(), data.size());
 
-template<typename FirstDataType, typename SecondDataType,
-         typename FirstContainer=std::vector<FirstDataType>,
-         typename SecondContainer=std::vector<SecondDataType>>
-Eigen::MatrixXd BuildPairwiseDistanceMatrixParallel(
-    const FirstContainer& data1, const SecondContainer& data2,
-    const std::function<double(const FirstDataType&,
-                               const SecondDataType&)>& distance_fn)
-{
-  Eigen::MatrixXd distance_matrix(data1.size(), data2.size());
 #if defined(_OPENMP)
-#pragma omp parallel for
+#pragma omp parallel for if (use_parallel)
 #endif
-  for (size_t idx = 0; idx < data1.size(); idx++)
+  for (size_t idx = 0; idx < data.size(); idx++)
   {
-    for (size_t jdx = 0; jdx < data2.size(); jdx++)
+    for (size_t jdx = idx; jdx < data.size(); jdx++)
     {
-      const double distance = distance_fn(data1[idx], data2[jdx]);
-      distance_matrix(static_cast<ssize_t>(idx), static_cast<ssize_t>(jdx))
-          = distance;
+      if (idx != jdx)
+      {
+        const double distance = distance_fn(data[idx], data[jdx]);
+        distance_matrix(static_cast<ssize_t>(idx), static_cast<ssize_t>(jdx))
+            = distance;
+        distance_matrix(static_cast<ssize_t>(jdx), static_cast<ssize_t>(idx))
+            = distance;
+      }
+      else
+      {
+        distance_matrix(static_cast<ssize_t>(idx), static_cast<ssize_t>(jdx))
+            = 0.0;
+        distance_matrix(static_cast<ssize_t>(jdx), static_cast<ssize_t>(idx))
+            = 0.0;
+      }
     }
   }
   return distance_matrix;
 }
 
-template<typename FirstDataType, typename SecondDataType,
-         typename FirstContainer=std::vector<FirstDataType>,
-         typename SecondContainer=std::vector<SecondDataType>>
-Eigen::MatrixXd BuildPairwiseDistanceMatrixSerial(
-    const FirstContainer& data1, const SecondContainer& data2,
-    const std::function<double(const FirstDataType&,
-                               const SecondDataType&)>& distance_fn)
+template<typename DataType, typename Container=std::vector<DataType>>
+Eigen::MatrixXd BuildPairwiseDistanceMatrixParallel(
+    const Container& data,
+    const std::function<double(const DataType&, const DataType&)>& distance_fn)
 {
-  Eigen::MatrixXd distance_matrix(data1.size(), data2.size());
-  for (size_t idx = 0; idx < data1.size(); idx++)
-  {
-    for (size_t jdx = 0; jdx < data2.size(); jdx++)
-    {
-      const double distance = distance_fn(data1[idx], data2[jdx]);
-      distance_matrix(static_cast<ssize_t>(idx), static_cast<ssize_t>(jdx))
-          = distance;
-    }
-  }
-  return distance_matrix;
+  return BuildPairwiseDistanceMatrix<DataType, Container>(
+      data, distance_fn, true);
+}
+
+template<typename DataType, typename Container=std::vector<DataType>>
+Eigen::MatrixXd BuildPairwiseDistanceMatrixSerial(
+    const Container& data,
+    const std::function<double(const DataType&, const DataType&)>& distance_fn)
+{
+  return BuildPairwiseDistanceMatrix<DataType, Container>(
+      data, distance_fn, false);
 }
 
 template<typename FirstDataType, typename SecondDataType,
@@ -599,14 +528,47 @@ Eigen::MatrixXd BuildPairwiseDistanceMatrix(
                                const SecondDataType&)>& distance_fn,
     const bool use_parallel = false)
 {
-  if (use_parallel)
+  Eigen::MatrixXd distance_matrix(data1.size(), data2.size());
+
+#if defined(_OPENMP)
+#pragma omp parallel for if (use_parallel)
+#endif
+  for (size_t idx = 0; idx < data1.size(); idx++)
   {
-    return BuildPairwiseDistanceMatrixParallel(data1, data2, distance_fn);
+    for (size_t jdx = 0; jdx < data2.size(); jdx++)
+    {
+      const double distance = distance_fn(data1[idx], data2[jdx]);
+      distance_matrix(static_cast<ssize_t>(idx), static_cast<ssize_t>(jdx))
+          = distance;
+    }
   }
-  else
-  {
-    return BuildPairwiseDistanceMatrixSerial(data1, data2, distance_fn);
-  }
+  return distance_matrix;
+}
+
+template<typename FirstDataType, typename SecondDataType,
+         typename FirstContainer=std::vector<FirstDataType>,
+         typename SecondContainer=std::vector<SecondDataType>>
+Eigen::MatrixXd BuildPairwiseDistanceMatrixParallel(
+    const FirstContainer& data1, const SecondContainer& data2,
+    const std::function<double(const FirstDataType&,
+                               const SecondDataType&)>& distance_fn)
+{
+  return BuildPairwiseDistanceMatrixParallel
+      <FirstDataType, SecondDataType, FirstContainer, SecondContainer>(
+          data1, data2, distance_fn, true);
+}
+
+template<typename FirstDataType, typename SecondDataType,
+         typename FirstContainer=std::vector<FirstDataType>,
+         typename SecondContainer=std::vector<SecondDataType>>
+Eigen::MatrixXd BuildPairwiseDistanceMatrixSerial(
+    const FirstContainer& data1, const SecondContainer& data2,
+    const std::function<double(const FirstDataType&,
+                               const SecondDataType&)>& distance_fn)
+{
+  return BuildPairwiseDistanceMatrixParallel
+      <FirstDataType, SecondDataType, FirstContainer, SecondContainer>(
+          data1, data2, distance_fn, false);
 }
 
 class Hyperplane

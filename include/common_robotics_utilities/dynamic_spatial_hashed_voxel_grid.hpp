@@ -215,7 +215,7 @@ private:
     {
       // Note: do not refactor to use .at(), since not all vector-like
       // implementations implement it (ex thrust::host_vector<T>).
-      return data_[data_index];
+      return data_[static_cast<typename BackingStore::size_type>(data_index)];
     }
     else
     {
@@ -229,7 +229,7 @@ private:
     {
       // Note: do not refactor to use .at(), since not all vector-like
       // implementations implement it (ex thrust::host_vector<T>).
-      return data_[data_index];
+      return data_[static_cast<typename BackingStore::size_type>(data_index)];
     }
     else
     {
@@ -240,7 +240,8 @@ private:
   void SetCellFilledContents(const T& value)
   {
     data_.clear();
-    data_.resize(sizes_.TotalCells(), value);
+    data_.resize(static_cast<typename BackingStore::size_type>(
+        sizes_.TotalCells()), value);
     fill_status_ = DSHVGFillStatus::CELL_FILLED;
   }
 

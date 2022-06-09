@@ -302,7 +302,8 @@ TaskStateAStarResult<State> PlanTaskStateSequence(
          index < static_cast<int64_t>(primitive_collection.Primitives().size());
          index++)
     {
-      const auto& primitive = primitive_collection.Primitives().at(index);
+      const auto& primitive =
+          primitive_collection.Primitives().at(static_cast<size_t>(index));
       if (primitive->IsCandidate(current_state))
       {
         const auto outcomes = primitive->GetOutcomes(current_state);
@@ -416,13 +417,11 @@ NextPrimitiveToExecute<State, Container> GetNextPrimitiveToExecute(
     const State& outcome_state = task_sequence.Path().at(0).Outcome();
 
     int64_t best_outcome_index = -1;
-    for (int64_t index = 0;
-         index < static_cast<int64_t>(potential_outcome_states.size());
-         index++)
+    for (size_t index = 0; index < potential_outcome_states.size(); index++)
     {
       if (state_equaler(outcome_state, potential_outcome_states.at(index)))
       {
-        best_outcome_index = index;
+        best_outcome_index = static_cast<int64_t>(index);
         break;
       }
     }
@@ -435,7 +434,7 @@ NextPrimitiveToExecute<State, Container> GetNextPrimitiveToExecute(
     {
       const auto& next_state_and_index = task_sequence.Path().at(1);
       const auto& next_primitive = primitive_collection.Primitives().at(
-          next_state_and_index.PrimitiveIndex());
+          static_cast<size_t>(next_state_and_index.PrimitiveIndex()));
 
       return NextPrimitiveToExecute<State, Container>(
           next_primitive, best_outcome_index);
@@ -490,8 +489,8 @@ Container PerformSingleTaskExecution(
             state_heuristic_fn, state_hasher, state_equaler);
 
     // Get the outcome state and add it to the execution trace.
-    const State& selected_outcome =
-        current_outcomes.at(next_to_execute.SelectedOutcomeIndex());
+    const State& selected_outcome = current_outcomes.at(
+        static_cast<size_t>(next_to_execute.SelectedOutcomeIndex()));
     task_state_trace.push_back(selected_outcome);
 
     // Call the user-provided callback.

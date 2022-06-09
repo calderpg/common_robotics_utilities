@@ -347,11 +347,11 @@ public:
     std::sort(vector_nodes_to_prune.begin(), vector_nodes_to_prune.end());
     // Make the pruned graph, initialized with the number of nodes we expect it
     // to contain.
-    GraphType pruned_graph(graph.Size() - nodes_to_prune.size());
+    GraphType pruned_graph(
+        graph.Size() - static_cast<int64_t>(nodes_to_prune.size()));
+
     // First, serial pass through to copy nodes to be kept
-    for (int64_t node_index = 0;
-         node_index < static_cast<int64_t>(graph.Size());
-         node_index++)
+    for (int64_t node_index = 0; node_index < graph.Size(); node_index++)
     {
       if (nodes_to_prune.count(node_index) == 0)
       {
@@ -360,8 +360,13 @@ public:
       }
     }
     pruned_graph.ShrinkToFit();
-    // Loop body for second pass to update edges for the kept nodes
-    const auto update_edge_fn = [&] (const int64_t kept_node_index)
+
+    // Second, optionally parallel pass to update edges for the kept nodes
+#if defined(_OPENMP)
+#pragma omp parallel for if (use_parallel)
+#endif
+    for (int64_t kept_node_index = 0; kept_node_index < pruned_graph.Size();
+         kept_node_index++)
     {
       GraphNodeType& kept_graph_node
           = pruned_graph.GetNodeMutable(kept_node_index);
@@ -449,28 +454,7 @@ public:
       kept_graph_node.SetInEdges(new_in_edges);
       kept_graph_node.SetOutEdges(new_out_edges);
     };
-    // Second, optionally parallel pass to update edges for the kept nodes
-    if (use_parallel)
-    {
-#if defined(_OPENMP)
-#pragma omp parallel for
-#endif
-      for (int64_t kept_node_index = 0;
-          kept_node_index < static_cast<int64_t>(pruned_graph.Size());
-          kept_node_index++)
-      {
-        update_edge_fn(kept_node_index);
-      }
-    }
-    else
-    {
-      for (int64_t kept_node_index = 0;
-          kept_node_index < static_cast<int64_t>(pruned_graph.Size());
-          kept_node_index++)
-      {
-        update_edge_fn(kept_node_index);
-      }
-    }
+
     return pruned_graph;
   }
 
@@ -486,7 +470,10 @@ public:
     }
   }
 
-  Graph(const size_t expected_size) { nodes_.reserve(expected_size); }
+  Graph(const int64_t expected_size)
+  {
+    nodes_.reserve(static_cast<size_t>(expected_size));
+  }
 
   Graph() {}
 
@@ -562,11 +549,11 @@ public:
     nodes_.shrink_to_fit();
   }
 
-  size_t Size() const { return nodes_.size(); }
+  int64_t Size() const { return static_cast<int64_t>(nodes_.size()); }
 
   bool IndexInRange(const int64_t index) const
   {
-    if ((index >= 0) && (index < static_cast<int64_t>(nodes_.size())))
+    if ((index >= 0) && (index < Size()))
     {
       return true;
     }

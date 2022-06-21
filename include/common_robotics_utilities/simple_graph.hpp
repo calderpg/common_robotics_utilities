@@ -6,6 +6,8 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <stdexcept>
+#include <unordered_map>
 #include <unordered_set>
 #include <vector>
 
@@ -305,6 +307,107 @@ public:
 template<typename NodeValueType>
 using GraphNodeAllocator = Eigen::aligned_allocator<GraphNode<NodeValueType>>;
 
+template<typename GraphType>
+bool CheckGraphLinkage(const GraphType& graph)
+{
+  // Go through every node and make sure the edges are valid
+  for (int64_t idx = 0; idx < graph.Size(); idx++)
+  {
+    const auto& current_node = graph.GetNodeImmutable(idx);
+    // Check the in edges first
+    const std::vector<GraphEdge>& in_edges
+        = current_node.GetInEdgesImmutable();
+    for (const GraphEdge& current_edge : in_edges)
+    {
+      // Check from index to make sure it's in bounds
+      const int64_t from_index = current_edge.GetFromIndex();
+      if (from_index < 0 || from_index >= graph.Size())
+      {
+        std::cerr << "from_index out of bounds" << std::endl;
+        return false;
+      }
+      // Check to index to make sure it matches our own index
+      const int64_t to_index = current_edge.GetToIndex();
+      if (to_index != idx)
+      {
+        std::cerr << "to_index does not point to current node" << std::endl;
+        return false;
+      }
+      // Check edge validity (edges to ourself are not allowed)
+      if (from_index == to_index)
+      {
+        std::cerr << "from_index == to_index not allowed" << std::endl;
+        return false;
+      }
+      // Check to make sure that the from index node is linked to us
+      const auto& from_node = graph.GetNodeImmutable(from_index);
+      const std::vector<GraphEdge>& from_node_out_edges
+          = from_node.GetOutEdgesImmutable();
+      bool from_node_connection_valid = false;
+      // Make sure at least one out edge of the from index node corresponds
+      // to the current node
+      for (const GraphEdge& current_from_node_out_edge : from_node_out_edges)
+      {
+        if (current_from_node_out_edge.GetToIndex() == idx)
+        {
+          from_node_connection_valid = true;
+        }
+      }
+      if (from_node_connection_valid == false)
+      {
+        std::cerr << "from_index connection is invalid" << std::endl;
+        return false;
+      }
+    }
+    // Check the out edges second
+    const std::vector<GraphEdge>& out_edges
+        = current_node.GetOutEdgesImmutable();
+    for (const GraphEdge& current_edge : out_edges)
+    {
+      // Check from index to make sure it matches our own index
+      const int64_t from_index = current_edge.GetFromIndex();
+      if (from_index != idx)
+      {
+        std::cerr << "from_index does not point to current node" << std::endl;
+        return false;
+      }
+      // Check to index to make sure it's in bounds
+      const int64_t to_index = current_edge.GetToIndex();
+      if (to_index < 0 || to_index >= graph.Size())
+      {
+        std::cerr << "To index out of bounds" << std::endl;
+        return false;
+      }
+      // Check edge validity (edges to ourself are not allowed)
+      if (from_index == to_index)
+      {
+        std::cerr << "From index == to index not allowed" << std::endl;
+        return false;
+      }
+      // Check to make sure that the to index node is linked to us
+      const auto& to_node = graph.GetNodeImmutable(to_index);
+      const std::vector<GraphEdge>& to_node_in_edges
+          = to_node.GetInEdgesImmutable();
+      bool to_node_connection_valid = false;
+      // Make sure at least one in edge of the to index node corresponds to
+      // the current node
+      for (const GraphEdge& current_to_node_in_edge : to_node_in_edges)
+      {
+        if (current_to_node_in_edge.GetFromIndex() == idx)
+        {
+          to_node_connection_valid = true;
+        }
+      }
+      if (to_node_connection_valid == false)
+      {
+        std::cerr << "To index connection is invalid" << std::endl;
+        return false;
+      }
+    }
+  }
+  return true;
+}
+
 template<typename NodeValueType>
 class Graph
 {
@@ -460,9 +563,12 @@ public:
 
   Graph(const GraphNodeVector& nodes)
   {
-    if (CheckGraphLinkage(nodes))
+    GraphType temp_graph;
+    temp_graph.nodes_ = nodes;
+
+    if (temp_graph.CheckGraphLinkage())
     {
-      nodes_ = nodes;
+      nodes_ = std::move(temp_graph.nodes_);
     }
     else
     {
@@ -511,9 +617,13 @@ public:
     const auto deserialized_nodes
         = serialization::DeserializeVectorLike<GraphNodeType, GraphNodeVector>(
             buffer, starting_offset, graph_node_deserializer);
-    if (CheckGraphLinkage(deserialized_nodes.Value()))
+
+    GraphType temp_graph;
+    temp_graph.nodes_ = deserialized_nodes.Value();
+
+    if (temp_graph.CheckGraphLinkage())
     {
-      nodes_ = deserialized_nodes.Value();
+      nodes_ = std::move(temp_graph.nodes_);
     }
     else
     {
@@ -565,117 +675,7 @@ public:
 
   bool CheckGraphLinkage() const
   {
-    return CheckGraphLinkage(GetNodesImmutable());
-  }
-
-  static bool CheckGraphLinkage(const Graph<NodeValueType>& graph)
-  {
-    return CheckGraphLinkage(graph.GetNodesImmutable());
-  }
-
-  static bool CheckGraphLinkage(
-      const GraphNodeVector& nodes)
-  {
-    // Go through every node and make sure the edges are valid
-    for (size_t idx = 0; idx < nodes.size(); idx++)
-    {
-      const GraphNodeType& current_node = nodes.at(idx);
-      // Check the in edges first
-      const std::vector<GraphEdge>& in_edges
-          = current_node.GetInEdgesImmutable();
-      for (const GraphEdge& current_edge : in_edges)
-      {
-        // Check from index to make sure it's in bounds
-        const int64_t from_index = current_edge.GetFromIndex();
-        if (from_index < 0 || from_index >= static_cast<int64_t>(nodes.size()))
-        {
-          std::cerr << "From index out of bounds" << std::endl;
-          return false;
-        }
-        // Check to index to make sure it matches our own index
-        const int64_t to_index = current_edge.GetToIndex();
-        if (to_index != static_cast<int64_t>(idx))
-        {
-          std::cerr << "To index does not point to current node" << std::endl;
-          return false;
-        }
-        // Check edge validity (edges to ourself are not allowed)
-        if (from_index == to_index)
-        {
-          std::cerr << "From index == to index not allowed" << std::endl;
-          return false;
-        }
-        // Check to make sure that the from index node is linked to us
-        const GraphNodeType& from_node
-            = nodes.at(static_cast<size_t>(from_index));
-        const std::vector<GraphEdge>& from_node_out_edges
-            = from_node.GetOutEdgesImmutable();
-        bool from_node_connection_valid = false;
-        // Make sure at least one out edge of the from index node corresponds
-        // to the current node
-        for (const GraphEdge& current_from_node_out_edge : from_node_out_edges)
-        {
-          if (current_from_node_out_edge.GetToIndex()
-              == static_cast<int64_t>(idx))
-          {
-            from_node_connection_valid = true;
-          }
-        }
-        if (from_node_connection_valid == false)
-        {
-          std::cerr << "From index connection is invalid" << std::endl;
-          return false;
-        }
-      }
-      // Check the out edges second
-      const std::vector<GraphEdge>& out_edges
-          = current_node.GetOutEdgesImmutable();
-      for (const GraphEdge& current_edge : out_edges)
-      {
-        // Check from index to make sure it matches our own index
-        const int64_t from_index = current_edge.GetFromIndex();
-        if (from_index != static_cast<int64_t>(idx))
-        {
-          std::cerr << "From index does not point to current node" << std::endl;
-          return false;
-        }
-        // Check to index to make sure it's in bounds
-        const int64_t to_index = current_edge.GetToIndex();
-        if (to_index < 0 || to_index >= static_cast<int64_t>(nodes.size()))
-        {
-          std::cerr << "To index out of bounds" << std::endl;
-          return false;
-        }
-        // Check edge validity (edges to ourself are not allowed)
-        if (from_index == to_index)
-        {
-          std::cerr << "From index == to index not allowed" << std::endl;
-          return false;
-        }
-        // Check to make sure that the to index node is linked to us
-        const GraphNodeType& to_node
-            = nodes.at(static_cast<size_t>(to_index));
-        const std::vector<GraphEdge>& to_node_in_edges
-            = to_node.GetInEdgesImmutable();
-        bool to_node_connection_valid = false;
-        // Make sure at least one in edge of the to index node corresponds to
-        // the current node
-        for (const GraphEdge& current_to_node_in_edge : to_node_in_edges)
-        {
-          if (current_to_node_in_edge.GetFromIndex()
-              == static_cast<int64_t>(idx))
-          {
-            to_node_connection_valid = true;
-          }
-        }
-        if (to_node_connection_valid == false)
-        {
-          std::cerr << "To index connection is invalid" << std::endl;
-          return false;
-        }
-      }
-    }
-    return true;
+    return simple_graph::CheckGraphLinkage(*this);
   }
 
   const GraphNodeVector& GetNodesImmutable() const { return nodes_; }
@@ -741,6 +741,166 @@ public:
   }
 };
 
+template<typename NodeValueType, typename GraphType>
+class NonOwningGraphOverlay
+{
+private:
+  using GraphNodeType = GraphNode<NodeValueType>;
+
+  const GraphType& base_graph_;
+  std::unordered_map<int64_t, GraphNodeType> overlay_;
+  int64_t size_ = 0;
+
+public:
+  NonOwningGraphOverlay(const GraphType& graph)
+      : base_graph_(graph), size_(graph.Size()) {}
+
+  int64_t Size() const { return size_; }
+
+  bool IndexInRange(const int64_t index) const
+  {
+    if ((index >= 0) && (index < Size()))
+    {
+      return true;
+    }
+    else
+    {
+      return false;
+    }
+  }
+
+  bool CheckGraphLinkage() const
+  {
+    return simple_graph::CheckGraphLinkage(*this);
+  }
+
+  const GraphNodeType& GetNodeImmutable(const int64_t index) const
+  {
+    const auto overlay_node = overlay_.find(index);
+    if (overlay_node != overlay_.end())
+    {
+      return overlay_node->second;
+    }
+    else
+    {
+      return base_graph_.GetNodeImmutable(index);
+    }
+  }
+
+  GraphNodeType& GetNodeMutable(const int64_t index)
+  {
+    auto overlay_node = overlay_.find(index);
+    if (overlay_node != overlay_.end())
+    {
+      return overlay_node->second;
+    }
+    else
+    {
+      // The node must be migrated to the overlay first.
+      const GraphNodeType& base_node = base_graph_.GetNodeImmutable(index);
+      auto result = overlay_.emplace(index, base_node);
+      return result.first->second;
+    }
+  }
+
+  int64_t AddNode(const GraphNodeType& new_node)
+  {
+    const int64_t new_node_index = Size();
+    overlay_.emplace(new_node_index, new_node);
+    size_++;
+    return new_node_index;
+  }
+
+  int64_t AddNode(const NodeValueType& new_value)
+  {
+    const int64_t new_node_index = Size();
+    overlay_.emplace(new_node_index, GraphNodeType(new_value));
+    size_++;
+    return new_node_index;
+  }
+
+  void AddEdgeBetweenNodes(const int64_t from_index, const int64_t to_index,
+                           const double edge_weight)
+  {
+    // Perform checks first, since GetNodeMutable migrates nodes to the overlay.
+    if (from_index == to_index)
+    {
+      throw std::invalid_argument(
+          "Invalid circular edge from == to not allowed");
+    }
+    if (!IndexInRange(from_index) || !IndexInRange(to_index))
+    {
+      throw std::invalid_argument("from_index or to_index is out of range");
+    }
+
+    // We retrieve the nodes, which migrates them to the overlay first.
+    GraphNodeType& from_node = GetNodeMutable(from_index);
+    GraphNodeType& to_node = GetNodeMutable(to_index);
+
+    // Add the new edge.
+    const GraphEdge new_edge(from_index, to_index, edge_weight);
+    from_node.AddOutEdge(new_edge);
+    to_node.AddInEdge(new_edge);
+  }
+
+  void AddEdgesBetweenNodes(const int64_t first_index,
+                            const int64_t second_index,
+                            const double edge_weight)
+  {
+    // Perform checks first, since GetNodeMutable migrates nodes to the overlay.
+    if (first_index == second_index)
+    {
+      throw std::invalid_argument(
+          "Invalid circular edge first == second not allowed");
+    }
+    if (!IndexInRange(first_index) || !IndexInRange(second_index))
+    {
+      throw std::invalid_argument(
+          "first_index or second_index is out of range");
+    }
+
+    // We retrieve the nodes, which migrates them to the overlay first.
+    GraphNodeType& first_node = GetNodeMutable(first_index);
+    GraphNodeType& second_node = GetNodeMutable(second_index);
+
+    // Add the new edges.
+    const GraphEdge first_edge(first_index, second_index, edge_weight);
+    first_node.AddOutEdge(first_edge);
+    second_node.AddInEdge(first_edge);
+    const GraphEdge second_edge(second_index, first_index, edge_weight);
+    second_node.AddOutEdge(second_edge);
+    first_node.AddInEdge(second_edge);
+  }
+
+  std::string Print() const
+  {
+    std::ostringstream strm;
+    strm << "Overlaid Graph - Nodes : ";
+    if (Size() > 0)
+    {
+      const auto get_node_string = [&](const int64_t index) -> std::string
+      {
+        const auto overlay_node = overlay_.find(index);
+        if (overlay_node != overlay_.end())
+        {
+          return "(overlay) " + overlay_node->second.Print();
+        }
+        else
+        {
+          return "(base) " + base_graph_.GetNodeImmutable(index).Print();
+        }
+      };
+
+      strm << get_node_string(0);
+      for (int64_t idx = 1; idx < Size(); idx++)
+      {
+        strm << "\n" << get_node_string(idx);
+      }
+    }
+    return strm.str();
+  }
+};
+
 inline std::ostream& operator<< (std::ostream& stream, const GraphEdge& edge)
 {
   stream << edge.Print();
@@ -760,6 +920,15 @@ inline std::ostream& operator<< (
     std::ostream& stream, const Graph<NodeValueType>& graph)
 {
   stream << graph.Print();
+  return stream;
+}
+
+template<typename NodeValueType, typename GraphType>
+inline std::ostream& operator<< (
+    std::ostream& stream,
+    const NonOwningGraphOverlay<NodeValueType, GraphType>& overlaid_graph)
+{
+  stream << overlaid_graph.Print();
   return stream;
 }
 }  // namespace simple_graph

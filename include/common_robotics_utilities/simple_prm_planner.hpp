@@ -79,10 +79,27 @@ inline int64_t AddNodeToRoadmap(
     };
   }
 
-  // Call KNN with the distance function
+  // Call KNN with the distance function. Wrap the graph type API so that it
+  // canbe consumed by the KNN implementation.
+  class RoadmapKNNWrapper
+  {
+  private:
+    const GraphType& roadmap_;
+
+  public:
+    RoadmapKNNWrapper(const GraphType& roadmap) : roadmap_(roadmap) {}
+
+    size_t size() const { return static_cast<size_t>(roadmap_.Size()); }
+
+    const simple_graph::GraphNode<T>& operator[](const size_t index) const
+    {
+      return roadmap_.GetNodeImmutable(static_cast<int64_t>(index));
+    }
+  };
+
   const auto nearest_neighbors =
       simple_knearest_neighbors::GetKNearestNeighbors(
-          roadmap.GetNodesImmutable(), state, graph_distance_fn, K,
+          RoadmapKNNWrapper(roadmap), state, graph_distance_fn, K,
           use_parallel);
 
   // Check if we already have this state in the roadmap
@@ -533,13 +550,26 @@ LazyQueryPath(
     const bool use_parallel = true,
     const bool distance_is_symmetric = true,
     const bool add_duplicate_states = false,
-    const bool limit_astar_pqueue_duplicates = true)
+    const bool limit_astar_pqueue_duplicates = true,
+    const bool use_roadmap_overlay = true)
 {
-  auto working_copy = roadmap;
-  return LazyQueryPathAndAddNodes<T, Container, GraphType>(
-      starts, goals, working_copy, distance_fn, edge_validity_check_fn, K,
-      use_parallel, distance_is_symmetric, add_duplicate_states,
-      limit_astar_pqueue_duplicates);
+  if (use_roadmap_overlay)
+  {
+    using OverlaidType = simple_graph::NonOwningGraphOverlay<T, GraphType>;
+    OverlaidType overlaid_roadmap(roadmap);
+    return LazyQueryPathAndAddNodes<T, Container, OverlaidType>(
+        starts, goals, overlaid_roadmap, distance_fn, edge_validity_check_fn, K,
+        use_parallel, distance_is_symmetric, add_duplicate_states,
+        limit_astar_pqueue_duplicates);
+  }
+  else
+  {
+    auto working_copy = roadmap;
+    return LazyQueryPathAndAddNodes<T, Container, GraphType>(
+       starts, goals, working_copy, distance_fn, edge_validity_check_fn, K,
+       use_parallel, distance_is_symmetric, add_duplicate_states,
+       limit_astar_pqueue_duplicates);
+  }
 }
 
 /// Find the best path from one of a set of starting states to one of a set of
@@ -577,13 +607,26 @@ QueryPath(
     const bool use_parallel = true,
     const bool distance_is_symmetric = true,
     const bool add_duplicate_states = false,
-    const bool limit_astar_pqueue_duplicates = true)
+    const bool limit_astar_pqueue_duplicates = true,
+    const bool use_roadmap_overlay = true)
 {
-  auto working_copy = roadmap;
-  return QueryPathAndAddNodes<T, Container, GraphType>(
-      starts, goals, working_copy, distance_fn, edge_validity_check_fn, K,
-      use_parallel, distance_is_symmetric, add_duplicate_states,
-      limit_astar_pqueue_duplicates);
+  if (use_roadmap_overlay)
+  {
+    using OverlaidType = simple_graph::NonOwningGraphOverlay<T, GraphType>;
+    OverlaidType overlaid_roadmap(roadmap);
+    return QueryPathAndAddNodes<T, Container, OverlaidType>(
+        starts, goals, overlaid_roadmap, distance_fn, edge_validity_check_fn, K,
+        use_parallel, distance_is_symmetric, add_duplicate_states,
+        limit_astar_pqueue_duplicates);
+  }
+  else
+  {
+    auto working_copy = roadmap;
+    return QueryPathAndAddNodes<T, Container, GraphType>(
+        starts, goals, working_copy, distance_fn, edge_validity_check_fn, K,
+        use_parallel, distance_is_symmetric, add_duplicate_states,
+        limit_astar_pqueue_duplicates);
+  }
 }
 }  // namespace simple_prm_planner
 }  // namespace common_robotics_utilities

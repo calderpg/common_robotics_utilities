@@ -151,13 +151,15 @@ inline DijkstrasResult PerformDijkstrasAlgorithm(
     throw std::invalid_argument("Start index out of range");
   }
   // Setup
-  std::vector<int64_t> previous_index_map(graph.Size(), -1);
+  std::vector<int64_t> previous_index_map(
+      static_cast<size_t>(graph.Size()), -1);
   std::vector<double> distances(
-      graph.Size(), std::numeric_limits<double>::infinity());
+      static_cast<size_t>(graph.Size()),
+      std::numeric_limits<double>::infinity());
   std::priority_queue<IndexAndDistance,
                       std::vector<IndexAndDistance>,
                       CompareIndexDistancePairFn> queue;
-  std::unordered_set<int64_t> explored(graph.Size());
+  std::unordered_set<int64_t> explored(static_cast<size_t>(graph.Size()));
   previous_index_map.at(static_cast<size_t>(start_index)) = start_index;
   distances.at(static_cast<size_t>(start_index)) = 0.0;
   queue.push(IndexAndDistance(start_index, 0.0));

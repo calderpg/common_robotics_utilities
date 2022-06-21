@@ -404,7 +404,7 @@ GTEST_TEST(PlanningTest, Test)
   };
 
   // Build a roadmap on the environment
-  const size_t K = 5;
+  const int64_t K = 5;
   const int64_t roadmap_size = 100;
   const std::function<bool(const int64_t)> roadmap_termination_fn
       = [] (const int64_t current_roadmap_size)
@@ -513,17 +513,19 @@ GTEST_TEST(PlanningTest, Test)
         // Plan with PRM
         std::cout << "PRM Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
-        const auto path = simple_prm_planner::QueryPath<Waypoint>(
-            {start}, {goal}, loaded_roadmap, WaypointDistance,
-            check_edge_validity_fn, K, false, true, false, true).Path();
+        const auto path =
+            simple_prm_planner::QueryPath<Waypoint, WaypointVector>(
+                {start}, {goal}, loaded_roadmap, WaypointDistance,
+                check_edge_validity_fn, K, false, true, false, true).Path();
         check_plan(test_env, {start}, {goal}, path);
 
         // Plan with Lazy-PRM
         std::cout << "Lazy-PRM Path (" << print::Print(start) << " to "
                   << print::Print(goal) << ")" << std::endl;
-        const auto lazy_path = simple_prm_planner::LazyQueryPath<Waypoint>(
-            {start}, {goal}, loaded_roadmap, WaypointDistance,
-            check_edge_validity_fn, K, false, true, false, true).Path();
+        const auto lazy_path =
+            simple_prm_planner::LazyQueryPath<Waypoint, WaypointVector>(
+                {start}, {goal}, loaded_roadmap, WaypointDistance,
+                check_edge_validity_fn, K, false, true, false, true).Path();
         check_plan(test_env, {start}, {goal}, lazy_path);
 
         // Plan with A*

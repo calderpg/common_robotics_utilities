@@ -6,6 +6,7 @@
 
 #include <cstdint>
 #include <functional>
+#include <stdexcept>
 #include <utility>
 #include <vector>
 
@@ -66,17 +67,35 @@ template<typename Item, typename Value, typename Container=std::vector<Item>>
 inline std::vector<IndexAndDistance> GetKNearestNeighborsParallel(
     const Container& items, const Value& current,
     const std::function<double(const Item&, const Value&)>& distance_fn,
-    const size_t K)
+    const int64_t K)
 {
-  if (K == 0)
+  if (K < 0)
+  {
+    throw std::invalid_argument("K must be >= 0");
+  }
+  else if (K == 0)
   {
     return std::vector<IndexAndDistance>();
   }
-  if (items.size() > K)
+  else if (items.size() <= static_cast<size_t>(K))
+  {
+    std::vector<IndexAndDistance> k_nearests(items.size());
+#if defined(_OPENMP)
+#pragma omp parallel for
+#endif
+    for (size_t idx = 0; idx < items.size(); idx++)
+    {
+      const Item& item = items[idx];
+      const double distance = distance_fn(item, current);
+      k_nearests.at(idx).SetIndexAndDistance(idx, distance);
+    }
+    return k_nearests;
+  }
+  else
   {
     std::vector<std::vector<IndexAndDistance>> per_thread_nearests(
         static_cast<size_t>(openmp_helpers::GetNumOmpThreads()),
-        std::vector<IndexAndDistance>(K));
+        std::vector<IndexAndDistance>(static_cast<size_t>(K)));
 #if defined(_OPENMP)
 #pragma omp parallel for
 #endif
@@ -96,8 +115,8 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsParallel(
         itr->SetIndexAndDistance(idx, distance);
       }
     }
-    std::vector<IndexAndDistance> k_nearests;
-    k_nearests.reserve(K);
+
+    std::vector<IndexAndDistance> k_nearests(static_cast<size_t>(K));
     for (const auto& thread_nearests : per_thread_nearests)
     {
       for (const auto& current_ith_nearest : thread_nearests)
@@ -105,36 +124,14 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsParallel(
         if (!std::isinf(current_ith_nearest.Distance())
             && current_ith_nearest.Index() != -1)
         {
-          if (k_nearests.size() < K)
+          auto itr = std::max_element(k_nearests.begin(), k_nearests.end(),
+                                      IndexAndDistanceCompare);
+          if (itr->Distance() > current_ith_nearest.Distance())
           {
-            k_nearests.push_back(current_ith_nearest);
-          }
-          else
-          {
-            auto itr = std::max_element(k_nearests.begin(), k_nearests.end(),
-                                        IndexAndDistanceCompare);
-            if (itr->Distance() > current_ith_nearest.Distance())
-            {
-              itr->SetFromOther(current_ith_nearest);
-            }
+            itr->SetFromOther(current_ith_nearest);
           }
         }
       }
-    }
-    k_nearests.shrink_to_fit();
-    return k_nearests;
-  }
-  else
-  {
-    std::vector<IndexAndDistance> k_nearests(items.size());
-#if defined(_OPENMP)
-#pragma omp parallel for
-#endif
-    for (size_t idx = 0; idx < items.size(); idx++)
-    {
-      const Item& item = items[idx];
-      const double distance = distance_fn(item, current);
-      k_nearests.at(idx).SetIndexAndDistance(idx, distance);
     }
     return k_nearests;
   }
@@ -147,15 +144,30 @@ template<typename Item, typename Value, typename Container=std::vector<Item>>
 inline std::vector<IndexAndDistance> GetKNearestNeighborsSerial(
     const Container& items, const Value& current,
     const std::function<double(const Item&, const Value&)>& distance_fn,
-    const size_t K)
+    const int64_t K)
 {
-  if (K == 0)
+  if (K < 0)
+  {
+    throw std::invalid_argument("K must be >= 0");
+  }
+  else if (K == 0)
   {
     return std::vector<IndexAndDistance>();
   }
-  if (items.size() > K)
+  else if (items.size() <= static_cast<size_t>(K))
   {
-    std::vector<IndexAndDistance> k_nearests(K);
+    std::vector<IndexAndDistance> k_nearests(items.size());
+    for (size_t idx = 0; idx < items.size(); idx++)
+    {
+      const Item& item = items[idx];
+      const double distance = distance_fn(item, current);
+      k_nearests.at(idx).SetIndexAndDistance(idx, distance);
+    }
+    return k_nearests;
+  }
+  else
+  {
+    std::vector<IndexAndDistance> k_nearests(static_cast<size_t>(K));
     for (size_t idx = 0; idx < items.size(); idx++)
     {
       const Item& item = items[idx];
@@ -169,17 +181,6 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsSerial(
     }
     return k_nearests;
   }
-  else
-  {
-    std::vector<IndexAndDistance> k_nearests(items.size());
-    for (size_t idx = 0; idx < items.size(); idx++)
-    {
-      const Item& item = items[idx];
-      const double distance = distance_fn(item, current);
-      k_nearests.at(idx).SetIndexAndDistance(idx, distance);
-    }
-    return k_nearests;
-  }
 }
 
 /// @return vector<pair<index, distance>> of the nearest @param K neighbors to
@@ -189,7 +190,7 @@ template<typename Item, typename Value, typename Container=std::vector<Item>>
 inline std::vector<IndexAndDistance> GetKNearestNeighbors(
     const Container& items, const Value& current,
     const std::function<double(const Item&, const Value&)>& distance_fn,
-    const size_t K, const bool use_parallel = false)
+    const int64_t K, const bool use_parallel = false)
 {
   if (use_parallel)
   {

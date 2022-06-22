@@ -60,11 +60,11 @@ inline int64_t AddNodeToRoadmap(
     const bool add_duplicate_states = false)
 {
   // Make the node->graph or graph->node distance function as needed
-  std::function<double(const simple_graph::GraphNode<T>&, const T&)>
+  std::function<double(const typename GraphType::NodeType&, const T&)>
       graph_distance_fn = nullptr;
   if (nn_distance_direction == NNDistanceDirection::ROADMAP_TO_NEW_STATE)
   {
-    graph_distance_fn = [&] (const simple_graph::GraphNode<T>& node,
+    graph_distance_fn = [&] (const typename GraphType::NodeType& node,
                              const T& query_state)
     {
       return distance_fn(node.GetValueImmutable(), query_state);
@@ -72,7 +72,7 @@ inline int64_t AddNodeToRoadmap(
   }
   else
   {
-    graph_distance_fn = [&] (const simple_graph::GraphNode<T>& node,
+    graph_distance_fn = [&] (const typename GraphType::NodeType& node,
                              const T& query_state)
     {
       return distance_fn(query_state, node.GetValueImmutable());
@@ -91,7 +91,7 @@ inline int64_t AddNodeToRoadmap(
 
     size_t size() const { return static_cast<size_t>(roadmap_.Size()); }
 
-    const simple_graph::GraphNode<T>& operator[](const size_t index) const
+    const typename GraphType::NodeType& operator[](const size_t index) const
     {
       return roadmap_.GetNodeImmutable(static_cast<int64_t>(index));
     }
@@ -303,17 +303,13 @@ inline void UpdateRoadMapEdges(
   for (int64_t current_node_index = 0; current_node_index < roadmap.Size();
        current_node_index++)
   {
-    simple_graph::GraphNode<T>& current_node
-        = roadmap.GetNodeMutable(current_node_index);
-    std::vector<simple_graph::GraphEdge>& current_node_out_edges
-        = current_node.GetOutEdgesMutable();
+    auto& current_node = roadmap.GetNodeMutable(current_node_index);
+    auto& current_node_out_edges = current_node.GetOutEdgesMutable();
     for (auto& current_out_edge : current_node_out_edges)
     {
       const int64_t other_node_idx = current_out_edge.GetToIndex();
-      simple_graph::GraphNode<T>& other_node
-          = roadmap.GetNodeMutable(other_node_idx);
-      std::vector<simple_graph::GraphEdge>& other_node_in_edges
-          = other_node.GetInEdgesMutable();
+      auto& other_node = roadmap.GetNodeMutable(other_node_idx);
+      auto& other_node_in_edges = other_node.GetInEdgesMutable();
       const double updated_weight
           = (edge_validity_check_fn(current_node.GetValueImmutable(),
                                     other_node.GetValueImmutable()))

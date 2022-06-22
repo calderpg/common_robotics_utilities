@@ -217,9 +217,8 @@ void DrawRoadmap(
   const auto& roadmap_nodes = roadmap.GetNodesImmutable();
   for (const auto& roadmap_node : roadmap_nodes)
   {
-    const std::vector<simple_graph::GraphEdge>& out_edges
-        = roadmap_node.GetOutEdgesImmutable();
-    for (const simple_graph::GraphEdge& edge : out_edges)
+    const auto& out_edges = roadmap_node.GetOutEdgesImmutable();
+    for (const auto& edge : out_edges)
     {
       const Waypoint& self
           = roadmap.GetNodeImmutable(edge.GetFromIndex()).GetValueImmutable();

@@ -177,10 +177,10 @@ inline DijkstrasResult PerformDijkstrasAlgorithm(
       // Note that we've been here
       explored.insert(top_node.Index());
       // Get our neighbors
-      const std::vector<simple_graph::GraphEdge>& neighbor_edges
+      const auto& neighbor_edges
           = graph.GetNodeImmutable(top_node.Index()).GetInEdgesImmutable();
       // Go through our neighbors
-      for (const simple_graph::GraphEdge& neighbor_edge : neighbor_edges)
+      for (const auto& neighbor_edge : neighbor_edges)
       {
         const int64_t neighbor_index = neighbor_edge.GetFromIndex();
         const double neighbor_edge_weight = neighbor_edge.GetWeight();
@@ -234,9 +234,9 @@ inline AstarIndexResult PerformLazyAstarSearch(
         const GraphType&, const int64_t)>& goal_check_fn,
     const std::function<bool(
         const GraphType&,
-        const simple_graph::GraphEdge&)>& edge_validity_check_fn,
+        const typename GraphType::EdgeType&)>& edge_validity_check_fn,
     const std::function<double(
-        const GraphType&, const simple_graph::GraphEdge&)>& distance_fn,
+        const GraphType&, const typename GraphType::EdgeType&)>& distance_fn,
     const std::function<double(
         const GraphType&, const int64_t)>& heuristic_fn,
     const bool limit_pqueue_duplicates)
@@ -343,7 +343,7 @@ inline AstarIndexResult PerformLazyAstarSearch(
       }
 
       // Explore and add the children
-      const std::vector<simple_graph::GraphEdge>& out_edges
+      const auto& out_edges
           = graph.GetNodeImmutable(top_node.State()).GetOutEdgesImmutable();
 
       for (const auto& current_out_edge : out_edges)
@@ -428,9 +428,10 @@ inline AstarIndexResult PerformLazyAstarSearch(
     const std::vector<int64_t>& goal_indices,
     const std::function<bool(
         const GraphType&,
-        const simple_graph::GraphEdge&)>& edge_validity_check_fn,
+        const typename GraphType::EdgeType&)>& edge_validity_check_fn,
     const std::function<double(
-        const GraphType&, const simple_graph::GraphEdge&)>& distance_fn,
+        const GraphType&,
+        const typename GraphType::EdgeType&)>& distance_fn,
     const std::function<double(
         const GraphType&, const int64_t, const int64_t)>& heuristic_fn,
     const bool limit_pqueue_duplicates)
@@ -512,7 +513,8 @@ inline AstarIndexResult PerformLazyAstarSearch(
 {
   // Wrap the helper functions
   const auto edge_validity_check_function
-      = [&] (const GraphType& search_graph, const simple_graph::GraphEdge& edge)
+      = [&] (const GraphType& search_graph,
+             const typename GraphType::EdgeType& edge)
   {
     return edge_validity_check_fn(
         search_graph.GetNodeImmutable(edge.GetFromIndex()).GetValueImmutable(),
@@ -520,7 +522,8 @@ inline AstarIndexResult PerformLazyAstarSearch(
   };
 
   const auto distance_function
-      = [&] (const GraphType& search_graph, const simple_graph::GraphEdge& edge)
+      = [&] (const GraphType& search_graph,
+             const typename GraphType::EdgeType& edge)
   {
     return distance_fn(
         search_graph.GetNodeImmutable(edge.GetFromIndex()).GetValueImmutable(),
@@ -551,7 +554,8 @@ inline AstarIndexResult PerformAstarSearch(
     const bool limit_pqueue_duplicates)
 {
   const auto edge_validity_check_function
-      = [&] (const GraphType& search_graph, const simple_graph::GraphEdge& edge)
+      = [&] (const GraphType& search_graph,
+             const typename GraphType::EdgeType& edge)
   {
     CRU_UNUSED(search_graph);
     if (edge.GetWeight() < std::numeric_limits<double>::infinity())
@@ -564,7 +568,8 @@ inline AstarIndexResult PerformAstarSearch(
     }
   };
   const auto distance_function
-      = [&] (const GraphType& search_graph, const simple_graph::GraphEdge& edge)
+      = [&] (const GraphType& search_graph,
+             const typename GraphType::EdgeType& edge)
   {
     CRU_UNUSED(search_graph);
     return edge.GetWeight();

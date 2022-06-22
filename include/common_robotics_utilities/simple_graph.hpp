@@ -6,6 +6,7 @@
 
 #include <algorithm>
 #include <cstdint>
+#include <memory>
 #include <stdexcept>
 #include <unordered_map>
 #include <unordered_set>
@@ -145,12 +146,15 @@ public:
 template<typename NodeValueType>
 class GraphNode
 {
+public:
+  using EdgeType = GraphEdge;
+
 private:
   using GraphNodeType = GraphNode<NodeValueType>;
 
   NodeValueType value_;
-  std::vector<GraphEdge> in_edges_;
-  std::vector<GraphEdge> out_edges_;
+  std::vector<EdgeType> in_edges_;
+  std::vector<EdgeType> out_edges_;
 
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -174,8 +178,8 @@ public:
   }
 
   GraphNode(const NodeValueType& value,
-            const std::vector<GraphEdge>& new_in_edges,
-            const std::vector<GraphEdge>& new_out_edges)
+            const std::vector<EdgeType>& new_in_edges,
+            const std::vector<EdgeType>& new_out_edges)
       : value_(value), in_edges_(new_in_edges), out_edges_(new_out_edges) {}
 
   explicit GraphNode(const NodeValueType& value) : value_(value) {}
@@ -190,11 +194,11 @@ public:
     // Serialize the value
     value_serializer(value_, buffer);
     // Serialize the in edges
-    serialization::SerializeVectorLike<GraphEdge>(
-        in_edges_, buffer, GraphEdge::Serialize);
+    serialization::SerializeVectorLike<EdgeType>(
+        in_edges_, buffer, EdgeType::Serialize);
     // Serialize the out edges
-    serialization::SerializeVectorLike<GraphEdge>(
-        out_edges_, buffer, GraphEdge::Serialize);
+    serialization::SerializeVectorLike<EdgeType>(
+        out_edges_, buffer, EdgeType::Serialize);
     // Figure out how many bytes were written
     const uint64_t end_buffer_size = buffer.size();
     const uint64_t bytes_written = end_buffer_size - start_buffer_size;
@@ -213,14 +217,14 @@ public:
     current_position += value_deserialized.BytesRead();
     // Deserialize the in edges
     const auto in_edges_deserialized
-        = serialization::DeserializeVectorLike<GraphEdge>(
-            buffer, current_position, GraphEdge::Deserialize);
+        = serialization::DeserializeVectorLike<EdgeType>(
+            buffer, current_position, EdgeType::Deserialize);
     in_edges_ = in_edges_deserialized.Value();
     current_position += in_edges_deserialized.BytesRead();
     // Deserialize the out edges
     const auto out_edges_deserialized
-        = serialization::DeserializeVectorLike<GraphEdge>(
-            buffer, current_position, GraphEdge::Deserialize);
+        = serialization::DeserializeVectorLike<EdgeType>(
+            buffer, current_position, EdgeType::Deserialize);
     out_edges_ = out_edges_deserialized.Value();
     current_position += out_edges_deserialized.BytesRead();
     // Figure out how many bytes were read
@@ -257,48 +261,39 @@ public:
 
   NodeValueType& GetValueMutable() { return value_; }
 
-  void AddInEdge(const GraphEdge& new_in_edge)
+  void AddInEdge(const EdgeType& new_in_edge)
   {
     in_edges_.push_back(new_in_edge);
   }
 
-  void AddOutEdge(const GraphEdge& new_out_edge)
+  void AddOutEdge(const EdgeType& new_out_edge)
   {
     out_edges_.push_back(new_out_edge);
   }
 
-  void AddEdgePair(const GraphEdge& new_in_edge, const GraphEdge& new_out_edge)
+  void AddEdgePair(const EdgeType& new_in_edge, const EdgeType& new_out_edge)
   {
     AddInEdge(new_in_edge);
     AddOutEdge(new_out_edge);
   }
 
-  const std::vector<GraphEdge>& GetInEdgesImmutable() const
-  {
-    return in_edges_;
-  }
+  const std::vector<EdgeType>& GetInEdgesImmutable() const { return in_edges_; }
 
-  std::vector<GraphEdge>& GetInEdgesMutable()
-  {
-    return in_edges_;
-  }
+  std::vector<EdgeType>& GetInEdgesMutable() { return in_edges_; }
 
-  const std::vector<GraphEdge>& GetOutEdgesImmutable() const
+  const std::vector<EdgeType>& GetOutEdgesImmutable() const
   {
     return out_edges_;
   }
 
-  std::vector<GraphEdge>& GetOutEdgesMutable()
-  {
-    return out_edges_;
-  }
+  std::vector<EdgeType>& GetOutEdgesMutable() { return out_edges_; }
 
-  void SetInEdges(const std::vector<GraphEdge>& new_in_edges)
+  void SetInEdges(const std::vector<EdgeType>& new_in_edges)
   {
     in_edges_ = new_in_edges;
   }
 
-  void SetOutEdges(const std::vector<GraphEdge>& new_out_edges)
+  void SetOutEdges(const std::vector<EdgeType>& new_out_edges)
   {
     out_edges_ = new_out_edges;
   }
@@ -315,9 +310,8 @@ bool CheckGraphLinkage(const GraphType& graph)
   {
     const auto& current_node = graph.GetNodeImmutable(idx);
     // Check the in edges first
-    const std::vector<GraphEdge>& in_edges
-        = current_node.GetInEdgesImmutable();
-    for (const GraphEdge& current_edge : in_edges)
+    const auto& in_edges = current_node.GetInEdgesImmutable();
+    for (const auto& current_edge : in_edges)
     {
       // Check from index to make sure it's in bounds
       const int64_t from_index = current_edge.GetFromIndex();
@@ -341,12 +335,11 @@ bool CheckGraphLinkage(const GraphType& graph)
       }
       // Check to make sure that the from index node is linked to us
       const auto& from_node = graph.GetNodeImmutable(from_index);
-      const std::vector<GraphEdge>& from_node_out_edges
-          = from_node.GetOutEdgesImmutable();
+      const auto& from_node_out_edges = from_node.GetOutEdgesImmutable();
       bool from_node_connection_valid = false;
       // Make sure at least one out edge of the from index node corresponds
       // to the current node
-      for (const GraphEdge& current_from_node_out_edge : from_node_out_edges)
+      for (const auto& current_from_node_out_edge : from_node_out_edges)
       {
         if (current_from_node_out_edge.GetToIndex() == idx)
         {
@@ -360,9 +353,8 @@ bool CheckGraphLinkage(const GraphType& graph)
       }
     }
     // Check the out edges second
-    const std::vector<GraphEdge>& out_edges
-        = current_node.GetOutEdgesImmutable();
-    for (const GraphEdge& current_edge : out_edges)
+    const auto& out_edges = current_node.GetOutEdgesImmutable();
+    for (const auto& current_edge : out_edges)
     {
       // Check from index to make sure it matches our own index
       const int64_t from_index = current_edge.GetFromIndex();
@@ -386,12 +378,11 @@ bool CheckGraphLinkage(const GraphType& graph)
       }
       // Check to make sure that the to index node is linked to us
       const auto& to_node = graph.GetNodeImmutable(to_index);
-      const std::vector<GraphEdge>& to_node_in_edges
-          = to_node.GetInEdgesImmutable();
+      const auto& to_node_in_edges = to_node.GetInEdgesImmutable();
       bool to_node_connection_valid = false;
       // Make sure at least one in edge of the to index node corresponds to
       // the current node
-      for (const GraphEdge& current_to_node_in_edge : to_node_in_edges)
+      for (const auto& current_to_node_in_edge : to_node_in_edges)
       {
         if (current_to_node_in_edge.GetFromIndex() == idx)
         {
@@ -411,13 +402,16 @@ bool CheckGraphLinkage(const GraphType& graph)
 template<typename NodeValueType>
 class Graph
 {
+public:
+  using NodeType = GraphNode<NodeValueType>;
+  using EdgeType = typename NodeType::EdgeType;
+
 private:
   using GraphType = Graph<NodeValueType>;
-  using GraphNodeType = GraphNode<NodeValueType>;
-  using GraphNodeAllocatorType = GraphNodeAllocator<NodeValueType>;
-  using GraphNodeVector = std::vector<GraphNodeType, GraphNodeAllocatorType>;
+  using NodeAllocatorType = GraphNodeAllocator<NodeValueType>;
+  using NodeVector = std::vector<NodeType, NodeAllocatorType>;
 
-  GraphNodeVector nodes_;
+  NodeVector nodes_;
 
 public:
   static uint64_t Serialize(
@@ -471,10 +465,9 @@ public:
     for (int64_t kept_node_index = 0; kept_node_index < pruned_graph.Size();
          kept_node_index++)
     {
-      GraphNodeType& kept_graph_node
-          = pruned_graph.GetNodeMutable(kept_node_index);
+      NodeType& kept_graph_node = pruned_graph.GetNodeMutable(kept_node_index);
       // Make space for the updated in edges
-      std::vector<GraphEdge> new_in_edges;
+      std::vector<EdgeType> new_in_edges;
       new_in_edges.reserve(kept_graph_node.GetInEdgesImmutable().size());
       // Go through the in edges
       for (const auto& in_edge : kept_graph_node.GetInEdgesImmutable())
@@ -484,7 +477,7 @@ public:
         if (nodes_to_prune.count(original_from_index) == 0)
         {
           // Make a copy of the existing edge
-          GraphEdge new_in_edge = in_edge;
+          EdgeType new_in_edge = in_edge;
           // Update the "to index" to our node's index
           new_in_edge.SetToIndex(kept_node_index);
           // Update the "from index" to account for pruned nodes
@@ -514,7 +507,7 @@ public:
       }
       new_in_edges.shrink_to_fit();
       // Make space for the updated out edges
-      std::vector<GraphEdge> new_out_edges;
+      std::vector<EdgeType> new_out_edges;
       new_out_edges.reserve(kept_graph_node.GetOutEdgesImmutable().size());
       // Go through the out edges
       for (const auto& out_edge : kept_graph_node.GetOutEdgesImmutable())
@@ -524,7 +517,7 @@ public:
         if (nodes_to_prune.count(original_to_index) == 0)
         {
           // Make a copy of the existing edge
-          GraphEdge new_out_edge = out_edge;
+          EdgeType new_out_edge = out_edge;
           // Update the "from index" to our node's index
           new_out_edge.SetFromIndex(kept_node_index);
           // Update the "from index" to account for pruned nodes
@@ -561,7 +554,7 @@ public:
     return pruned_graph;
   }
 
-  Graph(const GraphNodeVector& nodes)
+  Graph(const NodeVector& nodes)
   {
     GraphType temp_graph;
     temp_graph.nodes_ = nodes;
@@ -588,14 +581,12 @@ public:
       const serialization::Serializer<NodeValueType>& value_serializer) const
   {
     const uint64_t start_buffer_size = buffer.size();
-    const serialization::Serializer<GraphNodeType> graph_node_serializer =
-        [&] (const GraphNodeType& node,
-             std::vector<uint8_t>& serialize_buffer)
+    const serialization::Serializer<NodeType> graph_node_serializer =
+        [&] (const NodeType& node, std::vector<uint8_t>& serialize_buffer)
     {
-      return GraphNodeType::Serialize(
-          node, serialize_buffer, value_serializer);
+      return NodeType::Serialize(node, serialize_buffer, value_serializer);
     };
-    serialization::SerializeVectorLike<GraphNodeType, GraphNodeVector>(
+    serialization::SerializeVectorLike<NodeType, NodeVector>(
         nodes_, buffer, graph_node_serializer);
     // Figure out how many bytes were written
     const uint64_t end_buffer_size = buffer.size();
@@ -607,15 +598,15 @@ public:
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
       const serialization::Deserializer<NodeValueType>& value_deserializer)
   {
-    const serialization::Deserializer<GraphNodeType> graph_node_deserializer =
+    const serialization::Deserializer<NodeType> graph_node_deserializer =
         [&] (const std::vector<uint8_t>& deserialize_buffer,
              const uint64_t offset)
     {
-      return GraphNodeType::Deserialize(
+      return NodeType::Deserialize(
           deserialize_buffer, offset, value_deserializer);
     };
     const auto deserialized_nodes
-        = serialization::DeserializeVectorLike<GraphNodeType, GraphNodeVector>(
+        = serialization::DeserializeVectorLike<NodeType, NodeVector>(
             buffer, starting_offset, graph_node_deserializer);
 
     GraphType temp_graph;
@@ -678,21 +669,21 @@ public:
     return simple_graph::CheckGraphLinkage(*this);
   }
 
-  const GraphNodeVector& GetNodesImmutable() const { return nodes_; }
+  const NodeVector& GetNodesImmutable() const { return nodes_; }
 
-  GraphNodeVector& GetNodesMutable() { return nodes_; }
+  NodeVector& GetNodesMutable() { return nodes_; }
 
-  const GraphNodeType& GetNodeImmutable(const int64_t index) const
+  const NodeType& GetNodeImmutable(const int64_t index) const
   {
     return nodes_.at(static_cast<size_t>(index));
   }
 
-  GraphNodeType& GetNodeMutable(const int64_t index)
+  NodeType& GetNodeMutable(const int64_t index)
   {
     return nodes_.at(static_cast<size_t>(index));
   }
 
-  int64_t AddNode(const GraphNodeType& new_node)
+  int64_t AddNode(const NodeType& new_node)
   {
     nodes_.push_back(new_node);
     return static_cast<int64_t>(nodes_.size() - 1);
@@ -708,14 +699,14 @@ public:
                            const double edge_weight)
   {
     // We retrieve the nodes first, since retrieval performs bounds checks first
-    GraphNodeType& from_node = GetNodeMutable(from_index);
-    GraphNodeType& to_node = GetNodeMutable(to_index);
+    NodeType& from_node = GetNodeMutable(from_index);
+    NodeType& to_node = GetNodeMutable(to_index);
     if (from_index == to_index)
     {
       throw std::invalid_argument(
           "Invalid circular edge from == to not allowed");
     }
-    const GraphEdge new_edge(from_index, to_index, edge_weight);
+    const EdgeType new_edge(from_index, to_index, edge_weight);
     from_node.AddOutEdge(new_edge);
     to_node.AddInEdge(new_edge);
   }
@@ -725,17 +716,17 @@ public:
                             const double edge_weight)
   {
     // We retrieve the nodes first, since retrieval performs bounds checks first
-    GraphNodeType& first_node = GetNodeMutable(first_index);
-    GraphNodeType& second_node = GetNodeMutable(second_index);
+    NodeType& first_node = GetNodeMutable(first_index);
+    NodeType& second_node = GetNodeMutable(second_index);
     if (first_index == second_index)
     {
       throw std::invalid_argument(
           "Invalid circular edge first == second not allowed");
     }
-    const GraphEdge first_edge(first_index, second_index, edge_weight);
+    const EdgeType first_edge(first_index, second_index, edge_weight);
     first_node.AddOutEdge(first_edge);
     second_node.AddInEdge(first_edge);
-    const GraphEdge second_edge(second_index, first_index, edge_weight);
+    const EdgeType second_edge(second_index, first_index, edge_weight);
     second_node.AddOutEdge(second_edge);
     first_node.AddInEdge(second_edge);
   }
@@ -744,16 +735,40 @@ public:
 template<typename NodeValueType, typename GraphType>
 class NonOwningGraphOverlay
 {
-private:
-  using GraphNodeType = GraphNode<NodeValueType>;
+public:
+  using NodeType = GraphNode<NodeValueType>;
+  using EdgeType = typename NodeType::EdgeType;
 
-  const GraphType& base_graph_;
-  std::unordered_map<int64_t, GraphNodeType> overlay_;
+private:
+  using NodeOverlayType = std::unordered_map<
+      int64_t, NodeType, std::hash<int64_t>, std::equal_to<int64_t>,
+      Eigen::aligned_allocator<std::pair<const int64_t, NodeType>>>;
+
+  const GraphType* base_graph_ = nullptr;
+  NodeOverlayType overlay_;
   int64_t size_ = 0;
+
+protected:
+  const GraphType& GetBaseGraphImmutable() const { return *base_graph_; }
 
 public:
   NonOwningGraphOverlay(const GraphType& graph)
-      : base_graph_(graph), size_(graph.Size()) {}
+      : NonOwningGraphOverlay(std::addressof(graph)) {}
+
+  NonOwningGraphOverlay(const GraphType* const graph) : base_graph_(graph)
+  {
+    if (base_graph_ != nullptr)
+    {
+      size_ = GetBaseGraphImmutable().Size();
+    }
+    else
+    {
+      throw std::invalid_argument(
+          "Cannot construct NonOwningGraphOverlay with nullptr graph");
+    }
+  }
+
+  virtual ~NonOwningGraphOverlay() {}
 
   int64_t Size() const { return size_; }
 
@@ -774,7 +789,7 @@ public:
     return simple_graph::CheckGraphLinkage(*this);
   }
 
-  const GraphNodeType& GetNodeImmutable(const int64_t index) const
+  const NodeType& GetNodeImmutable(const int64_t index) const
   {
     const auto overlay_node = overlay_.find(index);
     if (overlay_node != overlay_.end())
@@ -783,11 +798,11 @@ public:
     }
     else
     {
-      return base_graph_.GetNodeImmutable(index);
+      return GetBaseGraphImmutable().GetNodeImmutable(index);
     }
   }
 
-  GraphNodeType& GetNodeMutable(const int64_t index)
+  NodeType& GetNodeMutable(const int64_t index)
   {
     auto overlay_node = overlay_.find(index);
     if (overlay_node != overlay_.end())
@@ -797,13 +812,14 @@ public:
     else
     {
       // The node must be migrated to the overlay first.
-      const GraphNodeType& base_node = base_graph_.GetNodeImmutable(index);
+      const NodeType& base_node =
+          GetBaseGraphImmutable().GetNodeImmutable(index);
       auto result = overlay_.emplace(index, base_node);
       return result.first->second;
     }
   }
 
-  int64_t AddNode(const GraphNodeType& new_node)
+  int64_t AddNode(const NodeType& new_node)
   {
     const int64_t new_node_index = Size();
     overlay_.emplace(new_node_index, new_node);
@@ -814,7 +830,7 @@ public:
   int64_t AddNode(const NodeValueType& new_value)
   {
     const int64_t new_node_index = Size();
-    overlay_.emplace(new_node_index, GraphNodeType(new_value));
+    overlay_.emplace(new_node_index, NodeType(new_value));
     size_++;
     return new_node_index;
   }
@@ -834,11 +850,11 @@ public:
     }
 
     // We retrieve the nodes, which migrates them to the overlay first.
-    GraphNodeType& from_node = GetNodeMutable(from_index);
-    GraphNodeType& to_node = GetNodeMutable(to_index);
+    NodeType& from_node = GetNodeMutable(from_index);
+    NodeType& to_node = GetNodeMutable(to_index);
 
     // Add the new edge.
-    const GraphEdge new_edge(from_index, to_index, edge_weight);
+    const EdgeType new_edge(from_index, to_index, edge_weight);
     from_node.AddOutEdge(new_edge);
     to_node.AddInEdge(new_edge);
   }
@@ -860,14 +876,14 @@ public:
     }
 
     // We retrieve the nodes, which migrates them to the overlay first.
-    GraphNodeType& first_node = GetNodeMutable(first_index);
-    GraphNodeType& second_node = GetNodeMutable(second_index);
+    NodeType& first_node = GetNodeMutable(first_index);
+    NodeType& second_node = GetNodeMutable(second_index);
 
     // Add the new edges.
-    const GraphEdge first_edge(first_index, second_index, edge_weight);
+    const EdgeType first_edge(first_index, second_index, edge_weight);
     first_node.AddOutEdge(first_edge);
     second_node.AddInEdge(first_edge);
-    const GraphEdge second_edge(second_index, first_index, edge_weight);
+    const EdgeType second_edge(second_index, first_index, edge_weight);
     second_node.AddOutEdge(second_edge);
     first_node.AddInEdge(second_edge);
   }
@@ -887,7 +903,8 @@ public:
         }
         else
         {
-          return "(base) " + base_graph_.GetNodeImmutable(index).Print();
+          return "(base) " +
+              GetBaseGraphImmutable().GetNodeImmutable(index).Print();
         }
       };
 
@@ -899,6 +916,18 @@ public:
     }
     return strm.str();
   }
+};
+
+template<typename NodeValueType, typename GraphType>
+class OwningGraphOverlay : NonOwningGraphOverlay<NodeValueType, GraphType>
+{
+private:
+  std::shared_ptr<const GraphType> owned_base_graph_;
+
+public:
+  OwningGraphOverlay(const std::shared_ptr<const GraphType>& owned_base_graph)
+      : NonOwningGraphOverlay<NodeValueType, GraphType>(owned_base_graph.get()),
+        owned_base_graph_(owned_base_graph) {}
 };
 
 inline std::ostream& operator<< (std::ostream& stream, const GraphEdge& edge)

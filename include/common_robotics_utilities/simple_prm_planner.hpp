@@ -4,7 +4,6 @@
 #include <omp.h>
 #endif
 
-#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <functional>

@@ -171,14 +171,16 @@ inline int64_t AddNodeToRoadmap(
     const int64_t nearest_neighbor_index = nearest_neighbor.Index();
     const std::pair<double, double>& nearest_neighbor_distances
         = nearest_neighbors_distances.at(idx);
-    if (nearest_neighbor_distances.first >= 0.0
-        && nearest_neighbor_distances.second >= 0.0)
+    // Add the edges individually to allow for different "distances" in each
+    // direction - for example, if the "distance" is a probability of the edge
+    // being traversable, the probability may not be symmetric.
+    if (nearest_neighbor_distances.first >= 0.0)
     {
-      // Add the edges individually to allow for different "distances" in each
-      // direction - for example, if the "distance" is a probability of the edge
-      // being traversable, the probability may not be symmetric.
       roadmap.AddEdgeBetweenNodes(nearest_neighbor_index, new_node_index,
                                   nearest_neighbor_distances.first);
+    }
+    if (nearest_neighbor_distances.second >= 0.0)
+    {
       roadmap.AddEdgeBetweenNodes(new_node_index, nearest_neighbor_index,
                                   nearest_neighbor_distances.second);
     }
@@ -285,9 +287,12 @@ inline std::map<std::string, double> GrowRoadMap(
 /// edge_validity_check_fn(a, b) == edge_validity_check_fn(b, a))? Asymmetric
 /// distance and edge validity functions are more expensive to work with and
 /// should be avoided when possible.
-/// NOTE: duplicate states may occur in the roadmap.
+/// @param add_duplicate_states should a new state be added to the roadmap if
+/// it is a duplicate of an existing state? A new state is considered a
+/// duplicate if one of the K neighboring states has distance zero from the
+/// state.
 template<typename T, typename GraphType>
-GraphType BuildRoadmap(
+GraphType BuildRoadMap(
     const int64_t roadmap_size,
     const std::function<T(void)>& sampling_fn,
     const std::function<double(const T&, const T&)>& distance_fn,
@@ -296,7 +301,8 @@ GraphType BuildRoadmap(
     const int64_t K,
     const int32_t max_valid_sample_tries,
     const bool use_parallel = true,
-    const bool connection_is_symmetric = true)
+    const bool connection_is_symmetric = true,
+    const bool add_duplicate_states = false)
 {
   if (roadmap_size < 0)
   {
@@ -311,30 +317,58 @@ GraphType BuildRoadmap(
     throw std::runtime_error("max_valid_sample_tries < 1");
   }
 
+  std::vector<OwningMaybe<T>, OwningMaybeAllocator<T>> roadmap_states(
+      static_cast<size_t>(roadmap_size));
+
+  const std::function<double(const OwningMaybe<T>&, const T&)>
+      roadmap_states_distance_fn = [&](
+          const OwningMaybe<T>& roadmap_state, const T& sample)
+  {
+    if (roadmap_state.HasValue())
+    {
+      return distance_fn(roadmap_state.Value(), sample);
+    }
+    else
+    {
+      return std::numeric_limits<double>::infinity();
+    }
+  };
+
   // Define a helper function to sample valid states, or record that sampling
   // failed. This method can't throw, as throwing inside an OpenMP loop is not
   // recoverable.
-  std::function<OwningMaybe<T>(void)> valid_sample_fn = [&](void)
+  const std::function<OwningMaybe<T>(void)> valid_sample_fn = [&](void)
   {
     int32_t tries = 0;
     while (tries < max_valid_sample_tries)
     {
       tries++;
       const T sample = sampling_fn();
-      if (state_validity_check_fn(sample))
+      const bool state_valid = state_validity_check_fn(sample);
+      if (state_valid && add_duplicate_states)
       {
         return OwningMaybe<T>(sample);
+      }
+      else if (state_valid)
+      {
+        const auto nearest_state =
+            simple_knearest_neighbors::GetKNearestNeighbors(
+                roadmap_states, sample, roadmap_states_distance_fn, 1,
+                use_parallel).at(0);
+        if (nearest_state.Distance() > 0.0)
+        {
+          return OwningMaybe<T>(sample);
+        }
       }
     }
     return OwningMaybe<T>();
   };
 
-  std::vector<OwningMaybe<T>, OwningMaybeAllocator<T>> roadmap_states(
-      static_cast<size_t>(roadmap_size));
-
-  // Sample roadmap_size valid configurations.
+  // Sample roadmap_size valid configurations. This can only be parallelized if
+  // add_duplicate_states is true, since the check for duplicate states would
+  // be a race condition otherwise.
 #if defined(_OPENMP)
-#pragma omp parallel for if (use_parallel)
+#pragma omp parallel for if (use_parallel && add_duplicate_states)
 #endif
   for (size_t index = 0; index < roadmap_states.size(); index++)
   {
@@ -374,9 +408,10 @@ GraphType BuildRoadmap(
     const T& state = node.GetValueImmutable();
 
     // Find K+1 nearest neighbors, since KNN will find the current node too.
-    const auto nearest_neighbors = GetKNearestNeighbors(
-        simple_graph::GraphKNNAdapter<GraphType>(roadmap), state,
-        roadmap_to_state_distance_fn, K + 1, false);
+    const auto nearest_neighbors =
+        simple_knearest_neighbors::GetKNearestNeighbors(
+            simple_graph::GraphKNNAdapter<GraphType>(roadmap), state,
+            roadmap_to_state_distance_fn, K + 1, false);
 
     for (const auto& neighbor : nearest_neighbors)
     {
@@ -387,32 +422,24 @@ GraphType BuildRoadmap(
         const T& other_state =
             roadmap.GetNodeImmutable(other_node_index).GetValueImmutable();
 
+        if (edge_validity_check_fn(other_state, state))
+        {
+          const double distance = neighbor.Distance();
+          node.AddInEdge(typename GraphType::EdgeType(
+              other_node_index, node_index, distance));
+        }
+
         if (connection_is_symmetric)
         {
-          if (edge_validity_check_fn(state, other_state))
-          {
-            const double distance = neighbor.Distance();
-            node.AddOutEdge(typename GraphType::EdgeType(
-                node_index, other_node_index, distance));
-            node.AddInEdge(typename GraphType::EdgeType(
-                other_node_index, node_index, distance));
-          }
+          const double distance = neighbor.Distance();
+          node.AddOutEdge(typename GraphType::EdgeType(
+              node_index, other_node_index, distance));
         }
-        else
+        else if (edge_validity_check_fn(state, other_state))
         {
-          if (edge_validity_check_fn(other_state, state))
-          {
-            const double distance = neighbor.Distance();
-            node.AddInEdge(typename GraphType::EdgeType(
-                other_node_index, node_index, distance));
-          }
-
-          if (edge_validity_check_fn(state, other_state))
-          {
-            const double distance = distance_fn(state, other_state);
-            node.AddOutEdge(typename GraphType::EdgeType(
-                node_index, other_node_index, distance));
-          }
+          const double distance = distance_fn(state, other_state);
+          node.AddOutEdge(typename GraphType::EdgeType(
+              node_index, other_node_index, distance));
         }
       }
     }

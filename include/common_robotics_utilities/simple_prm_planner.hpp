@@ -4,6 +4,7 @@
 #include <omp.h>
 #endif
 
+#include <atomic>
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -13,6 +14,7 @@
 #include <utility>
 #include <vector>
 
+#include <common_robotics_utilities/maybe.hpp>
 #include <common_robotics_utilities/simple_graph.hpp>
 #include <common_robotics_utilities/simple_graph_search.hpp>
 #include <common_robotics_utilities/simple_knearest_neighbors.hpp>
@@ -37,9 +39,11 @@ enum class NNDistanceDirection {ROADMAP_TO_NEW_STATE, NEW_STATE_TO_ROADMAP};
 /// @param K number of K neighboring states in the roadmap to attempt to connect
 /// the new state to.
 /// @param use_parallel use parallel operations when possible.
-/// @param distance_is_symmetric is the distance symmetric
-/// (i.e. distance_fn(a, b) == distance_fn(b, a))? Asymmetric distance functions
-/// are more expensive to work with and should be avoided when possible.
+/// @param connection_is_symmetric are distance and edge validity symmetric
+/// (i.e. distance_fn(a, b) == distance_fn(b, a) and
+/// edge_validity_check_fn(a, b) == edge_validity_check_fn(b, a))? Asymmetric
+/// distance and edge validity functions are more expensive to work with and
+/// should be avoided when possible.
 /// @param add_duplicate_states should @param state be added to the roadmap if
 /// it is a duplicate of an existing state? @param state is considered a
 /// duplicate if one of the K neighboring states has distance zero from @param
@@ -56,7 +60,7 @@ inline int64_t AddNodeToRoadmap(
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const int64_t K,
     const bool use_parallel = true,
-    const bool distance_is_symmetric = true,
+    const bool connection_is_symmetric = true,
     const bool add_duplicate_states = false)
 {
   // Make the node->graph or graph->node distance function as needed
@@ -79,28 +83,11 @@ inline int64_t AddNodeToRoadmap(
     };
   }
 
-  // Call KNN with the distance function. Wrap the graph type API so that it
-  // canbe consumed by the KNN implementation.
-  class RoadmapKNNWrapper
-  {
-  private:
-    const GraphType& roadmap_;
-
-  public:
-    RoadmapKNNWrapper(const GraphType& roadmap) : roadmap_(roadmap) {}
-
-    size_t size() const { return static_cast<size_t>(roadmap_.Size()); }
-
-    const typename GraphType::NodeType& operator[](const size_t index) const
-    {
-      return roadmap_.GetNodeImmutable(static_cast<int64_t>(index));
-    }
-  };
-
+  // Call KNN with the distance function.
   const auto nearest_neighbors =
       simple_knearest_neighbors::GetKNearestNeighbors(
-          RoadmapKNNWrapper(roadmap), state, graph_distance_fn, K,
-          use_parallel);
+          simple_graph::GraphKNNAdapter<GraphType>(roadmap), state,
+          graph_distance_fn, K, use_parallel);
 
   // Check if we already have this state in the roadmap
   // (and we don't want to add duplicates)
@@ -136,17 +123,17 @@ inline int64_t AddNodeToRoadmap(
         = roadmap.GetNodeImmutable(nearest_neighbor_index).GetValueImmutable();
     const bool graph_to_node_edge_validity
         = edge_validity_check_fn(nearest_neighbor_state, state);
-    if (graph_to_node_edge_validity && distance_is_symmetric)
+    if (graph_to_node_edge_validity && connection_is_symmetric)
     {
       // Distance is symmetric and the edge is valid
       nearest_neighbors_distances.at(idx)
           = std::make_pair(graph_to_node_distance,
                            graph_to_node_distance);
     }
-    else if (!distance_is_symmetric)
+    else if (!connection_is_symmetric)
     {
       const bool node_to_graph_edge_validity
-          = edge_validity_check_fn(nearest_neighbor_state, state);
+          = edge_validity_check_fn(state, nearest_neighbor_state);
       const double node_to_graph_distance
           = distance_fn(state,
                         roadmap.GetNodeImmutable(nearest_neighbor_index)
@@ -215,9 +202,11 @@ inline int64_t AddNodeToRoadmap(
 /// @param K number of K neighboring states in the roadmap to attempt to connect
 /// the new state to.
 /// @param use_parallel use parallel operations when possible.
-/// @param distance_is_symmetric is the distance symmetric
-/// (i.e. distance_fn(a, b) == distance_fn(b, a))? Asymmetric distance functions
-/// are more expensive to work with and should be avoided when possible.
+/// @param connection_is_symmetric are distance and edge validity symmetric
+/// (i.e. distance_fn(a, b) == distance_fn(b, a) and
+/// edge_validity_check_fn(a, b) == edge_validity_check_fn(b, a))? Asymmetric
+/// distance and edge validity functions are more expensive to work with and
+/// should be avoided when possible.
 /// @param add_duplicate_states should a new state be added to the roadmap if
 /// it is a duplicate of an existing state? A new state is considered a
 /// duplicate if one of the K neighboring states has distance zero from the
@@ -234,7 +223,7 @@ inline std::map<std::string, double> GrowRoadMap(
     const std::function<bool(const int64_t)>& termination_check_fn,
     const int64_t K,
     const bool use_parallel = true,
-    const bool distance_is_symmetric = true,
+    const bool connection_is_symmetric = true,
     const bool add_duplicate_states = false)
 {
   std::map<std::string, double> statistics;
@@ -255,7 +244,7 @@ inline std::map<std::string, double> GrowRoadMap(
       AddNodeToRoadmap<T, GraphType>(
           random_state, NNDistanceDirection::ROADMAP_TO_NEW_STATE, roadmap,
           distance_fn, edge_validity_check_fn, K, use_parallel,
-          distance_is_symmetric, add_duplicate_states);
+          connection_is_symmetric, add_duplicate_states);
       const int64_t post_size = roadmap.Size();
       if (post_size > pre_size)
       {
@@ -276,6 +265,215 @@ inline std::map<std::string, double> GrowRoadMap(
   const std::chrono::duration<double> growing_time(cur_time - start_time);
   statistics["growing_time"] = growing_time.count();
   return statistics;
+}
+
+/// Build a roadmap consisting of a graph of states.
+/// @param roadmap_size size of roadmap to build.
+/// @param sampling_fn function to sample new states.
+/// @param distance_fn distance function for state-to-state distance. If
+/// use_parallel is true, this must be thread-safe.
+/// @param state_validity_check function to check if a sampled state is valid.
+/// @param edge_validity_check_fn edge validity checking function. If
+/// use_parallel is true, this must be thread-safe.
+/// @param K number of K neighboring states in the roadmap to attempt to connect
+/// the new state to.
+/// @param max_valid_sample_tries maximum number of calls to sampling_fn to
+/// produce a valid sample, throws if exceeded.
+/// @param use_parallel use parallel operations when possible.
+/// @param connection_is_symmetric are distance and edge validity symmetric
+/// (i.e. distance_fn(a, b) == distance_fn(b, a) and
+/// edge_validity_check_fn(a, b) == edge_validity_check_fn(b, a))? Asymmetric
+/// distance and edge validity functions are more expensive to work with and
+/// should be avoided when possible.
+/// NOTE: duplicate states may occur in the roadmap.
+template<typename T, typename GraphType>
+GraphType BuildRoadmap(
+    const int64_t roadmap_size,
+    const std::function<T(void)>& sampling_fn,
+    const std::function<double(const T&, const T&)>& distance_fn,
+    const std::function<bool(const T&)>& state_validity_check_fn,
+    const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
+    const int64_t K,
+    const int32_t max_valid_sample_tries,
+    const bool use_parallel = true,
+    const bool connection_is_symmetric = true)
+{
+  if (roadmap_size < 0)
+  {
+    throw std::runtime_error("roadmap_size < 0");
+  }
+  if (K < 1)
+  {
+    throw std::runtime_error("K < 1");
+  }
+  if (max_valid_sample_tries < 1)
+  {
+    throw std::runtime_error("max_valid_sample_tries < 1");
+  }
+
+  // Define a helper function to sample valid states, or record that sampling
+  // failed. This method can't throw, as throwing inside an OpenMP loop is not
+  // recoverable.
+  std::function<OwningMaybe<T>(void)> valid_sample_fn = [&](void)
+  {
+    int32_t tries = 0;
+    while (tries < max_valid_sample_tries)
+    {
+      tries++;
+      const T sample = sampling_fn();
+      if (state_validity_check_fn(sample))
+      {
+        return OwningMaybe<T>(sample);
+      }
+    }
+    return OwningMaybe<T>();
+  };
+
+  std::vector<OwningMaybe<T>, OwningMaybeAllocator<T>> roadmap_states(
+      static_cast<size_t>(roadmap_size));
+
+  // Sample roadmap_size valid configurations.
+#if defined(_OPENMP)
+#pragma omp parallel for if (use_parallel)
+#endif
+  for (size_t index = 0; index < roadmap_states.size(); index++)
+  {
+    roadmap_states.at(index) = valid_sample_fn();
+  }
+
+  // Populate the roadmap from the sampled valid configurations.
+  GraphType roadmap(roadmap_size);
+  for (const OwningMaybe<T>& maybe_state : roadmap_states)
+  {
+    if (maybe_state.HasValue())
+    {
+      roadmap.AddNode(maybe_state.Value());
+    }
+    else
+    {
+      throw std::runtime_error("Failed to sample valid state");
+    }
+  }
+
+  // Distance function for KNN checks.
+  const std::function<double(const typename GraphType::NodeType&, const T&)>
+      roadmap_to_state_distance_fn = [&](
+          const typename GraphType::NodeType& node, const T& state)
+  {
+    return distance_fn(node.GetValueImmutable(), state);
+  };
+
+  // Perform edge validity and distance checks for all nodes, optionally in
+  // parallel.
+#if defined(_OPENMP)
+#pragma omp parallel for if (use_parallel)
+#endif
+  for (int64_t node_index = 0; node_index < roadmap.Size(); ++node_index)
+  {
+    auto& node = roadmap.GetNodeMutable(node_index);
+    const T& state = node.GetValueImmutable();
+
+    // Find K+1 nearest neighbors, since KNN will find the current node too.
+    const auto nearest_neighbors = GetKNearestNeighbors(
+        simple_graph::GraphKNNAdapter<GraphType>(roadmap), state,
+        roadmap_to_state_distance_fn, K + 1, false);
+
+    for (const auto& neighbor : nearest_neighbors)
+    {
+      const int64_t other_node_index = neighbor.Index();
+      // Don't try to connect the node to itself.
+      if (other_node_index != node_index)
+      {
+        const T& other_state =
+            roadmap.GetNodeImmutable(other_node_index).GetValueImmutable();
+
+        if (connection_is_symmetric)
+        {
+          if (edge_validity_check_fn(state, other_state))
+          {
+            const double distance = neighbor.Distance();
+            node.AddOutEdge(typename GraphType::EdgeType(
+                node_index, other_node_index, distance));
+            node.AddInEdge(typename GraphType::EdgeType(
+                other_node_index, node_index, distance));
+          }
+        }
+        else
+        {
+          if (edge_validity_check_fn(other_state, state))
+          {
+            const double distance = neighbor.Distance();
+            node.AddInEdge(typename GraphType::EdgeType(
+                other_node_index, node_index, distance));
+          }
+
+          if (edge_validity_check_fn(state, other_state))
+          {
+            const double distance = distance_fn(state, other_state);
+            node.AddOutEdge(typename GraphType::EdgeType(
+                node_index, other_node_index, distance));
+          }
+        }
+      }
+    }
+  }
+
+  // Helpers for checking if an edge is present in another node.
+  const auto has_in_edge_from = [](
+      const typename GraphType::NodeType& node, const int64_t other_node_index)
+  {
+    for (const auto& in_edge : node.GetInEdgesImmutable())
+    {
+      if (in_edge.GetFromIndex() == other_node_index)
+      {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  const auto has_out_edge_to = [](
+      const typename GraphType::NodeType& node, const int64_t other_node_index)
+  {
+    for (const auto& out_edge : node.GetOutEdgesImmutable())
+    {
+      if (out_edge.GetToIndex() == other_node_index)
+      {
+        return true;
+      }
+    }
+    return false;
+  };
+
+  // Go through the roadmap and make node linkages are consistent.
+  for (int64_t node_index = 0; node_index < roadmap.Size(); ++node_index)
+  {
+    const auto& node = roadmap.GetNodeImmutable(node_index);
+
+    for (const auto& in_edge : node.GetInEdgesImmutable())
+    {
+      const int64_t other_node_index = in_edge.GetFromIndex();
+      auto& other_node = roadmap.GetNodeMutable(other_node_index);
+      if (!has_out_edge_to(other_node, node_index))
+      {
+        other_node.AddOutEdge(typename GraphType::EdgeType(
+            other_node_index, node_index, in_edge.GetWeight()));
+      }
+    }
+
+    for (const auto& out_edge : node.GetOutEdgesImmutable())
+    {
+      const int64_t other_node_index = out_edge.GetToIndex();
+      auto& other_node = roadmap.GetNodeMutable(other_node_index);
+      if (!has_in_edge_from(other_node, node_index))
+      {
+        other_node.AddInEdge(typename GraphType::EdgeType(
+            node_index, other_node_index, out_edge.GetWeight()));
+      }
+    }
+  }
+
+  return roadmap;
 }
 
 /// Update edge distances in a roadmap.
@@ -370,9 +568,11 @@ inline simple_astar_search::AstarResult<T, Container> ExtractSolution(
 /// @param K number of K neighboring states in the roadmap to attempt to connect
 /// the new state to.
 /// @param use_parallel use parallel operations when possible.
-/// @param distance_is_symmetric is the distance symmetric
-/// (i.e. distance_fn(a, b) == distance_fn(b, a))? Asymmetric distance functions
-/// are more expensive to work with and should be avoided when possible.
+/// @param connection_is_symmetric are distance and edge validity symmetric
+/// (i.e. distance_fn(a, b) == distance_fn(b, a) and
+/// edge_validity_check_fn(a, b) == edge_validity_check_fn(b, a))? Asymmetric
+/// distance and edge validity functions are more expensive to work with and
+/// should be avoided when possible.
 /// @param add_duplicate_states should @param state be added to the roadmap if
 /// it is a duplicate of an existing state? @param state is considered a
 /// duplicate if one of the K neighboring states has distance zero from @param
@@ -391,7 +591,7 @@ LazyQueryPathAndAddNodes(
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const int64_t K,
     const bool use_parallel = true,
-    const bool distance_is_symmetric = true,
+    const bool connection_is_symmetric = true,
     const bool add_duplicate_states = false,
     const bool limit_astar_pqueue_duplicates = true)
 {
@@ -410,7 +610,7 @@ LazyQueryPathAndAddNodes(
     const T& start = starts.at(start_idx);
     start_node_indices.at(start_idx) = AddNodeToRoadmap<T, GraphType>(
         start, NNDistanceDirection::NEW_STATE_TO_ROADMAP, roadmap, distance_fn,
-        edge_validity_check_fn, K, use_parallel, distance_is_symmetric,
+        edge_validity_check_fn, K, use_parallel, connection_is_symmetric,
         add_duplicate_states);
   }
   // Add the goal nodes to the roadmap
@@ -420,7 +620,7 @@ LazyQueryPathAndAddNodes(
     const T& goal = goals.at(goal_idx);
     goal_node_indices.at(goal_idx) = AddNodeToRoadmap<T, GraphType>(
         goal, NNDistanceDirection::ROADMAP_TO_NEW_STATE, roadmap, distance_fn,
-        edge_validity_check_fn, K, use_parallel, distance_is_symmetric,
+        edge_validity_check_fn, K, use_parallel, connection_is_symmetric,
         add_duplicate_states);
   }
   // Call graph A*
@@ -445,9 +645,11 @@ LazyQueryPathAndAddNodes(
 /// @param K number of K neighboring states in the roadmap to attempt to connect
 /// the new state to.
 /// @param use_parallel use parallel operations when possible.
-/// @param distance_is_symmetric is the distance symmetric
-/// (i.e. distance_fn(a, b) == distance_fn(b, a))? Asymmetric distance functions
-/// are more expensive to work with and should be avoided when possible.
+/// @param connection_is_symmetric are distance and edge validity symmetric
+/// (i.e. distance_fn(a, b) == distance_fn(b, a) and
+/// edge_validity_check_fn(a, b) == edge_validity_check_fn(b, a))? Asymmetric
+/// distance and edge validity functions are more expensive to work with and
+/// should be avoided when possible.
 /// @param add_duplicate_states should @param state be added to the roadmap if
 /// it is a duplicate of an existing state? @param state is considered a
 /// duplicate if one of the K neighboring states has distance zero from @param
@@ -466,7 +668,7 @@ QueryPathAndAddNodes(
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const int64_t K,
     const bool use_parallel = true,
-    const bool distance_is_symmetric = true,
+    const bool connection_is_symmetric = true,
     const bool add_duplicate_states = false,
     const bool limit_astar_pqueue_duplicates = true)
 {
@@ -485,7 +687,7 @@ QueryPathAndAddNodes(
     const T& start = starts.at(start_idx);
     start_node_indices.at(start_idx) = AddNodeToRoadmap<T, GraphType>(
         start, NNDistanceDirection::NEW_STATE_TO_ROADMAP, roadmap, distance_fn,
-        edge_validity_check_fn, K, use_parallel, distance_is_symmetric,
+        edge_validity_check_fn, K, use_parallel, connection_is_symmetric,
         add_duplicate_states);
   }
   // Add the goal nodes to the roadmap
@@ -495,7 +697,7 @@ QueryPathAndAddNodes(
     const T& goal = goals.at(goal_idx);
     goal_node_indices.at(goal_idx) = AddNodeToRoadmap<T, GraphType>(
         goal, NNDistanceDirection::ROADMAP_TO_NEW_STATE, roadmap, distance_fn,
-        edge_validity_check_fn, K, use_parallel, distance_is_symmetric,
+        edge_validity_check_fn, K, use_parallel, connection_is_symmetric,
         add_duplicate_states);
   }
   const auto astar_result =
@@ -523,9 +725,11 @@ QueryPathAndAddNodes(
 /// @param K number of K neighboring states in the roadmap to attempt to connect
 /// the new state to.
 /// @param use_parallel use parallel operations when possible.
-/// @param distance_is_symmetric is the distance symmetric
-/// (i.e. distance_fn(a, b) == distance_fn(b, a))? Asymmetric distance functions
-/// are more expensive to work with and should be avoided when possible.
+/// @param connection_is_symmetric are distance and edge validity symmetric
+/// (i.e. distance_fn(a, b) == distance_fn(b, a) and
+/// edge_validity_check_fn(a, b) == edge_validity_check_fn(b, a))? Asymmetric
+/// distance and edge validity functions are more expensive to work with and
+/// should be avoided when possible.
 /// @param add_duplicate_states should @param state be added to the roadmap if
 /// it is a duplicate of an existing state? @param state is considered a
 /// duplicate if one of the K neighboring states has distance zero from @param
@@ -544,7 +748,7 @@ LazyQueryPath(
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const int64_t K,
     const bool use_parallel = true,
-    const bool distance_is_symmetric = true,
+    const bool connection_is_symmetric = true,
     const bool add_duplicate_states = false,
     const bool limit_astar_pqueue_duplicates = true,
     const bool use_roadmap_overlay = true)
@@ -555,7 +759,7 @@ LazyQueryPath(
     OverlaidType overlaid_roadmap(roadmap);
     return LazyQueryPathAndAddNodes<T, Container, OverlaidType>(
         starts, goals, overlaid_roadmap, distance_fn, edge_validity_check_fn, K,
-        use_parallel, distance_is_symmetric, add_duplicate_states,
+        use_parallel, connection_is_symmetric, add_duplicate_states,
         limit_astar_pqueue_duplicates);
   }
   else
@@ -563,7 +767,7 @@ LazyQueryPath(
     auto working_copy = roadmap;
     return LazyQueryPathAndAddNodes<T, Container, GraphType>(
        starts, goals, working_copy, distance_fn, edge_validity_check_fn, K,
-       use_parallel, distance_is_symmetric, add_duplicate_states,
+       use_parallel, connection_is_symmetric, add_duplicate_states,
        limit_astar_pqueue_duplicates);
   }
 }
@@ -580,9 +784,11 @@ LazyQueryPath(
 /// @param K number of K neighboring states in the roadmap to attempt to connect
 /// the new state to.
 /// @param use_parallel use parallel operations when possible.
-/// @param distance_is_symmetric is the distance symmetric
-/// (i.e. distance_fn(a, b) == distance_fn(b, a))? Asymmetric distance functions
-/// are more expensive to work with and should be avoided when possible.
+/// @param connection_is_symmetric are distance and edge validity symmetric
+/// (i.e. distance_fn(a, b) == distance_fn(b, a) and
+/// edge_validity_check_fn(a, b) == edge_validity_check_fn(b, a))? Asymmetric
+/// distance and edge validity functions are more expensive to work with and
+/// should be avoided when possible.
 /// @param add_duplicate_states should @param state be added to the roadmap if
 /// it is a duplicate of an existing state? @param state is considered a
 /// duplicate if one of the K neighboring states has distance zero from @param
@@ -601,7 +807,7 @@ QueryPath(
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const int64_t K,
     const bool use_parallel = true,
-    const bool distance_is_symmetric = true,
+    const bool connection_is_symmetric = true,
     const bool add_duplicate_states = false,
     const bool limit_astar_pqueue_duplicates = true,
     const bool use_roadmap_overlay = true)
@@ -612,7 +818,7 @@ QueryPath(
     OverlaidType overlaid_roadmap(roadmap);
     return QueryPathAndAddNodes<T, Container, OverlaidType>(
         starts, goals, overlaid_roadmap, distance_fn, edge_validity_check_fn, K,
-        use_parallel, distance_is_symmetric, add_duplicate_states,
+        use_parallel, connection_is_symmetric, add_duplicate_states,
         limit_astar_pqueue_duplicates);
   }
   else
@@ -620,7 +826,7 @@ QueryPath(
     auto working_copy = roadmap;
     return QueryPathAndAddNodes<T, Container, GraphType>(
         starts, goals, working_copy, distance_fn, edge_validity_check_fn, K,
-        use_parallel, distance_is_symmetric, add_duplicate_states,
+        use_parallel, connection_is_symmetric, add_duplicate_states,
         limit_astar_pqueue_duplicates);
   }
 }

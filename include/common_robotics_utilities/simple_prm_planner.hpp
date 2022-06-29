@@ -367,8 +367,9 @@ GraphType BuildRoadMap(
   // Sample roadmap_size valid configurations. This can only be parallelized if
   // add_duplicate_states is true, since the check for duplicate states would
   // be a race condition otherwise.
+  const bool use_parallel_sampling = use_parallel && add_duplicate_states;
 #if defined(_OPENMP)
-#pragma omp parallel for if (use_parallel && add_duplicate_states)
+#pragma omp parallel for if (use_parallel_sampling)
 #endif
   for (size_t index = 0; index < roadmap_states.size(); index++)
   {
@@ -421,15 +422,17 @@ GraphType BuildRoadMap(
       {
         const T& other_state =
             roadmap.GetNodeImmutable(other_node_index).GetValueImmutable();
+        const bool other_state_to_state_valid =
+            edge_validity_check_fn(other_state, state);
 
-        if (edge_validity_check_fn(other_state, state))
+        if (other_state_to_state_valid)
         {
           const double distance = neighbor.Distance();
           node.AddInEdge(typename GraphType::EdgeType(
               other_node_index, node_index, distance));
         }
 
-        if (connection_is_symmetric)
+        if (connection_is_symmetric && other_state_to_state_valid)
         {
           const double distance = neighbor.Distance();
           node.AddOutEdge(typename GraphType::EdgeType(

@@ -67,22 +67,6 @@ bool CloseEnough(const Eigen::Vector3d& v1,
   return true;
 }
 
-Eigen::Vector3d RotateVector(const Eigen::Quaterniond& quat,
-                             const Eigen::Vector3d& vec)
-{
-  const Eigen::Quaterniond temp(0.0, vec.x(), vec.y(), vec.z());
-  const Eigen::Quaterniond res = quat * (temp * quat.inverse());
-  return Eigen::Vector3d(res.x(), res.y(), res.z());
-}
-
-Eigen::Vector3d RotateVectorReverse(const Eigen::Quaterniond& quat,
-                                    const Eigen::Vector3d& vec)
-{
-  const Eigen::Quaterniond temp(0.0, vec.x(), vec.y(), vec.z());
-  const Eigen::Quaterniond res = quat.inverse() * (temp * quat);
-  return Eigen::Vector3d(res.x(), res.y(), res.z());
-}
-
 double EnforceContinuousRevoluteBounds(const double value)
 {
   if ((value <= -M_PI) || (value > M_PI))
@@ -104,26 +88,6 @@ double EnforceContinuousRevoluteBounds(const double value)
   else
   {
     return value;
-  }
-}
-
-Eigen::VectorXd SafeNormal(const Eigen::VectorXd& vec)
-{
-  if (vec.size() > 0)
-  {
-    const double norm = vec.norm();
-    if (norm > std::numeric_limits<double>::epsilon())
-    {
-      return vec / norm;
-    }
-    else
-    {
-      return Eigen::VectorXd::Zero(vec.size());
-    }
-  }
-  else
-  {
-    return Eigen::VectorXd::Zero(vec.size());
   }
 }
 
@@ -1061,7 +1025,8 @@ Hyperplane FitPlaneToPoints(const std::vector<Eigen::VectorXd>& points)
   // hyperplane.
   const Eigen::VectorXd best_left_singular_vector =
       u_matrix.col(best_singular_value_index);
-  const Eigen::VectorXd normal_vector = SafeNormal(best_left_singular_vector);
+  const Eigen::VectorXd normal_vector =
+      best_left_singular_vector.stableNormalized();
   return Hyperplane(centroid, normal_vector);
 }
 }  // namespace math

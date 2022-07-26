@@ -84,15 +84,7 @@ bool CloseEnough(const Eigen::Vector3d& v1,
                  const Eigen::Vector3d& v2,
                  const double threshold);
 
-Eigen::Vector3d RotateVector(const Eigen::Quaterniond& quat,
-                             const Eigen::Vector3d& vec);
-
-Eigen::Vector3d RotateVectorReverse(const Eigen::Quaterniond& quat,
-                                    const Eigen::Vector3d& vec);
-
 double EnforceContinuousRevoluteBounds(const double value);
-
-Eigen::VectorXd SafeNormal(const Eigen::VectorXd& vec);
 
 double SquaredNorm(const std::vector<double>& vec);
 
@@ -180,6 +172,80 @@ Eigen::Vector4d Interpolate4d(const Eigen::Vector4d& v1,
 Eigen::Isometry3d Interpolate(const Eigen::Isometry3d& t1,
                               const Eigen::Isometry3d& t2,
                               const double ratio);
+
+template<typename T>
+T LinearInterpolate(const double low_point,
+                    const double high_point,
+                    const T& low_value,
+                    const T& high_value,
+                    const double query_point)
+{
+  const T slope = (high_value - low_value) / (high_point - low_point);
+  const double query_delta = query_point - low_point;
+  return low_value + (slope * query_delta);
+}
+
+template<typename T>
+T BilinearInterpolate(const Eigen::Vector2d& low_point,
+                      const Eigen::Vector2d& high_point,
+                      const T& low_x_low_y_value,
+                      const T& low_x_high_y_value,
+                      const T& high_x_low_y_value,
+                      const T& high_x_high_y_value,
+                      const Eigen::Vector2d& query_point)
+{
+  // Do linear interpolation in the lower X axis.
+  const T low_y_interpolated = LinearInterpolate<T>(
+      low_point.x(), high_point.x(),
+      low_x_low_y_value, high_x_low_y_value,
+      query_point.x());
+
+  // Do linear interpolation in the upper X axis.
+  const T high_y_interpolated = LinearInterpolate<T>(
+      low_point.x(), high_point.x(),
+      low_x_high_y_value, high_x_high_y_value,
+      query_point.x());
+
+  // Linear interpolation in Y.
+  return LinearInterpolate<T>(
+      low_point.y(), high_point.y(),
+      low_y_interpolated, high_y_interpolated,
+      query_point.y());
+}
+
+template<typename T>
+T TrilinearInterpolate(const Eigen::Vector3d& low_point,
+                       const Eigen::Vector3d& high_point,
+                       const T& low_x_low_y_low_z_value,
+                       const T& low_x_low_y_high_z_value,
+                       const T& low_x_high_y_low_z_value,
+                       const T& low_x_high_y_high_z_value,
+                       const T& high_x_low_y_low_z_value,
+                       const T& high_x_low_y_high_z_value,
+                       const T& high_x_high_y_low_z_value,
+                       const T& high_x_high_y_high_z_value,
+                       const Eigen::Vector3d& query_point)
+{
+  // Do bilinear interpolation in the lower XY plane.
+  const T low_z_interpolated = BilinearInterpolate<T>(
+      low_point.head(2), high_point.head(2),
+      low_x_low_y_low_z_value, low_x_high_y_low_z_value,
+      high_x_low_y_low_z_value, high_x_high_y_low_z_value,
+      query_point.head(2));
+
+  // Do bilinear interpolation in the upper XY plane.
+  const T high_z_interpolated = BilinearInterpolate<T>(
+      low_point.head(2), high_point.head(2),
+      low_x_low_y_high_z_value, low_x_high_y_high_z_value,
+      high_x_low_y_high_z_value, high_x_high_y_high_z_value,
+      query_point.head(2));
+
+  // Linear interpolation in Z.
+  return LinearInterpolate<T>(
+      low_point.z(), high_point.z(),
+      low_z_interpolated, high_z_interpolated,
+      query_point.z());
+}
 
 double SquaredDistance(const Eigen::Vector2d& v1,
                        const Eigen::Vector2d& v2);
@@ -281,7 +347,7 @@ double AverageContinuousRevolute(
     const std::vector<double>& weights=std::vector<double>());
 
 template <typename Derived>
-inline Eigen::MatrixXd ClampNorm(
+Eigen::MatrixXd ClampNorm(
     const Eigen::MatrixBase<Derived>& item_to_clamp, const double max_norm)
 {
   const double current_norm = item_to_clamp.norm();
@@ -296,7 +362,7 @@ inline Eigen::MatrixXd ClampNorm(
 // types, i.e. floats and doubles, due to the implementation
 template<typename ScalarType, int Rows,
          typename Allocator=std::allocator<Eigen::Matrix<ScalarType, Rows, 1>>>
-inline Eigen::Matrix<ScalarType, Rows, 1> AverageEigenVector(
+Eigen::Matrix<ScalarType, Rows, 1> AverageEigenVector(
     const std::vector<Eigen::Matrix<ScalarType, Rows, 1>, Allocator>& vectors,
     const std::vector<double>& weights = std::vector<double>())
 {
@@ -343,8 +409,7 @@ inline Eigen::Matrix<ScalarType, Rows, 1> AverageEigenVector(
 // Projects vector_to_project onto base_vector and
 // returns the portion that is parallel to base_vector
 template <typename DerivedB, typename DerivedV>
-inline Eigen::Matrix<typename DerivedB::Scalar, Eigen::Dynamic, 1>
-VectorProjection(
+Eigen::Matrix<typename DerivedB::Scalar, Eigen::Dynamic, 1> VectorProjection(
     const Eigen::MatrixBase<DerivedB>& base_vector,
     const Eigen::MatrixBase<DerivedV>& vector_to_project)
 {
@@ -370,8 +435,7 @@ VectorProjection(
 // Projects vector_to_project onto base_vector and
 // returns the portion that is perpendicular to base_vector
 template <typename DerivedB, typename DerivedV>
-inline Eigen::Matrix<typename DerivedB::Scalar, Eigen::Dynamic, 1>
-VectorRejection(
+Eigen::Matrix<typename DerivedB::Scalar, Eigen::Dynamic, 1> VectorRejection(
     const Eigen::MatrixBase<DerivedB>& base_vector,
     const Eigen::MatrixBase<DerivedV>& vector_to_reject)
 {
@@ -380,7 +444,7 @@ VectorRejection(
 }
 
 template <typename DerivedV>
-inline Eigen::Matrix<typename DerivedV::Scalar, Eigen::Dynamic, 1>
+Eigen::Matrix<typename DerivedV::Scalar, Eigen::Dynamic, 1>
 GetArbitraryOrthogonalVector(const Eigen::MatrixBase<DerivedV>& vector)
 {
   // We're going to try arbitrary possibilities until one of them works
@@ -411,7 +475,7 @@ GetArbitraryOrthogonalVector(const Eigen::MatrixBase<DerivedV>& vector)
 }
 
 template <typename DerivedV>
-inline Eigen::Matrix<typename DerivedV::Scalar, Eigen::Dynamic, 1>
+Eigen::Matrix<typename DerivedV::Scalar, Eigen::Dynamic, 1>
 GetArbitraryOrthogonalVectorToPlane(
     const Eigen::MatrixBase<DerivedV>& plane_vector1,
     const Eigen::MatrixBase<DerivedV>& plane_vector2,
@@ -602,7 +666,7 @@ public:
   double GetNormedDotProduct(const Eigen::VectorXd& point) const
   {
     const Eigen::VectorXd check_vector = point - GetOrigin();
-    const Eigen::VectorXd check_vector_normed = SafeNormal(check_vector);
+    const Eigen::VectorXd check_vector_normed = check_vector.stableNormalized();
     const double dot_product = check_vector_normed.dot(GetNormal());
     return dot_product;
   }

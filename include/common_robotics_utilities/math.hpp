@@ -540,6 +540,8 @@ Eigen::MatrixXd BuildPairwiseDistanceMatrix(
 
 #if defined(_OPENMP)
 #pragma omp parallel for if (use_parallel)
+#else
+  CRU_UNUSED(use_parallel);
 #endif
   for (size_t idx = 0; idx < data.size(); idx++)
   {
@@ -596,6 +598,8 @@ Eigen::MatrixXd BuildPairwiseDistanceMatrix(
 
 #if defined(_OPENMP)
 #pragma omp parallel for if (use_parallel)
+#else
+  CRU_UNUSED(use_parallel);
 #endif
   for (size_t idx = 0; idx < data1.size(); idx++)
   {

@@ -36,6 +36,8 @@ inline std::vector<int32_t> PerformSingleClusteringIteration(
 
 #if defined(_OPENMP)
 #pragma omp parallel for if (use_parallel)
+#else
+  CRU_UNUSED(use_parallel);
 #endif
   for (size_t idx = 0; idx < data.size(); idx++)
   {
@@ -87,6 +89,8 @@ inline Container ComputeClusterCentersWeighted(
 
 #if defined(_OPENMP)
 #pragma omp parallel for if (use_parallel)
+#else
+    CRU_UNUSED(use_parallel);
 #endif
     for (size_t cluster = 0; cluster < clustered_data.size(); cluster++)
     {

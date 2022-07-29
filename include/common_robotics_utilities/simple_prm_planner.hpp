@@ -112,6 +112,8 @@ inline int64_t AddNodeToRoadmap(
 
 #if defined(_OPENMP)
 #pragma omp parallel for if (use_parallel)
+#else
+  CRU_UNUSED(use_parallel);
 #endif
   for (size_t idx = 0; idx < nearest_neighbors.size(); idx++)
   {
@@ -369,6 +371,8 @@ GraphType BuildRoadMap(
   const bool use_parallel_sampling = use_parallel && add_duplicate_states;
 #if defined(_OPENMP)
 #pragma omp parallel for if (use_parallel_sampling)
+#else
+  CRU_UNUSED(use_parallel_sampling);
 #endif
   for (size_t index = 0; index < roadmap_states.size(); index++)
   {
@@ -526,6 +530,8 @@ inline void UpdateRoadMapEdges(
 
 #if defined(_OPENMP)
 #pragma omp parallel for if (use_parallel)
+#else
+  CRU_UNUSED(use_parallel);
 #endif
   for (int64_t current_node_index = 0; current_node_index < roadmap.Size();
        current_node_index++)

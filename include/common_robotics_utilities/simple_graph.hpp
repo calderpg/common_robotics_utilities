@@ -447,6 +447,8 @@ OutputGraphType PruneGraph(
   // Second, optionally parallel pass to update edges for the kept nodes
 #if defined(_OPENMP)
 #pragma omp parallel for if (use_parallel)
+#else
+  CRU_UNUSED(use_parallel);
 #endif
   for (int64_t kept_node_index = 0; kept_node_index < pruned_graph.Size();
        kept_node_index++)

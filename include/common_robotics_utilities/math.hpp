@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/utility.hpp>
 
 namespace common_robotics_utilities
 {

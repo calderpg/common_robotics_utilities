@@ -1,9 +1,5 @@
 #pragma once
 
-#if defined(_OPENMP)
-#include <omp.h>
-#endif
-
 #include <cstdint>
 #include <functional>
 #include <limits>
@@ -55,9 +51,7 @@ inline double ComputeDistanceParallel(
   // Make per-thread storage
   std::vector<double> per_thread_storage(
       openmp_helpers::GetNumOmpThreads(), 0.0);
-#if defined(_OPENMP)
-#pragma omp parallel for
-#endif
+  CRU_OMP_PARALLEL_FOR
   for (size_t idx = 0; idx < outer_distribution.size(); idx++)
   {
     const FirstDatatype& first = outer_distribution[idx];
@@ -168,9 +162,7 @@ inline double ComputeDistanceParallel(
   // Make per-thread storage
   std::vector<double> per_thread_storage(
       openmp_helpers::GetNumOmpThreads(), 0.0);
-#if defined(_OPENMP)
-#pragma omp parallel for
-#endif
+  CRU_OMP_PARALLEL_FOR
   for (size_t idx = 0; idx < outer_distribution.size(); idx++)
   {
     double minimum_distance = std::numeric_limits<double>::infinity();

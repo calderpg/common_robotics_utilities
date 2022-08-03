@@ -81,9 +81,7 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsParallel(
   else if (items.size() <= static_cast<size_t>(K))
   {
     std::vector<IndexAndDistance> k_nearests(items.size());
-#if defined(_OPENMP)
-#pragma omp parallel for
-#endif
+    CRU_OMP_PARALLEL_FOR
     for (size_t idx = 0; idx < items.size(); idx++)
     {
       const Item& item = items[idx];
@@ -97,9 +95,7 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsParallel(
     std::vector<std::vector<IndexAndDistance>> per_thread_nearests(
         static_cast<size_t>(openmp_helpers::GetNumOmpThreads()),
         std::vector<IndexAndDistance>(static_cast<size_t>(K)));
-#if defined(_OPENMP)
-#pragma omp parallel for
-#endif
+    CRU_OMP_PARALLEL_FOR
     for (size_t idx = 0; idx < items.size(); idx++)
     {
       const Item& item = items[idx];

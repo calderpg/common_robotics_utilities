@@ -1,16 +1,12 @@
 #pragma once
 
-#if defined(_OPENMP)
-#include <omp.h>
-#endif
-
 #include <cmath>
 #include <functional>
 #include <map>
 #include <vector>
 
 #include <Eigen/Geometry>
-#include <common_robotics_utilities/utility.hpp>
+#include <common_robotics_utilities/openmp_helpers.hpp>
 
 namespace common_robotics_utilities
 {
@@ -539,11 +535,7 @@ Eigen::MatrixXd BuildPairwiseDistanceMatrix(
 {
   Eigen::MatrixXd distance_matrix(data.size(), data.size());
 
-#if defined(_OPENMP)
-#pragma omp parallel for if (use_parallel)
-#else
-  CRU_UNUSED(use_parallel);
-#endif
+  CRU_OMP_PARALLEL_FOR_IF(use_parallel)
   for (size_t idx = 0; idx < data.size(); idx++)
   {
     for (size_t jdx = idx; jdx < data.size(); jdx++)
@@ -597,11 +589,7 @@ Eigen::MatrixXd BuildPairwiseDistanceMatrix(
 {
   Eigen::MatrixXd distance_matrix(data1.size(), data2.size());
 
-#if defined(_OPENMP)
-#pragma omp parallel for if (use_parallel)
-#else
-  CRU_UNUSED(use_parallel);
-#endif
+  CRU_OMP_PARALLEL_FOR_IF(use_parallel)
   for (size_t idx = 0; idx < data1.size(); idx++)
   {
     for (size_t jdx = 0; jdx < data2.size(); jdx++)

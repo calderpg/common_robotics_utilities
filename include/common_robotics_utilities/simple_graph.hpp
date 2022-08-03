@@ -1,9 +1,5 @@
 #pragma once
 
-#if defined(_OPENMP)
-#include <omp.h>
-#endif
-
 #include <algorithm>
 #include <cstdint>
 #include <memory>
@@ -13,6 +9,7 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/openmp_helpers.hpp>
 #include <common_robotics_utilities/print.hpp>
 #include <common_robotics_utilities/serialization.hpp>
 #include <common_robotics_utilities/utility.hpp>
@@ -445,11 +442,7 @@ OutputGraphType PruneGraph(
   pruned_graph.ShrinkToFit();
 
   // Second, optionally parallel pass to update edges for the kept nodes
-#if defined(_OPENMP)
-#pragma omp parallel for if (use_parallel)
-#else
-  CRU_UNUSED(use_parallel);
-#endif
+  CRU_OMP_PARALLEL_FOR_IF(use_parallel)
   for (int64_t kept_node_index = 0; kept_node_index < pruned_graph.Size();
        kept_node_index++)
   {

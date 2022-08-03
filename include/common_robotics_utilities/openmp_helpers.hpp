@@ -125,7 +125,7 @@ inline int32_t GetOmpThreadLimit()
 class ChangeOmpNumThreadsWrapper
 {
 public:
-  ChangeOmpNumThreadsWrapper(const int32_t num_threads)
+  explicit ChangeOmpNumThreadsWrapper(const int32_t num_threads)
   {
     if (GetContextNumOmpThreads() > 1)
     {
@@ -164,6 +164,18 @@ public:
   DisableOmpWrapper() : ChangeOmpNumThreadsWrapper(1) {}
 };
 
+/// Macro to stringify tokens for the purposes of the below macros.
+#define CRU_MACRO_STRINGIFY(s) #s
+
+/// Macros to declare OpenMP parallel for loops, handling conditionals as well
+/// as the case of OpenMP being disabled entirely.
+#if defined(_OPENMP)
+#define CRU_OMP_PARALLEL_FOR_IF(enable_parallel) _Pragma(CRU_MACRO_STRINGIFY(omp parallel for if(enable_parallel)))
+#define CRU_OMP_PARALLEL_FOR _Pragma(CRU_MACRO_STRINGIFY(omp parallel for))
+#else
+#define CRU_OMP_PARALLEL_FOR_IF(enable_parallel) (void)(enable_parallel);
+#define CRU_OMP_PARALLEL_FOR
+#endif
 }  // namespace openmp_helpers
 }  // namespace common_robotics_utilities
 

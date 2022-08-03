@@ -31,6 +31,9 @@ GTEST_TEST(ROSHelpersTest, SetMessageTimestamps)
   for (const auto& marker : marker_array.markers) {
     EXPECT_EQ(marker.header.stamp, expected_stamp);
   }
+  // Test that ROS messages have an ostream operator available.
+  std::cout << "Set message times to:\n"
+            << marker_array.markers.at(0).header.stamp << std::endl;
 }
 
 }  // namespace

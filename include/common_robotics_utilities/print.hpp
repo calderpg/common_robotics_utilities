@@ -1,6 +1,5 @@
 #pragma once
 
-#include <iostream>
 #include <iomanip>
 #include <array>
 #include <vector>
@@ -11,58 +10,18 @@
 #include <set>
 #include <unordered_map>
 #include <unordered_set>
+#include <sstream>
 #include <string>
 #include <type_traits>
 #include <utility>
-#include <common_robotics_utilities/utility.hpp>
-#include <Eigen/Geometry>
 
-#if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
-#include <rosidl_runtime_cpp/traits.hpp>
-// On pre-Humble distributions, a single message header is included to ensure
-// that rosidl_generator_traits::to_yaml is found by the compiler. The version
-// header is only present in Humble or later, so we use the absence of the file
-// to detect earlier distributions.
-#if !__has_include(<rclcpp/version.h>)
-#include <builtin_interfaces/msg/duration.hpp>
-#endif
-#endif
+#include <Eigen/Geometry>
+#include <common_robotics_utilities/utility.hpp>
 
 namespace common_robotics_utilities
 {
 namespace print
 {
-namespace internal
-{
-#if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
-struct ROSMessagePrinter
-{
-  template <typename T>
-  static std::string Print(const T& message)
-  {
-#if !__has_include(<rclcpp/version.h>)
-    // ROS 2 Galactic only supports block-style output.
-    return rosidl_generator_traits::to_yaml(message);
-#else
-    // ROS 2 Humble and later support optional flow-style output found via ADL.
-    constexpr bool use_flow_style = true;
-    return to_yaml(message, use_flow_style);
-#endif
-  }
-};
-#endif
-struct GenericPrinter
-{
-  template <typename T>
-  static std::string Print(const T& value)
-  {
-    std::ostringstream strm;
-    strm << value;
-    return strm.str();
-  }
-};
-}  // namespace internal
-
 // Base template function for printing types
 template <typename T>
 inline std::string Print(const T& toprint,
@@ -71,14 +30,9 @@ inline std::string Print(const T& toprint,
 {
   CRU_UNUSED(add_delimiters);
   CRU_UNUSED(separator);
-#if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
-  using Printer = typename std::conditional<
-      rosidl_generator_traits::is_message<T>::value,
-      internal::ROSMessagePrinter, internal::GenericPrinter>::type;
-#else
-  using Printer = internal::GenericPrinter;
-#endif
-  return Printer::Print(toprint);
+  std::ostringstream strm;
+  strm << toprint;
+  return strm.str();
 }
 
 ///////////////////////////////////////////////////////////////////

@@ -167,11 +167,15 @@ int main(int argc, char** argv)
     {
       return common_robotics_utilities::math::AverageEigenVector4d(cluster);
     };
+    const auto logging_fn = [] (const std::string& message)
+    {
+      std::cout << message << std::endl;
+    };
     const auto kmeans_start = std::chrono::steady_clock::now();
     const std::vector<int32_t> kmeans_labels
         = common_robotics_utilities::simple_kmeans_clustering::Cluster(
             random_points, distance_fn, average_fn, num_clusters, 42, true,
-            use_parallel);
+            use_parallel, logging_fn);
     const auto kmeans_end = std::chrono::steady_clock::now();
     const double kmeans_elapsed =
         std::chrono::duration<double>(kmeans_end - kmeans_start).count();

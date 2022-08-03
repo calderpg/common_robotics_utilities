@@ -4,7 +4,6 @@
 
 #include <cstdint>
 #include <fstream>
-#include <iostream>
 #include <limits>
 #include <stdexcept>
 #include <string>
@@ -28,9 +27,9 @@ std::vector<uint8_t> DecompressBytes(const std::vector<uint8_t>& compressed)
     int ret = inflateInit(&strm);
     if (ret != Z_OK)
     {
-      (void)inflateEnd(&strm);
-      std::cerr << "ZLIB can't init inflate stream ret=" << ret << std::endl;
-      throw std::invalid_argument("ZLIB can't init inflate stream");
+      inflateEnd(&strm);
+      throw std::runtime_error(
+          "ZLIB can't init inflate stream (ret = " + std::to_string(ret) + ")");
     }
     strm.avail_in = static_cast<uint32_t>(compressed.size());
     strm.next_in = const_cast<uint8_t*>(reinterpret_cast<const uint8_t*>(
@@ -49,11 +48,11 @@ std::vector<uint8_t> DecompressBytes(const std::vector<uint8_t>& compressed)
     while (ret == Z_OK);
     if (ret != Z_STREAM_END)
     {
-      (void)inflateEnd(&strm);
-      std::cerr << "ZLIB can't inflate stream ret=" << ret << std::endl;
-      throw std::invalid_argument("ZLIB can't inflate stream");
+      inflateEnd(&strm);
+      throw std::runtime_error(
+          "ZLIB can't inflate stream (ret = " + std::to_string(ret) + ")");
     }
-    (void)inflateEnd(&strm);
+    inflateEnd(&strm);
     std::vector<uint8_t> decompressed(buffer);
     return decompressed;
   }
@@ -82,18 +81,18 @@ std::vector<uint8_t> CompressBytes(const std::vector<uint8_t>& uncompressed)
     int ret = deflateInit(&strm, Z_BEST_SPEED);
     if (ret != Z_OK)
     {
-      (void)deflateEnd(&strm);
-      std::cerr << "ZLIB can't init deflate stream ret=" << ret << std::endl;
-      throw std::invalid_argument("ZLIB can't init deflate stream");
+      deflateEnd(&strm);
+      throw std::runtime_error(
+          "ZLIB can't init deflate stream (ret = " + std::to_string(ret) + ")");
     }
     while (strm.avail_in != 0)
     {
       ret = deflate(&strm, Z_NO_FLUSH);
       if (ret != Z_OK)
       {
-        (void)deflateEnd(&strm);
-        std::cerr << "ZLIB can't deflate stream ret=" << ret << std::endl;
-        throw std::invalid_argument("ZLIB can't deflate stream");
+        deflateEnd(&strm);
+        throw std::runtime_error(
+            "ZLIB can't deflate stream (ret = " + std::to_string(ret) + ")");
       }
       if (strm.avail_out == 0)
       {
@@ -115,13 +114,14 @@ std::vector<uint8_t> CompressBytes(const std::vector<uint8_t>& uncompressed)
     }
     if (deflate_ret != Z_STREAM_END)
     {
-      (void)deflateEnd(&strm);
-      std::cerr << "ZLIB can't deflate stream ret=" << deflate_ret << std::endl;
-      throw std::invalid_argument("ZLIB can't deflate stream");
+      deflateEnd(&strm);
+      throw std::runtime_error(
+          "ZLIB can't deflate stream (ret = " + std::to_string(deflate_ret) +
+          ")");
     }
     buffer.insert(buffer.end(), temp_buffer,
                   temp_buffer + BUFSIZE - strm.avail_out);
-    (void)deflateEnd(&strm);
+    deflateEnd(&strm);
     std::vector<uint8_t> compressed(buffer);
     return compressed;
   }

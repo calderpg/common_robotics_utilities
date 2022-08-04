@@ -69,7 +69,7 @@ double WaypointDistance(const Waypoint& start, const Waypoint& end)
 Waypoint InterpolateWaypoint(
     const Waypoint& start, const Waypoint& end, const double ratio)
 {
-  const double real_ratio = utility::ClampValueAndWarn(ratio, 0.0, 1.0);
+  const double real_ratio = utility::ClampValue(ratio, 0.0, 1.0);
   const double delta_rows = static_cast<double>(end.first - start.first);
   const double delta_cols = static_cast<double>(end.second - start.second);
   const double raw_interp_rows = delta_rows * real_ratio;

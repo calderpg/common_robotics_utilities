@@ -87,6 +87,15 @@ namespace common_robotics_utilities
 {
 namespace utility
 {
+/// Signature of a basic logging function.
+using LoggingFunction = std::function<void(const std::string&)>;
+
+/// Make a do-nothing logging function.
+inline LoggingFunction NoOpLoggingFunction()
+{
+  return [] (const std::string&) {};
+}
+
 /// Signature for function that returns a double uniformly sampled from
 /// the interval [0.0, 1.0).
 using UniformUnitRealFunction = std::function<double(void)>;
@@ -125,36 +134,30 @@ SizeType GetUniformRandomInRange(
   return start + offset;
 }
 
-template <typename T>
-inline T ClampValue(const T& val, const T& min, const T& max)
-{
-  if (max >= min)
-  {
-    return std::min(max, std::max(min, val));
-  }
-  else
-  {
-    throw std::invalid_argument("min > max");
-  }
-}
-
 template <class T>
-inline T ClampValueAndWarn(const T& val, const T& min, const T& max)
+inline T ClampValueAndLog(const T& val, const T& min, const T& max,
+                          const LoggingFunction& logging_fn = {})
 {
   if (max >= min)
   {
     if (val < min)
     {
-      const std::string msg = "Clamping " + std::to_string(val)
-                              + " to min " + std::to_string(min) + "\n";
-      std::cerr << msg << std::flush;
+      if (logging_fn)
+      {
+        const std::string msg = "Clamping " + std::to_string(val)
+                                + " to min " + std::to_string(min);
+        logging_fn(msg);
+      }
       return min;
     }
     else if (val > max)
     {
-      const std::string msg = "Clamping " + std::to_string(val)
-                              + " to max " + std::to_string(max) + "\n";
-      std::cerr << msg << std::flush;
+      if (logging_fn)
+      {
+        const std::string msg = "Clamping " + std::to_string(val)
+                                + " to max " + std::to_string(max);
+        logging_fn(msg);
+      }
       return max;
     }
     return val;
@@ -165,21 +168,42 @@ inline T ClampValueAndWarn(const T& val, const T& min, const T& max)
   }
 }
 
+template <typename T>
+inline T ClampValue(const T& val, const T& min, const T& max)
+{
+  return ClampValueAndLog<T>(val, min, max, {});
+}
+
 // Written to mimic parts of Matlab wthresh(val, 'h', thresh) behavior,
 // spreading the value to the thresholds instead of setting them to zero
 // https://www.mathworks.com/help/wavelet/ref/wthresh.html
 template <class T>
-inline T SpreadValue(const T& val, const T& low_threshold, const T& midpoint,
-                     const T& high_threshold)
+inline T SpreadValueAndLog(const T& val, const T& low_threshold,
+                           const T& midpoint, const T& high_threshold,
+                           const LoggingFunction& logging_fn = {})
 {
   if ((low_threshold <= midpoint) && (midpoint <= high_threshold))
   {
     if (val >= midpoint && val < high_threshold)
     {
+      if (logging_fn)
+      {
+        const std::string msg = "Thresholding " + std::to_string(val)
+                                + " to high threshold "
+                                + std::to_string(high_threshold);
+        logging_fn(msg);
+      }
       return high_threshold;
     }
     else if (val < midpoint && val > low_threshold)
     {
+      if (logging_fn)
+      {
+        const std::string msg = "Thresholding " + std::to_string(val)
+                                + " to low threshold "
+                                + std::to_string(low_threshold);
+        logging_fn(msg);
+      }
       return low_threshold;
     }
     return val;
@@ -190,65 +214,40 @@ inline T SpreadValue(const T& val, const T& low_threshold, const T& midpoint,
   }
 }
 
-// Written to mimic parts of Matlab wthresh(val, 'h', thresh) behavior,
-// spreading the value to the thresholds instead of setting them to zero
-// https://www.mathworks.com/help/wavelet/ref/wthresh.html
 template <class T>
-inline T SpreadValueAndWarn(const T& val, const T& low_threshold,
-                            const T& midpoint, const T& high_threshold)
+inline T SpreadValue(const T& val, const T& low_threshold, const T& midpoint,
+                     const T& high_threshold)
 {
-  if ((low_threshold <= midpoint) && (midpoint <= high_threshold))
-  {
-    if (val >= midpoint && val < high_threshold)
-    {
-      const std::string msg = "Thresholding " + std::to_string(val)
-                              + " to high threshold "
-                              + std::to_string(high_threshold) + "\n";
-      std::cerr << msg << std::flush;
-      return high_threshold;
-    }
-    else if (val < midpoint && val > low_threshold)
-    {
-      const std::string msg = "Thresholding " + std::to_string(val)
-                              + " to low threshold "
-                              + std::to_string(low_threshold) + "\n";
-      std::cerr << msg << std::flush;
-      return low_threshold;
-    }
-    return val;
-  }
-  else
-  {
-    throw std::invalid_argument("Invalid thresholds/midpoint");
-  }
+  return SpreadValueAndLog<T>(
+      val, low_threshold, midpoint, high_threshold, {});
 }
 
 template<typename T>
 inline bool CheckAlignment(const T& item,
                            const uint64_t desired_alignment,
-                           bool verbose=false)
+                           const LoggingFunction& logging_fn = {})
 {
   const T* item_ptr = std::addressof(item);
   const uintptr_t item_ptr_val = reinterpret_cast<uintptr_t>(item_ptr);
   if ((item_ptr_val % desired_alignment) == 0)
   {
-    if (verbose)
+    if (logging_fn)
     {
       const std::string msg = "Item @ " + std::to_string(item_ptr_val)
                               + " aligned to "
-                              + std::to_string(desired_alignment) + " bytes\n";
-      std::cout << msg << std::flush;
+                              + std::to_string(desired_alignment) + " bytes";
+      logging_fn(msg);
     }
     return true;
   }
   else
   {
-    if (verbose)
+    if (logging_fn)
     {
       const std::string msg = "Item @ " + std::to_string(item_ptr_val)
                               + " NOT aligned to "
-                              + std::to_string(desired_alignment) + " bytes\n";
-      std::cout << msg << std::flush;
+                              + std::to_string(desired_alignment) + " bytes";
+      logging_fn(msg);
     }
     return false;
   }
@@ -508,32 +507,6 @@ inline MapLike MakeFromKeysAndValues(
   else
   {
     throw std::invalid_argument("keys.size() != values.size()");
-  }
-}
-
-inline void ConditionalPrint(const std::string& msg,
-                             const int32_t msg_level,
-                             const int32_t print_level)
-{
-  if (CRU_UNLIKELY(msg_level <= print_level))
-  {
-    const std::string printstr = "[" + std::to_string(msg_level) + "/"
-                                 + std::to_string(print_level) + "] "
-                                 + msg + "\n";
-    std::cout << printstr << std::flush;
-  }
-}
-
-inline void ConditionalError(const std::string& msg,
-                             const int32_t msg_level,
-                             const int32_t print_level)
-{
-  if (CRU_UNLIKELY(msg_level <= print_level))
-  {
-    const std::string printstr = "[" + std::to_string(msg_level) + "/"
-                                 + std::to_string(print_level) + "] "
-                                 + msg + "\n";
-    std::cerr << printstr << std::flush;
   }
 }
 }  // namespace utility

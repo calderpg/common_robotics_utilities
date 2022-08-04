@@ -360,14 +360,14 @@ Eigen::Isometry3d ExpTwist(const Eigen::Matrix<double, 6, 1>& twist,
   }
   else
   {
+    // NOTE: you may encounter numerical instability using ExpTwist(...) with
+    // translation and rotational norm < 1e-100.
     if ((trans_velocity_norm >= 1e-100) || (rot_velocity_norm == 0.0))
     {
       raw_transform.block<3, 1>(0, 3) = trans_velocity * delta_t;
     }
     else
     {
-      std::cerr << "YOU MAY ENCOUNTER NUMERICAL INSTABILITY IN EXPTWIST(...)"
-                   " WITH TRANS & ROT VELOCITY NORM < 1e-100 ***" << std::endl;
       const double scaled_delta_t = delta_t * rot_velocity_norm;
       const Eigen::Vector3d scaled_trans_velocity
           = trans_velocity / rot_velocity_norm;

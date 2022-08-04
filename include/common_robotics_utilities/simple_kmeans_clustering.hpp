@@ -133,9 +133,6 @@ inline bool CheckForConvergence(
   }
 }
 
-/// Typedef of a logging function used by K-means clustering.
-using LoggingFunction = std::function<void(const std::string&)>;
-
 /// Perform K-means clustering of @param data with corresponding weights @param
 /// data_weightd, using @param distance_fn to compute element-to-element
 /// distances and @param weighted_average_fn to compute the center/mean of a set
@@ -153,7 +150,7 @@ inline std::vector<int32_t> ClusterWeighted(
         weighted_average_fn,
     const int32_t num_clusters, const int64_t prng_seed,
     const bool do_preliminary_clustering, const bool use_parallel = false,
-    const LoggingFunction& logging_fn = [] (const std::string&) {})
+    const utility::LoggingFunction& logging_fn = utility::NoOpLoggingFunction())
 {
   if (data.empty())
   {
@@ -307,7 +304,7 @@ inline std::vector<int32_t> Cluster(
     const std::function<DataType(const Container&)>& average_fn,
     const int32_t num_clusters, const int64_t prng_seed,
     const bool do_preliminary_clustering, const bool use_parallel = false,
-    const LoggingFunction& logging_fn = [] (const std::string&) {})
+    const utility::LoggingFunction& logging_fn = utility::NoOpLoggingFunction())
 {
   // Make a dummy set of uniform weights
   const std::vector<double> data_weights(data.size(), 1.0);

@@ -54,35 +54,43 @@ GTEST_TEST(UtilityTest, GetUniformRandom)
 
 GTEST_TEST(UtilityTest, ClampAndSpread)
 {
+  const utility::LoggingFunction logging_fn = [] (const std::string& msg)
+  {
+    std::cout << msg << std::endl;
+  };
   ASSERT_EQ(utility::ClampValue(1.0, -0.5, 0.5), 0.5);
-  ASSERT_EQ(utility::ClampValueAndWarn(1.0, -0.5, 0.5), 0.5);
+  ASSERT_EQ(utility::ClampValueAndLog(1.0, -0.5, 0.5, logging_fn), 0.5);
 
   ASSERT_EQ(utility::ClampValue(-1.0, -0.5, 0.5), -0.5);
-  ASSERT_EQ(utility::ClampValueAndWarn(-1.0, -0.5, 0.5), -0.5);
+  ASSERT_EQ(utility::ClampValueAndLog(-1.0, -0.5, 0.5, logging_fn), -0.5);
 
   ASSERT_EQ(utility::ClampValue(0.25, -0.5, 0.5), 0.25);
-  ASSERT_EQ(utility::ClampValueAndWarn(0.25, -0.5, 0.5), 0.25);
+  ASSERT_EQ(utility::ClampValueAndLog(0.25, -0.5, 0.5, logging_fn), 0.25);
 
   ASSERT_THROW(utility::ClampValue(1.0, 1.0, -1.0), std::invalid_argument);
   ASSERT_THROW(
-      utility::ClampValueAndWarn(1.0, 1.0, -1.0), std::invalid_argument);
+      utility::ClampValueAndLog(1.0, 1.0, -1.0, logging_fn),
+      std::invalid_argument);
 
   ASSERT_EQ(utility::SpreadValue(1.0, -0.5, 0.0, 0.5), 1.0);
-  ASSERT_EQ(utility::SpreadValueAndWarn(1.0, -0.5, 0.0, 0.5), 1.0);
+  ASSERT_EQ(utility::SpreadValueAndLog(1.0, -0.5, 0.0, 0.5, logging_fn), 1.0);
 
   ASSERT_EQ(utility::SpreadValue(-1.0, -0.5, 0.0, 0.5), -1.0);
-  ASSERT_EQ(utility::SpreadValueAndWarn(-1.0, -0.5, 0.0, 0.5), -1.0);
+  ASSERT_EQ(
+      utility::SpreadValueAndLog(-1.0, -0.5, 0.0, 0.5, logging_fn), -1.0);
 
   ASSERT_EQ(utility::SpreadValue(0.25, -0.5, 0.0, 0.5), 0.5);
-  ASSERT_EQ(utility::SpreadValueAndWarn(0.25, -0.5, 0.0, 0.5), 0.5);
+  ASSERT_EQ(utility::SpreadValueAndLog(0.25, -0.5, 0.0, 0.5, logging_fn), 0.5);
 
   ASSERT_EQ(utility::SpreadValue(-0.25, -0.5, 0.0, 0.5), -0.5);
-  ASSERT_EQ(utility::SpreadValueAndWarn(-0.25, -0.5, 0.0, 0.5), -0.5);
+  ASSERT_EQ(
+      utility::SpreadValueAndLog(-0.25, -0.5, 0.0, 0.5, logging_fn), -0.5);
 
   ASSERT_THROW(
       utility::SpreadValue(1.0, 1.0, 0.0, -1.0), std::invalid_argument);
   ASSERT_THROW(
-      utility::SpreadValueAndWarn(1.0, 1.0, 0.0, -1.0), std::invalid_argument);
+      utility::SpreadValueAndLog(1.0, 1.0, 0.0, -1.0, logging_fn),
+      std::invalid_argument);
 }
 
 GTEST_TEST(UtilityTest, Alignment)

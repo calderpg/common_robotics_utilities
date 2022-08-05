@@ -334,20 +334,17 @@ bool CheckGraphLinkage(const GraphType& graph)
       const int64_t from_index = current_edge.GetFromIndex();
       if (from_index < 0 || from_index >= graph.Size())
       {
-        std::cerr << "from_index out of bounds" << std::endl;
         return false;
       }
       // Check to index to make sure it matches our own index
       const int64_t to_index = current_edge.GetToIndex();
       if (to_index != idx)
       {
-        std::cerr << "to_index does not point to current node" << std::endl;
         return false;
       }
       // Check edge validity (edges to ourself are not allowed)
       if (from_index == to_index)
       {
-        std::cerr << "from_index == to_index not allowed" << std::endl;
         return false;
       }
       // Check to make sure that the from index node is linked to us
@@ -365,7 +362,6 @@ bool CheckGraphLinkage(const GraphType& graph)
       }
       if (from_node_connection_valid == false)
       {
-        std::cerr << "from_index connection is invalid" << std::endl;
         return false;
       }
     }
@@ -377,20 +373,17 @@ bool CheckGraphLinkage(const GraphType& graph)
       const int64_t from_index = current_edge.GetFromIndex();
       if (from_index != idx)
       {
-        std::cerr << "from_index does not point to current node" << std::endl;
         return false;
       }
       // Check to index to make sure it's in bounds
       const int64_t to_index = current_edge.GetToIndex();
       if (to_index < 0 || to_index >= graph.Size())
       {
-        std::cerr << "To index out of bounds" << std::endl;
         return false;
       }
       // Check edge validity (edges to ourself are not allowed)
       if (from_index == to_index)
       {
-        std::cerr << "From index == to index not allowed" << std::endl;
         return false;
       }
       // Check to make sure that the to index node is linked to us
@@ -408,7 +401,6 @@ bool CheckGraphLinkage(const GraphType& graph)
       }
       if (to_node_connection_valid == false)
       {
-        std::cerr << "To index connection is invalid" << std::endl;
         return false;
       }
     }

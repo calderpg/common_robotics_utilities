@@ -4,7 +4,6 @@
 #include <cmath>
 #include <cstdint>
 #include <functional>
-#include <iostream>
 #include <random>
 #include <stdexcept>
 #include <vector>
@@ -181,10 +180,6 @@ inline Container AttemptShortcut(
             second_half_shortcut.end());
       }
       return shortcut;
-    }
-    else
-    {
-      std::cerr << "Window size < 2, cannot backtrack" << std::endl;
     }
   }
   // If we get here, the shortcut failed and we return an empty shortcut path

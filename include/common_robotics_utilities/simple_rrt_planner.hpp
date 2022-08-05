@@ -319,18 +319,12 @@ public:
       const auto& current_state = nodes.at(current_index);
       if (!current_state.IsInitialized())
       {
-        std::cerr << "Tree contains uninitialized node(s): "
-                  << current_index << std::endl;
         return false;
       }
       // Check the linkage to the parent state
       const int64_t parent_index = current_state.GetParentIndex();
       if (parent_index > static_cast<int64_t>(current_index))
       {
-        std::cerr << "Invalid parent index " << parent_index << " for state "
-                  << current_index
-                  << " [Parent index cannot be greater than our own index]"
-                  << std::endl;
         return false;
       }
       if ((parent_index >= 0)
@@ -343,8 +337,6 @@ public:
           // Make sure the parent state is initialized.
           if (!parent_state.IsInitialized())
           {
-            std::cerr << "Tree contains uninitialized node(s) "
-                      << parent_index << std::endl;
             return false;
           }
           // Make sure the corresponding parent contains the current node in its
@@ -356,25 +348,13 @@ public:
                                        static_cast<int64_t>(current_index));
           if (index_found == parent_child_indices.end())
           {
-            std::cerr << "Parent state " << parent_index
-                      << " does not contain child index for current node "
-                      << current_index << std::endl;
             return false;
           }
         }
         else
         {
-          std::cerr << "Invalid parent index " << parent_index << " for state "
-                    << current_index << " [Parent index cannot be our own index]"
-                    << std::endl;
           return false;
         }
-      }
-      else if (parent_index < -1)
-      {
-        std::cerr << "Invalid parent index " << parent_index << " for state "
-                  << current_index << " [Parent index < -1]" << std::endl;
-        return false;
       }
       // Check the linkage to the child states
       const std::vector<int64_t>& current_child_indices
@@ -390,41 +370,22 @@ public:
                 nodes.at(static_cast<size_t>(current_child_index));
             if (!child_state.IsInitialized())
             {
-              std::cerr << "Tree contains uninitialized node(s) "
-                        << current_child_index << std::endl;
               return false;
             }
             // Make sure the child node points to us as the parent index
             const int64_t child_parent_index = child_state.GetParentIndex();
             if (child_parent_index != static_cast<int64_t>(current_index))
             {
-              std::cerr << "Parent index " << child_parent_index
-                        << " for current child state " << current_child_index
-                        << " does not match index " << current_index
-                        << " for current node " << std::endl;
               return false;
             }
           }
-          else if (current_child_index == static_cast<int64_t>(current_index))
-          {
-            std::cerr << "Invalid child index " << current_child_index
-                      << " for state " << current_index
-                      << " [Child index cannot be our own index]" << std::endl;
-            return false;
-          }
           else
           {
-            std::cerr << "Invalid child index " << current_child_index
-                      << " for state " << current_index
-                      << " [Child index cannot be less than our own index]"
-                      << std::endl;
             return false;
           }
         }
         else
         {
-          std::cerr << "Invalid child index " << current_child_index
-                    << " for state " << current_index << std::endl;
           return false;
         }
       }

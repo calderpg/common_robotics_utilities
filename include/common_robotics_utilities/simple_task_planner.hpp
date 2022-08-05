@@ -3,7 +3,6 @@
 #include <algorithm>
 #include <cstdint>
 #include <functional>
-#include <iostream>
 #include <limits>
 #include <map>
 #include <memory>
@@ -16,6 +15,7 @@
 #include <common_robotics_utilities/maybe.hpp>
 #include <common_robotics_utilities/simple_astar_search.hpp>
 #include <common_robotics_utilities/simple_knearest_neighbors.hpp>
+#include <common_robotics_utilities/utility.hpp>
 
 namespace common_robotics_utilities
 {
@@ -99,15 +99,6 @@ private:
   std::string name_;
 };
 
-/// Typedef of a logging function used by ActionPrimitiveCollection.
-using LoggingFunction = std::function<void(const std::string&)>;
-
-/// Make a LoggingFunction using std::cout.
-inline LoggingFunction MakeCoutLoggingFunction()
-{
-  return [] (const std::string& message) { std::cout << message << std::endl; };
-}
-
 /// Stores a collection of action primitives, enforcing name uniqueness and
 /// providing useful helpers.
 template<typename State, typename Container=std::vector<State>>
@@ -115,10 +106,10 @@ class ActionPrimitiveCollection
 {
 public:
   explicit ActionPrimitiveCollection(
-      const LoggingFunction& logging_fn = MakeCoutLoggingFunction())
+      const utility::LoggingFunction& logging_fn = {})
       : logging_fn_(logging_fn) {}
 
-  void SetLoggingFunction(const LoggingFunction& logging_fn)
+  void SetLoggingFunction(const utility::LoggingFunction& logging_fn)
   {
     logging_fn_ = logging_fn;
   }
@@ -177,7 +168,7 @@ public:
 
 private:
   std::vector<ActionPrimitiveSharedPtr<State, Container>> primitives_;
-  LoggingFunction logging_fn_;
+  utility::LoggingFunction logging_fn_;
 };
 
 /// Return a heuristic value for the provided state.
@@ -461,7 +452,6 @@ Container PerformSingleTaskExecution(
     const TaskSequenceCompleteFunction<State>& task_sequence_complete_fn,
     const Container& start_states,
     const int32_t max_primitive_executions = -1,
-    const bool single_step = false,
     const StateHeuristicFunction<State>& state_heuristic_fn = {},
     const StateHash& state_hasher = StateHash(),
     const StateEqual& state_equaler = StateEqual(),
@@ -516,18 +506,8 @@ Container PerformSingleTaskExecution(
       user_pre_action_callback_fn(selected_outcome, next_primitive);
     }
 
-    // Prompt to continue/notify.
-    if (single_step)
-    {
-      std::cout << "Press ENTER to perform primitive ["
-                << next_primitive->Name() << "]" << std::endl;
-      std::cin.get();
-    }
-    else
-    {
-      primitive_collection.Log(
-          "Performing primitive [" + next_primitive->Name() + "]");
-    }
+    primitive_collection.Log(
+        "Performing primitive [" + next_primitive->Name() + "]");
 
     // Execute the primitive.
     num_primitive_executions++;
@@ -551,7 +531,6 @@ Container PerformSingleTaskExecution(
     const TaskSequenceCompleteFunction<State>& task_sequence_complete_fn,
     const State& start_state,
     const int32_t max_primitive_executions = -1,
-    const bool single_step = false,
     const StateHeuristicFunction<State>& state_heuristic_fn = {},
     const StateHash& state_hasher = StateHash(),
     const StateEqual& state_equaler = StateEqual(),
@@ -568,8 +547,8 @@ Container PerformSingleTaskExecution(
 
   return PerformSingleTaskExecution<State, Container, StateHash, StateEqual>(
       primitive_collection, task_sequence_complete_fn, start_states,
-      max_primitive_executions, single_step, state_heuristic_fn, state_hasher,
-      state_equaler, user_pre_action_callback_fn, user_post_execution_callback,
+      max_primitive_executions, state_heuristic_fn, state_hasher, state_equaler,
+      user_pre_action_callback_fn, user_post_execution_callback,
       user_post_outcome_callback_fn);
 }
 }  // namespace simple_task_planner

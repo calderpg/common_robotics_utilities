@@ -2,8 +2,8 @@
 
 #include <cmath>
 #include <cstdint>
-#include <iostream>
 #include <memory>
+#include <ostream>
 #include <stdexcept>
 #include <string>
 #include <vector>
@@ -1249,8 +1249,6 @@ public:
     }
     else
     {
-      std::cerr << "Failed to load internal data - expected "
-                << expected_length << " got " << data.size() << std::endl;
       return false;
     }
   }

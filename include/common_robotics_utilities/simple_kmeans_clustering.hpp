@@ -12,6 +12,7 @@
 
 #include <common_robotics_utilities/openmp_helpers.hpp>
 #include <common_robotics_utilities/simple_knearest_neighbors.hpp>
+#include <common_robotics_utilities/utility.hpp>
 
 namespace common_robotics_utilities
 {

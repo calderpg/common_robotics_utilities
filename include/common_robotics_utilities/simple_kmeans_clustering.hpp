@@ -150,7 +150,7 @@ inline std::vector<int32_t> ClusterWeighted(
         weighted_average_fn,
     const int32_t num_clusters, const int64_t prng_seed,
     const bool do_preliminary_clustering, const bool use_parallel = false,
-    const utility::LoggingFunction& logging_fn = utility::NoOpLoggingFunction())
+    const utility::LoggingFunction& logging_fn = {})
 {
   if (data.empty())
   {
@@ -158,7 +158,10 @@ inline std::vector<int32_t> ClusterWeighted(
   }
   if (num_clusters == 1)
   {
-    logging_fn("[K-means clustering] Provided num_clusters = 1");
+    if (logging_fn)
+    {
+      logging_fn("[K-means clustering] Provided num_clusters = 1");
+    }
     return std::vector<int32_t>(data.size(), 0u);
   }
   else if (num_clusters == 0)
@@ -175,17 +178,23 @@ inline std::vector<int32_t> ClusterWeighted(
     if (subset_size >= (num_clusters * 5))
     {
       enable_preliminary_clustering = true;
-      logging_fn(
-          "[K-means clustering] Preliminary clustering enabled, using subset "
-          "of " + std::to_string(subset_size) + " datapoints from " +
-          std::to_string(data.size()) + " total");
+      if (logging_fn)
+      {
+        logging_fn(
+            "[K-means clustering] Preliminary clustering enabled, using subset "
+            "of " + std::to_string(subset_size) + " datapoints from " +
+            std::to_string(data.size()) + " total");
+      }
     }
     else
     {
       enable_preliminary_clustering = false;
-      logging_fn(
-          "[K-means clustering] Preliminary clustering disabled as input data "
-          "is too small w.r.t. number of clusters");
+      if (logging_fn)
+      {
+        logging_fn(
+            "[K-means clustering] Preliminary clustering disabled as input data"
+            " is too small w.r.t. number of clusters");
+      }
     }
   }
   // Prepare an RNG for cluster initialization
@@ -283,9 +292,12 @@ inline std::vector<int32_t> ClusterWeighted(
     converged = CheckForConvergence(cluster_labels, new_cluster_labels);
     cluster_labels = new_cluster_labels;
   }
-  logging_fn(
-      "[K-means clustering] Clustering converged after " +
-      std::to_string(iteration) + " iterations");
+  if (logging_fn)
+  {
+    logging_fn(
+        "[K-means clustering] Clustering converged after " +
+        std::to_string(iteration) + " iterations");
+  }
   return cluster_labels;
 }
 
@@ -304,7 +316,7 @@ inline std::vector<int32_t> Cluster(
     const std::function<DataType(const Container&)>& average_fn,
     const int32_t num_clusters, const int64_t prng_seed,
     const bool do_preliminary_clustering, const bool use_parallel = false,
-    const utility::LoggingFunction& logging_fn = utility::NoOpLoggingFunction())
+    const utility::LoggingFunction& logging_fn = {})
 {
   // Make a dummy set of uniform weights
   const std::vector<double> data_weights(data.size(), 1.0);

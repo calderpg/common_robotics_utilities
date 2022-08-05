@@ -24,10 +24,10 @@
 #error "Undefined or unknown COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION"
 #endif
 
+#if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
 /// Define an ostream operator for ROS 2 message types.
 namespace std
 {
-#if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
 template <typename T>
 enable_if_t<rosidl_generator_traits::is_message<T>::value, ostream>&
 operator<<(ostream& os, const T& message)
@@ -42,8 +42,8 @@ operator<<(ostream& os, const T& message)
 #endif
   return os;
 }
+}  // namespace std
 #endif
-}  // namespace
 
 namespace common_robotics_utilities
 {

@@ -106,8 +106,7 @@ class ActionPrimitiveCollection
 {
 public:
   explicit ActionPrimitiveCollection(
-      const utility::LoggingFunction& logging_fn =
-          utility::NoOpLoggingFunction())
+      const utility::LoggingFunction& logging_fn = {})
       : logging_fn_(logging_fn) {}
 
   void SetLoggingFunction(const utility::LoggingFunction& logging_fn)

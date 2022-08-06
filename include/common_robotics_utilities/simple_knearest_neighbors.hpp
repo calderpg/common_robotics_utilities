@@ -1,9 +1,5 @@
 #pragma once
 
-#if defined(_OPENMP)
-#include <omp.h>
-#endif
-
 #include <cstdint>
 #include <functional>
 #include <limits>

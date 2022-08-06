@@ -1,9 +1,5 @@
 #pragma once
 
-#if defined(_OPENMP)
-#include <omp.h>
-#endif
-
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -125,9 +121,7 @@ inline ClosestPair GetClosestClustersParallel(
 {
   std::vector<ClosestPair> per_thread_closest_clusters(
       static_cast<size_t>(openmp_helpers::GetNumOmpThreads()), ClosestPair());
-#if defined(_OPENMP)
-#pragma omp parallel for
-#endif
+  CRU_OMP_PARALLEL_FOR
   for (size_t first_cluster_idx = 0; first_cluster_idx < clusters.size();
        first_cluster_idx++)
   {
@@ -279,9 +273,7 @@ inline ClosestPair GetClosestValueToOtherParallel(
 {
   std::vector<ClosestPair> per_thread_closest_value_other(
       static_cast<size_t>(openmp_helpers::GetNumOmpThreads()), ClosestPair());
-#if defined(_OPENMP)
-#pragma omp parallel for
-#endif
+  CRU_OMP_PARALLEL_FOR
   for (size_t value_idx = 0; value_idx < datapoint_mask.size(); value_idx++)
   {
     // Make sure we're not already clustered

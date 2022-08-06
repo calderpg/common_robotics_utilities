@@ -1,9 +1,5 @@
 #pragma once
 
-#if defined(_OPENMP)
-#include <omp.h>
-#endif
-
 #include <chrono>
 #include <cstdint>
 #include <functional>
@@ -14,6 +10,7 @@
 #include <vector>
 
 #include <common_robotics_utilities/maybe.hpp>
+#include <common_robotics_utilities/openmp_helpers.hpp>
 #include <common_robotics_utilities/simple_graph.hpp>
 #include <common_robotics_utilities/simple_graph_search.hpp>
 #include <common_robotics_utilities/simple_knearest_neighbors.hpp>
@@ -110,11 +107,7 @@ inline int64_t AddNodeToRoadmap(
   std::vector<std::pair<double, double>> nearest_neighbors_distances(
       nearest_neighbors.size());
 
-#if defined(_OPENMP)
-#pragma omp parallel for if (use_parallel)
-#else
-  CRU_UNUSED(use_parallel);
-#endif
+  CRU_OMP_PARALLEL_FOR_IF(use_parallel)
   for (size_t idx = 0; idx < nearest_neighbors.size(); idx++)
   {
     const auto& nearest_neighbor = nearest_neighbors.at(idx);
@@ -369,11 +362,7 @@ GraphType BuildRoadMap(
   // add_duplicate_states is true, since the check for duplicate states would
   // be a race condition otherwise.
   const bool use_parallel_sampling = use_parallel && add_duplicate_states;
-#if defined(_OPENMP)
-#pragma omp parallel for if (use_parallel_sampling)
-#else
-  CRU_UNUSED(use_parallel_sampling);
-#endif
+  CRU_OMP_PARALLEL_FOR_IF(use_parallel_sampling)
   for (size_t index = 0; index < roadmap_states.size(); index++)
   {
     roadmap_states.at(index) = valid_sample_fn();
@@ -403,9 +392,7 @@ GraphType BuildRoadMap(
 
   // Perform edge validity and distance checks for all nodes, optionally in
   // parallel.
-#if defined(_OPENMP)
-#pragma omp parallel for if (use_parallel)
-#endif
+  CRU_OMP_PARALLEL_FOR_IF(use_parallel)
   for (int64_t node_index = 0; node_index < roadmap.Size(); ++node_index)
   {
     auto& node = roadmap.GetNodeMutable(node_index);
@@ -528,11 +515,7 @@ inline void UpdateRoadMapEdges(
     throw std::invalid_argument("Provided roadmap has invalid linkage");
   }
 
-#if defined(_OPENMP)
-#pragma omp parallel for if (use_parallel)
-#else
-  CRU_UNUSED(use_parallel);
-#endif
+  CRU_OMP_PARALLEL_FOR_IF(use_parallel)
   for (int64_t current_node_index = 0; current_node_index < roadmap.Size();
        current_node_index++)
   {

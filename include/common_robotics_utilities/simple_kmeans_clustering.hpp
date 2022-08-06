@@ -1,9 +1,5 @@
 #pragma once
 
-#if defined(_OPENMP)
-#include <omp.h>
-#endif
-
 #include <cmath>
 #include <cstdint>
 #include <functional>
@@ -14,6 +10,7 @@
 #include <unordered_map>
 #include <vector>
 
+#include <common_robotics_utilities/openmp_helpers.hpp>
 #include <common_robotics_utilities/simple_knearest_neighbors.hpp>
 #include <common_robotics_utilities/utility.hpp>
 
@@ -35,11 +32,7 @@ inline std::vector<int32_t> PerformSingleClusteringIteration(
 {
   std::vector<int32_t> new_cluster_labels(data.size());
 
-#if defined(_OPENMP)
-#pragma omp parallel for if (use_parallel)
-#else
-  CRU_UNUSED(use_parallel);
-#endif
+  CRU_OMP_PARALLEL_FOR_IF(use_parallel)
   for (size_t idx = 0; idx < data.size(); idx++)
   {
     const DataType& datapoint = data.at(idx);
@@ -88,11 +81,7 @@ inline Container ComputeClusterCentersWeighted(
     // Compute the center of each cluster
     Container cluster_centers(static_cast<size_t>(num_clusters));
 
-#if defined(_OPENMP)
-#pragma omp parallel for if (use_parallel)
-#else
-    CRU_UNUSED(use_parallel);
-#endif
+    CRU_OMP_PARALLEL_FOR_IF(use_parallel)
     for (size_t cluster = 0; cluster < clustered_data.size(); cluster++)
     {
       const Container& cluster_data = clustered_data.at(cluster);

@@ -696,14 +696,8 @@ RRTPlanMultiPath(
     const SampleType random_target = sampling_fn();
     statistics["total_samples"] += 1.0;
     // Get the nearest neighbor
-    const int64_t nearest_neighbor_index
-        = nearest_neighbor_fn(tree, random_target);
-    // nearest_neighbor_index < 0 is handled as a special case of early
-    // termination.
-    if (CRU_UNLIKELY(nearest_neighbor_index < 0))
-    {
-      break;
-    }
+    const int64_t nearest_neighbor_index =
+        nearest_neighbor_fn(tree, random_target);
     const StateType& nearest_neighbor =
         tree.GetNodeImmutable(nearest_neighbor_index).GetValueImmutable();
     // Forward propagate towards the goal
@@ -968,16 +962,10 @@ BiRRTPlanMultiPath(
           ? target_tree.GetNodeImmutable(
               target_tree_node_index).GetValueImmutable()
           : state_sampling_fn();
-    // Get the nearest neighbor
-    const int64_t nearest_neighbor_index
-        = nearest_neighbor_fn(active_tree, target_state, start_tree_active);
-    // nearest_neighbor_index < 0 is handled as a sepecial case of early
-    // termination.
-    if (CRU_UNLIKELY(nearest_neighbor_index < 0))
-    {
-      break;
-    }
     statistics["total_samples"] += 1.0;
+    // Get the nearest neighbor
+    const int64_t nearest_neighbor_index =
+        nearest_neighbor_fn(active_tree, target_state, start_tree_active);
     const StateType& nearest_neighbor = active_tree.GetNodeImmutable(
         nearest_neighbor_index).GetValueImmutable();
     // Forward propagate towards the goal

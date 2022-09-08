@@ -29,35 +29,6 @@ private:
   std::vector<int64_t> previous_index_map_;
   std::vector<double> node_distances_;
 
-public:
-  static uint64_t Serialize(const DijkstrasResult& result,
-                            std::vector<uint8_t>& buffer)
-  {
-    return result.SerializeSelf(buffer);
-  }
-
-  static serialization::Deserialized<DijkstrasResult> Deserialize(
-      const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
-  {
-    DijkstrasResult temp_result;
-    const uint64_t bytes_read
-        = temp_result.DeserializeSelf(buffer, starting_offset);
-    return serialization::MakeDeserialized(temp_result, bytes_read);
-  }
-
-  DijkstrasResult() {}
-
-  DijkstrasResult(const std::vector<int64_t>& previous_index_map,
-                  const std::vector<double>& node_distances)
-      : previous_index_map_(previous_index_map), node_distances_(node_distances)
-  {
-    if (previous_index_map_.size() != node_distances_.size())
-    {
-      throw std::invalid_argument(
-          "previous_index_map.size() != node_distances.size()");
-    }
-  }
-
   uint64_t SerializeSelf(std::vector<uint8_t>& buffer) const
   {
     const uint64_t start_buffer_size = buffer.size();
@@ -97,6 +68,35 @@ public:
     // Figure out how many bytes were read
     const uint64_t bytes_read = current_position - starting_offset;
     return bytes_read;
+  }
+
+public:
+  static uint64_t Serialize(const DijkstrasResult& result,
+                            std::vector<uint8_t>& buffer)
+  {
+    return result.SerializeSelf(buffer);
+  }
+
+  static serialization::Deserialized<DijkstrasResult> Deserialize(
+      const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
+  {
+    DijkstrasResult temp_result;
+    const uint64_t bytes_read
+        = temp_result.DeserializeSelf(buffer, starting_offset);
+    return serialization::MakeDeserialized(temp_result, bytes_read);
+  }
+
+  DijkstrasResult() {}
+
+  DijkstrasResult(const std::vector<int64_t>& previous_index_map,
+                  const std::vector<double>& node_distances)
+      : previous_index_map_(previous_index_map), node_distances_(node_distances)
+  {
+    if (previous_index_map_.size() != node_distances_.size())
+    {
+      throw std::invalid_argument(
+          "previous_index_map.size() != node_distances.size()");
+    }
   }
 
   int64_t Size() const

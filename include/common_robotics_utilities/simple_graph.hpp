@@ -28,37 +28,6 @@ private:
   double weight_ = 0.0;
   uint64_t scratchpad_ = 0;
 
-public:
-
-  static uint64_t Serialize(const GraphEdge& edge, std::vector<uint8_t>& buffer)
-  {
-    return edge.SerializeSelf(buffer);
-  }
-
-  static serialization::Deserialized<GraphEdge> Deserialize(
-      const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
-  {
-    GraphEdge temp_edge;
-    const uint64_t bytes_read
-        = temp_edge.DeserializeSelf(buffer, starting_offset);
-    return serialization::MakeDeserialized(temp_edge, bytes_read);
-  }
-
-  GraphEdge(
-      const int64_t from_index, const int64_t to_index, const double weight,
-      const uint64_t scratchpad)
-      : from_index_(from_index), to_index_(to_index), weight_(weight),
-        scratchpad_(scratchpad)
-  {}
-
-  GraphEdge(
-      const int64_t from_index, const int64_t to_index, const double weight)
-      : from_index_(from_index), to_index_(to_index), weight_(weight),
-        scratchpad_(0)
-  {}
-
-  GraphEdge() : from_index_(-1), to_index_(-1), weight_(0.0), scratchpad_(0) {}
-
   uint64_t SerializeSelf(std::vector<uint8_t>& buffer) const
   {
     const uint64_t start_buffer_size = buffer.size();
@@ -100,6 +69,37 @@ public:
     const uint64_t bytes_read = current_position - starting_offset;
     return bytes_read;
   }
+
+public:
+
+  static uint64_t Serialize(const GraphEdge& edge, std::vector<uint8_t>& buffer)
+  {
+    return edge.SerializeSelf(buffer);
+  }
+
+  static serialization::Deserialized<GraphEdge> Deserialize(
+      const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
+  {
+    GraphEdge temp_edge;
+    const uint64_t bytes_read
+        = temp_edge.DeserializeSelf(buffer, starting_offset);
+    return serialization::MakeDeserialized(temp_edge, bytes_read);
+  }
+
+  GraphEdge(
+      const int64_t from_index, const int64_t to_index, const double weight,
+      const uint64_t scratchpad)
+      : from_index_(from_index), to_index_(to_index), weight_(weight),
+        scratchpad_(scratchpad)
+  {}
+
+  GraphEdge(
+      const int64_t from_index, const int64_t to_index, const double weight)
+      : from_index_(from_index), to_index_(to_index), weight_(weight),
+        scratchpad_(0)
+  {}
+
+  GraphEdge() : from_index_(-1), to_index_(-1), weight_(0.0), scratchpad_(0) {}
 
   bool operator==(const GraphEdge& other) const
   {
@@ -153,36 +153,6 @@ private:
   std::vector<EdgeType> in_edges_;
   std::vector<EdgeType> out_edges_;
 
-public:
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
-  static uint64_t Serialize(
-      const GraphNodeType& node, std::vector<uint8_t>& buffer,
-      const serialization::Serializer<NodeValueType>& value_serializer)
-  {
-    return node.SerializeSelf(buffer, value_serializer);
-  }
-
-  static serialization::Deserialized<GraphNodeType> Deserialize(
-      const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const serialization::Deserializer<NodeValueType>& value_deserializer)
-  {
-    GraphNodeType temp_node;
-    const uint64_t bytes_read
-        = temp_node.DeserializeSelf(buffer, starting_offset,
-                                    value_deserializer);
-    return serialization::MakeDeserialized(temp_node, bytes_read);
-  }
-
-  GraphNode(const NodeValueType& value,
-            const std::vector<EdgeType>& new_in_edges,
-            const std::vector<EdgeType>& new_out_edges)
-      : value_(value), in_edges_(new_in_edges), out_edges_(new_out_edges) {}
-
-  explicit GraphNode(const NodeValueType& value) : value_(value) {}
-
-  GraphNode() {}
-
   uint64_t SerializeSelf(
       std::vector<uint8_t>& buffer,
       const serialization::Serializer<NodeValueType>& value_serializer) const
@@ -228,6 +198,36 @@ public:
     const uint64_t bytes_read = current_position - starting_offset;
     return bytes_read;
   }
+
+public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+  static uint64_t Serialize(
+      const GraphNodeType& node, std::vector<uint8_t>& buffer,
+      const serialization::Serializer<NodeValueType>& value_serializer)
+  {
+    return node.SerializeSelf(buffer, value_serializer);
+  }
+
+  static serialization::Deserialized<GraphNodeType> Deserialize(
+      const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
+      const serialization::Deserializer<NodeValueType>& value_deserializer)
+  {
+    GraphNodeType temp_node;
+    const uint64_t bytes_read
+        = temp_node.DeserializeSelf(buffer, starting_offset,
+                                    value_deserializer);
+    return serialization::MakeDeserialized(temp_node, bytes_read);
+  }
+
+  GraphNode(const NodeValueType& value,
+            const std::vector<EdgeType>& new_in_edges,
+            const std::vector<EdgeType>& new_out_edges)
+      : value_(value), in_edges_(new_in_edges), out_edges_(new_out_edges) {}
+
+  explicit GraphNode(const NodeValueType& value) : value_(value) {}
+
+  GraphNode() {}
 
   std::string Print() const
   {
@@ -306,7 +306,7 @@ private:
   const GraphType& graph_;
 
 public:
-  GraphKNNAdapter(const GraphType& graph) : graph_(graph) {}
+  explicit GraphKNNAdapter(const GraphType& graph) : graph_(graph) {}
 
   size_t size() const { return static_cast<size_t>(graph_.Size()); }
 
@@ -542,47 +542,6 @@ private:
 
   NodeVector nodes_;
 
-public:
-  static uint64_t Serialize(
-      const Graph<NodeValueType>& graph, std::vector<uint8_t>& buffer,
-      const serialization::Serializer<NodeValueType>& value_serializer)
-  {
-    return graph.SerializeSelf(buffer, value_serializer);
-  }
-
-  static serialization::Deserialized<GraphType> Deserialize(
-      const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const serialization::Deserializer<NodeValueType>& value_deserializer)
-  {
-    Graph<NodeValueType> temp_graph;
-    const uint64_t bytes_read
-        = temp_graph.DeserializeSelf(
-            buffer, starting_offset, value_deserializer);
-    return serialization::MakeDeserialized(temp_graph, bytes_read);
-  }
-
-  Graph(const NodeVector& nodes)
-  {
-    GraphType temp_graph;
-    temp_graph.nodes_ = nodes;
-
-    if (temp_graph.CheckGraphLinkage())
-    {
-      nodes_ = std::move(temp_graph.nodes_);
-    }
-    else
-    {
-      throw std::invalid_argument("Invalid graph linkage");
-    }
-  }
-
-  Graph(const int64_t expected_size)
-  {
-    nodes_.reserve(static_cast<size_t>(expected_size));
-  }
-
-  Graph() {}
-
   uint64_t SerializeSelf(
       std::vector<uint8_t>& buffer,
       const serialization::Serializer<NodeValueType>& value_serializer) const
@@ -629,6 +588,47 @@ public:
     }
     return deserialized_nodes.BytesRead();
   }
+
+public:
+  static uint64_t Serialize(
+      const Graph<NodeValueType>& graph, std::vector<uint8_t>& buffer,
+      const serialization::Serializer<NodeValueType>& value_serializer)
+  {
+    return graph.SerializeSelf(buffer, value_serializer);
+  }
+
+  static serialization::Deserialized<GraphType> Deserialize(
+      const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
+      const serialization::Deserializer<NodeValueType>& value_deserializer)
+  {
+    Graph<NodeValueType> temp_graph;
+    const uint64_t bytes_read
+        = temp_graph.DeserializeSelf(
+            buffer, starting_offset, value_deserializer);
+    return serialization::MakeDeserialized(temp_graph, bytes_read);
+  }
+
+  explicit Graph(const NodeVector& nodes)
+  {
+    GraphType temp_graph;
+    temp_graph.nodes_ = nodes;
+
+    if (temp_graph.CheckGraphLinkage())
+    {
+      nodes_ = std::move(temp_graph.nodes_);
+    }
+    else
+    {
+      throw std::invalid_argument("Invalid graph linkage");
+    }
+  }
+
+  explicit Graph(const int64_t expected_size)
+  {
+    nodes_.reserve(static_cast<size_t>(expected_size));
+  }
+
+  Graph() {}
 
   std::string Print() const
   {
@@ -760,10 +760,11 @@ protected:
   const GraphType& GetBaseGraphImmutable() const { return *base_graph_; }
 
 public:
-  NonOwningGraphOverlay(const GraphType& graph)
+  explicit NonOwningGraphOverlay(const GraphType& graph)
       : NonOwningGraphOverlay(std::addressof(graph)) {}
 
-  NonOwningGraphOverlay(const GraphType* const graph) : base_graph_(graph)
+  explicit NonOwningGraphOverlay(const GraphType* const graph)
+      : base_graph_(graph)
   {
     if (base_graph_ != nullptr)
     {
@@ -933,7 +934,8 @@ private:
   std::shared_ptr<const GraphType> owned_base_graph_;
 
 public:
-  OwningGraphOverlay(const std::shared_ptr<const GraphType>& owned_base_graph)
+  explicit OwningGraphOverlay(
+      const std::shared_ptr<const GraphType>& owned_base_graph)
       : NonOwningGraphOverlay<NodeValueType, GraphType>(owned_base_graph.get()),
         owned_base_graph_(owned_base_graph) {}
 };

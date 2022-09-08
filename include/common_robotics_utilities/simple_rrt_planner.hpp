@@ -33,42 +33,6 @@ private:
   int64_t parent_index_ = -1;
   bool initialized_ = false;
 
-public:
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
-  static uint64_t Serialize(
-      const SimpleRRTPlannerState<StateType>& state,
-      std::vector<uint8_t>& buffer,
-      const serialization::Serializer<StateType>& value_serializer)
-  {
-    return state.SerializeSelf(buffer, value_serializer);
-  }
-
-  static serialization::Deserialized<SimpleRRTPlannerState<StateType>>
-  Deserialize(
-      const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const serialization::Deserializer<StateType>& value_deserializer)
-  {
-    SimpleRRTPlannerState<StateType> temp_state;
-    const uint64_t bytes_read = temp_state.DeserializeSelf(
-        buffer, starting_offset, value_deserializer);
-    return serialization::MakeDeserialized(temp_state, bytes_read);
-  }
-
-  SimpleRRTPlannerState() : parent_index_(-1), initialized_(false) {}
-
-  SimpleRRTPlannerState(const StateType& value,
-                        const int64_t parent_index,
-                        const std::vector<int64_t>& child_indices)
-      : value_(value), child_indices_(child_indices),
-        parent_index_(parent_index), initialized_(true) {}
-
-  SimpleRRTPlannerState(const StateType& value, const int64_t parent_index)
-      : value_(value), parent_index_(parent_index), initialized_(true) {}
-
-  explicit SimpleRRTPlannerState(const StateType& value)
-      : value_(value), parent_index_(-1), initialized_(true) {}
-
   uint64_t SerializeSelf(
       std::vector<uint8_t>& buffer,
       const serialization::Serializer<StateType>& value_serializer) const
@@ -122,6 +86,42 @@ public:
     const uint64_t bytes_read = current_position - starting_offset;
     return bytes_read;
   }
+
+public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+  static uint64_t Serialize(
+      const SimpleRRTPlannerState<StateType>& state,
+      std::vector<uint8_t>& buffer,
+      const serialization::Serializer<StateType>& value_serializer)
+  {
+    return state.SerializeSelf(buffer, value_serializer);
+  }
+
+  static serialization::Deserialized<SimpleRRTPlannerState<StateType>>
+  Deserialize(
+      const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
+      const serialization::Deserializer<StateType>& value_deserializer)
+  {
+    SimpleRRTPlannerState<StateType> temp_state;
+    const uint64_t bytes_read = temp_state.DeserializeSelf(
+        buffer, starting_offset, value_deserializer);
+    return serialization::MakeDeserialized(temp_state, bytes_read);
+  }
+
+  SimpleRRTPlannerState() : parent_index_(-1), initialized_(false) {}
+
+  SimpleRRTPlannerState(const StateType& value,
+                        const int64_t parent_index,
+                        const std::vector<int64_t>& child_indices)
+      : value_(value), child_indices_(child_indices),
+        parent_index_(parent_index), initialized_(true) {}
+
+  SimpleRRTPlannerState(const StateType& value, const int64_t parent_index)
+      : value_(value), parent_index_(parent_index), initialized_(true) {}
+
+  explicit SimpleRRTPlannerState(const StateType& value)
+      : value_(value), parent_index_(-1), initialized_(true) {}
 
   bool IsInitialized() const { return initialized_; }
 

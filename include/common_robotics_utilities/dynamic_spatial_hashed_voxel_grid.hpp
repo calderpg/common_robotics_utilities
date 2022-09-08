@@ -251,58 +251,6 @@ private:
     fill_status_ = DSHVGFillStatus::CHUNK_FILLED;
   }
 
-public:
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
-  static uint64_t Serialize(
-      const DynamicSpatialHashedVoxelGridChunk<T, BackingStore>& chunk,
-      std::vector<uint8_t>& buffer,
-      const serialization::Serializer<T>& value_serializer)
-  {
-    return chunk.SerializeSelf(buffer, value_serializer);
-  }
-
-  static serialization::Deserialized<
-      DynamicSpatialHashedVoxelGridChunk<T, BackingStore>> Deserialize(
-          const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-          const serialization::Deserializer<T>& value_deserializer)
-  {
-    DynamicSpatialHashedVoxelGridChunk<T, BackingStore> temp_chunk;
-    const uint64_t bytes_read
-        = temp_chunk.DeserializeSelf(buffer, starting_offset,
-                                    value_deserializer);
-    return serialization::MakeDeserialized(temp_chunk, bytes_read);
-  }
-
-  DynamicSpatialHashedVoxelGridChunk(const ChunkRegion& region,
-                                     const GridSizes& sizes,
-                                     const DSHVGFillType fill_type,
-                                     const T& initial_value)
-      : region_(region), sizes_(sizes)
-  {
-    if (sizes_.Valid())
-    {
-      if (fill_type == DSHVGFillType::FILL_CELL)
-      {
-        SetCellFilledContents(initial_value);
-      }
-      else if (fill_type == DSHVGFillType::FILL_CHUNK)
-      {
-        SetChunkFilledContents(initial_value);
-      }
-      else
-      {
-        throw std::invalid_argument("Invalid fill_type");
-      }
-    }
-    else
-    {
-      throw std::invalid_argument("sizes is not valid");
-    }
-  }
-
-  DynamicSpatialHashedVoxelGridChunk() = default;
-
   uint64_t SerializeSelf(
       std::vector<uint8_t>& buffer,
       const serialization::Serializer<T>& value_serializer) const
@@ -378,6 +326,58 @@ public:
     const uint64_t bytes_read = current_position - starting_offset;
     return bytes_read;
   }
+
+public:
+  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
+
+  static uint64_t Serialize(
+      const DynamicSpatialHashedVoxelGridChunk<T, BackingStore>& chunk,
+      std::vector<uint8_t>& buffer,
+      const serialization::Serializer<T>& value_serializer)
+  {
+    return chunk.SerializeSelf(buffer, value_serializer);
+  }
+
+  static serialization::Deserialized<
+      DynamicSpatialHashedVoxelGridChunk<T, BackingStore>> Deserialize(
+          const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
+          const serialization::Deserializer<T>& value_deserializer)
+  {
+    DynamicSpatialHashedVoxelGridChunk<T, BackingStore> temp_chunk;
+    const uint64_t bytes_read
+        = temp_chunk.DeserializeSelf(buffer, starting_offset,
+                                    value_deserializer);
+    return serialization::MakeDeserialized(temp_chunk, bytes_read);
+  }
+
+  DynamicSpatialHashedVoxelGridChunk(const ChunkRegion& region,
+                                     const GridSizes& sizes,
+                                     const DSHVGFillType fill_type,
+                                     const T& initial_value)
+      : region_(region), sizes_(sizes)
+  {
+    if (sizes_.Valid())
+    {
+      if (fill_type == DSHVGFillType::FILL_CELL)
+      {
+        SetCellFilledContents(initial_value);
+      }
+      else if (fill_type == DSHVGFillType::FILL_CHUNK)
+      {
+        SetChunkFilledContents(initial_value);
+      }
+      else
+      {
+        throw std::invalid_argument("Invalid fill_type");
+      }
+    }
+    else
+    {
+      throw std::invalid_argument("sizes is not valid");
+    }
+  }
+
+  DynamicSpatialHashedVoxelGridChunk() = default;
 
   DSHVGFillStatus FillStatus() const { return fill_status_; }
 
@@ -603,7 +603,7 @@ public:
 
 /// This is the base class for all dynamic spatial hashed voxel grid classes.
 /// It is pure virtual to force the implementation of certain necessary
-/// functions (cloning, access, derived-class memeber de/serialization) in
+/// functions (cloning, access, derived-class member de/serialization) in
 /// concrete implementations. This is the class to inherit from if you want a
 /// DynamicSpatialHashedVoxelGrid-like type. If all you want is a dynamic
 /// spatial hashed voxel grid of T, see
@@ -663,18 +663,14 @@ private:
     // Deserialize the transforms
     const auto origin_transform_deserialized
         = serialization::DeserializeIsometry3d(buffer, current_position);
-    origin_transform_ = origin_transform_deserialized.Value();
     current_position += origin_transform_deserialized.BytesRead();
-    inverse_origin_transform_ = origin_transform_.inverse();
     // Deserialize the default value
     const auto default_value_deserialized
         = value_deserializer(buffer, current_position);
-    default_value_ = default_value_deserialized.Value();
     current_position += default_value_deserialized.BytesRead();
     // Deserialize the chunk sizes
     const auto chunk_sizes_deserialized
         = GridSizes::Deserialize(buffer, current_position);
-    chunk_sizes_ = chunk_sizes_deserialized.Value();
     current_position += chunk_sizes_deserialized.BytesRead();
     // Deserialize the data
     const auto chunk_deserializer
@@ -688,23 +684,33 @@ private:
         = serialization::DeserializeMapLike<ChunkRegion, GridChunk, ChunkMap>(
             buffer, current_position, ChunkRegion::Deserialize,
             chunk_deserializer);
-    chunks_ = chunks_deserialized.Value();
     current_position += chunks_deserialized.BytesRead();
     // Deserialize the initialized
     const auto initialized_deserialized
         = serialization::DeserializeMemcpyable<uint8_t>(buffer,
                                                         current_position);
-    initialized_ = static_cast<bool>(initialized_deserialized.Value());
+    const bool initialized
+        = static_cast<bool>(initialized_deserialized.Value());
     current_position += initialized_deserialized.BytesRead();
     // Safety checks
-    if (chunk_sizes_.Valid() != initialized_)
+    if (chunk_sizes_deserialized.Value().Valid() != initialized)
     {
-      throw std::runtime_error("sizes_.Valid() != initialized_");
+      throw std::runtime_error(
+          "Deserialized chunk_sizes.Valid() != initialized");
     }
-    if (chunks_.size() > 0 && !chunk_sizes_.Valid())
+    if (chunks_deserialized.Value().size() > 0 &&
+        !chunk_sizes_deserialized.Value().Valid())
     {
-      throw std::runtime_error("chunks.size() > 0 with invalid chunk sizes");
+      throw std::runtime_error(
+          "Deserialized chunks.size() > 0 with invalid chunk sizes");
     }
+    // Copy deserialized fields over
+    origin_transform_ = origin_transform_deserialized.Value();
+    inverse_origin_transform_ = origin_transform_.inverse();
+    default_value_ = default_value_deserialized.Value();
+    chunk_sizes_ = chunk_sizes_deserialized.Value();
+    chunks_ = chunks_deserialized.Value();
+    initialized_ = initialized;
     // Figure out how many bytes were read
     const uint64_t bytes_read = current_position - starting_offset;
     return bytes_read;
@@ -748,6 +754,28 @@ private:
   }
 
 protected:
+  uint64_t SerializeSelf(
+      std::vector<uint8_t>& buffer,
+      const serialization::Serializer<T>& value_serializer) const
+  {
+    return BaseSerializeSelf(buffer, value_serializer)
+        + DerivedSerializeSelf(buffer, value_serializer);
+  }
+
+  uint64_t DeserializeSelf(
+      const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
+      const serialization::Deserializer<T>& value_deserializer)
+  {
+    uint64_t current_position = starting_offset;
+    current_position
+        += BaseDeserializeSelf(buffer, starting_offset, value_deserializer);
+    current_position
+        += DerivedDeserializeSelf(buffer, current_position, value_deserializer);
+    // Figure out how many bytes were read
+    const uint64_t bytes_read = current_position - starting_offset;
+    return bytes_read;
+  }
+
   // These are pure-virtual in the base class to force their implementation in
   // derived classes.
 
@@ -774,17 +802,20 @@ protected:
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-  DynamicSpatialHashedVoxelGridBase(const GridSizes& chunk_sizes,
-                                    const T& default_value,
-                                    const size_t expected_chunks)
+  DynamicSpatialHashedVoxelGridBase(
+      const GridSizes& chunk_sizes,
+      const T& default_value,
+      const size_t expected_chunks)
       : DynamicSpatialHashedVoxelGridBase<T, BackingStore>(
           Eigen::Isometry3d::Identity(), chunk_sizes, default_value,
           expected_chunks) {}
 
-  DynamicSpatialHashedVoxelGridBase(const Eigen::Isometry3d& origin_transform,
-                                    const GridSizes& chunk_sizes,
-                                    const T& default_value,
-                                    const size_t expected_chunks)
+  DynamicSpatialHashedVoxelGridBase(
+      const Eigen::Isometry3d& origin_transform,
+      const GridSizes& chunk_sizes,
+      const T& default_value,
+      const size_t expected_chunks)
+      : default_value_(default_value)
   {
     if (chunk_sizes.Valid())
     {
@@ -801,7 +832,8 @@ public:
     }
   }
 
-  DynamicSpatialHashedVoxelGridBase() = default;
+  // Explicitly invoke default initialization on the default value.
+  DynamicSpatialHashedVoxelGridBase() : default_value_{} {}
 
   virtual ~DynamicSpatialHashedVoxelGridBase() {}
 
@@ -809,28 +841,6 @@ public:
   Clone() const
   {
     return DoClone();
-  }
-
-  uint64_t SerializeSelf(
-      std::vector<uint8_t>& buffer,
-      const serialization::Serializer<T>& value_serializer) const
-  {
-    return BaseSerializeSelf(buffer, value_serializer)
-        + DerivedSerializeSelf(buffer, value_serializer);
-  }
-
-  uint64_t DeserializeSelf(
-      const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const serialization::Deserializer<T>& value_deserializer)
-  {
-    uint64_t current_position = starting_offset;
-    current_position
-        += BaseDeserializeSelf(buffer, starting_offset, value_deserializer);
-    current_position
-        += DerivedDeserializeSelf(buffer, current_position, value_deserializer);
-    // Figure out how many bytes were read
-    const uint64_t bytes_read = current_position - starting_offset;
-    return bytes_read;
   }
 
   bool IsInitialized() const { return initialized_; }

@@ -180,6 +180,71 @@ private:
     valid_ = false;
   }
 
+  uint64_t SerializeSelf(std::vector<uint8_t>& buffer) const
+  {
+    const uint64_t start_buffer_size = buffer.size();
+    // Serialize everything needed to reproduce the grid sizes
+    serialization::SerializeMemcpyable<double>(CellXSize(), buffer);
+    serialization::SerializeMemcpyable<double>(CellYSize(), buffer);
+    serialization::SerializeMemcpyable<double>(CellZSize(), buffer);
+    serialization::SerializeMemcpyable<int64_t>(NumXCells(), buffer);
+    serialization::SerializeMemcpyable<int64_t>(NumYCells(), buffer);
+    serialization::SerializeMemcpyable<int64_t>(NumZCells(), buffer);
+    // Figure out how many bytes were written
+    const uint64_t end_buffer_size = buffer.size();
+    const uint64_t bytes_written = end_buffer_size - start_buffer_size;
+    return bytes_written;
+  }
+
+  uint64_t DeserializeSelf(const std::vector<uint8_t>& buffer,
+                           const uint64_t starting_offset)
+  {
+    uint64_t current_position = starting_offset;
+    const auto cell_x_size_deserialized
+        = serialization::DeserializeMemcpyable<double>(buffer,
+                                                       current_position);
+    const double cell_x_size = cell_x_size_deserialized.Value();
+    current_position += cell_x_size_deserialized.BytesRead();
+    const auto cell_y_size_deserialized
+        = serialization::DeserializeMemcpyable<double>(buffer,
+                                                       current_position);
+    const double cell_y_size = cell_y_size_deserialized.Value();
+    current_position += cell_y_size_deserialized.BytesRead();
+    const auto cell_z_size_deserialized
+        = serialization::DeserializeMemcpyable<double>(buffer,
+                                                       current_position);
+    const double cell_z_size = cell_z_size_deserialized.Value();
+    current_position += cell_z_size_deserialized.BytesRead();
+    const auto num_x_cells_deserialized
+        = serialization::DeserializeMemcpyable<int64_t>(buffer,
+                                                        current_position);
+    const int64_t num_x_cells = num_x_cells_deserialized.Value();
+    current_position += num_x_cells_deserialized.BytesRead();
+    const auto num_y_cells_deserialized
+        = serialization::DeserializeMemcpyable<int64_t>(buffer,
+                                                        current_position);
+    const int64_t num_y_cells = num_y_cells_deserialized.Value();
+    current_position += num_y_cells_deserialized.BytesRead();
+    const auto num_z_cells_deserialized
+        = serialization::DeserializeMemcpyable<int64_t>(buffer,
+                                                        current_position);
+    const int64_t num_z_cells = num_z_cells_deserialized.Value();
+    current_position += num_z_cells_deserialized.BytesRead();
+
+    const bool initialized = Initialize(
+        cell_x_size, cell_y_size, cell_z_size,
+        num_x_cells, num_y_cells, num_z_cells);
+    if (!initialized)
+    {
+      // The only reason Initialize can fail is if the params are
+      // default-initialized or invalid. We make sure to zero and set invalid.
+      DefaultInitialize();
+    }
+    // Figure out how many bytes were read
+    const uint64_t bytes_read = current_position - starting_offset;
+    return bytes_read;
+  }
+
 public:
   static uint64_t Serialize(
       const GridSizes& sizes, std::vector<uint8_t>& buffer)
@@ -251,71 +316,6 @@ public:
   bool UniformCellSize() const
   {
     return ((cell_x_size_ == cell_y_size_) && (cell_x_size_ == cell_z_size_));
-  }
-
-  uint64_t SerializeSelf(std::vector<uint8_t>& buffer) const
-  {
-    const uint64_t start_buffer_size = buffer.size();
-    // Serialize everything needed to reproduce the grid sizes
-    serialization::SerializeMemcpyable<double>(CellXSize(), buffer);
-    serialization::SerializeMemcpyable<double>(CellYSize(), buffer);
-    serialization::SerializeMemcpyable<double>(CellZSize(), buffer);
-    serialization::SerializeMemcpyable<int64_t>(NumXCells(), buffer);
-    serialization::SerializeMemcpyable<int64_t>(NumYCells(), buffer);
-    serialization::SerializeMemcpyable<int64_t>(NumZCells(), buffer);
-    // Figure out how many bytes were written
-    const uint64_t end_buffer_size = buffer.size();
-    const uint64_t bytes_written = end_buffer_size - start_buffer_size;
-    return bytes_written;
-  }
-
-  uint64_t DeserializeSelf(const std::vector<uint8_t>& buffer,
-                           const uint64_t starting_offset)
-  {
-    uint64_t current_position = starting_offset;
-    const auto cell_x_size_deserialized
-        = serialization::DeserializeMemcpyable<double>(buffer,
-                                                       current_position);
-    const double cell_x_size = cell_x_size_deserialized.Value();
-    current_position += cell_x_size_deserialized.BytesRead();
-    const auto cell_y_size_deserialized
-        = serialization::DeserializeMemcpyable<double>(buffer,
-                                                       current_position);
-    const double cell_y_size = cell_y_size_deserialized.Value();
-    current_position += cell_y_size_deserialized.BytesRead();
-    const auto cell_z_size_deserialized
-        = serialization::DeserializeMemcpyable<double>(buffer,
-                                                       current_position);
-    const double cell_z_size = cell_z_size_deserialized.Value();
-    current_position += cell_z_size_deserialized.BytesRead();
-    const auto num_x_cells_deserialized
-        = serialization::DeserializeMemcpyable<int64_t>(buffer,
-                                                        current_position);
-    const int64_t num_x_cells = num_x_cells_deserialized.Value();
-    current_position += num_x_cells_deserialized.BytesRead();
-    const auto num_y_cells_deserialized
-        = serialization::DeserializeMemcpyable<int64_t>(buffer,
-                                                        current_position);
-    const int64_t num_y_cells = num_y_cells_deserialized.Value();
-    current_position += num_y_cells_deserialized.BytesRead();
-    const auto num_z_cells_deserialized
-        = serialization::DeserializeMemcpyable<int64_t>(buffer,
-                                                        current_position);
-    const int64_t num_z_cells = num_z_cells_deserialized.Value();
-    current_position += num_z_cells_deserialized.BytesRead();
-
-    const bool initialized = Initialize(
-        cell_x_size, cell_y_size, cell_z_size,
-        num_x_cells, num_y_cells, num_z_cells);
-    if (!initialized)
-    {
-      // The only reason Initialize can fail is if the params are
-      // default-initialized or invalid. We make sure to zero and set invalid.
-      DefaultInitialize();
-    }
-    // Figure out how many bytes were read
-    const uint64_t bytes_read = current_position - starting_offset;
-    return bytes_read;
   }
 
   double CellXSize() const { return cell_x_size_; }
@@ -531,7 +531,7 @@ public:
 
 /// This is the base class for all voxel grid classes. It is pure virtual to
 /// force the implementation of certain necessary functions (cloning, access,
-/// derived-class memeber de/serialization) in concrete implementations. This is
+/// derived-class member de/serialization) in concrete implementations. This is
 /// the class to inherit from if you want a VoxelGrid-like type. If all you want
 /// is a voxel grid of T, see VoxelGrid<T, BackingStore> below.
 template<typename T, typename BackingStore=std::vector<T>>
@@ -614,44 +614,48 @@ private:
     // Deserialize the transforms
     const auto origin_transform_deserialized
         = serialization::DeserializeIsometry3d(buffer, current_position);
-    origin_transform_ = origin_transform_deserialized.Value();
     current_position += origin_transform_deserialized.BytesRead();
-    inverse_origin_transform_ = origin_transform_.inverse();
     // Deserialize the default value
     const auto default_value_deserialized
         = value_deserializer(buffer, current_position);
-    default_value_ = default_value_deserialized.Value();
     current_position += default_value_deserialized.BytesRead();
     // Deserialize the OOB value
     const auto oob_value_deserialized
         = value_deserializer(buffer, current_position);
-    oob_value_ = oob_value_deserialized.Value();
     current_position += oob_value_deserialized.BytesRead();
     // Deserialize the data
     const auto data_deserialized
         = serialization::DeserializeVectorLike<T, BackingStore>(
               buffer, current_position, value_deserializer);
-    data_ = data_deserialized.Value();
     current_position += data_deserialized.BytesRead();
     // Deserialize the cell sizes
     const auto sizes_deserialized
         = GridSizes::Deserialize(buffer, current_position);
-    sizes_ = sizes_deserialized.Value();
     current_position += sizes_deserialized.BytesRead();
-    if (sizes_.TotalCells() != static_cast<int64_t>(data_.size()))
+    if (sizes_deserialized.Value().TotalCells() !=
+        static_cast<int64_t>(data_deserialized.Value().size()))
     {
-      throw std::runtime_error("sizes_.NumCells() != data_.size()");
+      throw std::runtime_error("Deserialized sizes.NumCells() != data.size()");
     }
     // Deserialize the initialized
     const auto initialized_deserialized
         = serialization::DeserializeMemcpyable<uint8_t>(buffer,
                                                         current_position);
-    initialized_ = static_cast<bool>(initialized_deserialized.Value());
+    const bool initialized
+        = static_cast<bool>(initialized_deserialized.Value());
     current_position += initialized_deserialized.BytesRead();
-    if (sizes_.Valid() != initialized_)
+    if (sizes_deserialized.Value().Valid() != initialized)
     {
-      throw std::runtime_error("sizes_.Valid() != initialized_");
+      throw std::runtime_error("Deserialized sizes.Valid() != initialized");
     }
+    // Copy deserialized fields over
+    origin_transform_ = origin_transform_deserialized.Value();
+    inverse_origin_transform_ = origin_transform_.inverse();
+    default_value_ = default_value_deserialized.Value();
+    oob_value_ = oob_value_deserialized.Value();
+    data_ = data_deserialized.Value();
+    sizes_ = sizes_deserialized.Value();
+    initialized_ = initialized;
     // Figure out how many bytes were read
     const uint64_t bytes_read = current_position - starting_offset;
     return bytes_read;
@@ -663,6 +667,28 @@ private:
   }
 
 protected:
+  uint64_t SerializeSelf(
+      std::vector<uint8_t>& buffer,
+      const serialization::Serializer<T>& value_serializer) const
+  {
+    return BaseSerializeSelf(buffer, value_serializer)
+        + DerivedSerializeSelf(buffer, value_serializer);
+  }
+
+  uint64_t DeserializeSelf(
+      const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
+      const serialization::Deserializer<T>& value_deserializer)
+  {
+    uint64_t current_position = starting_offset;
+    current_position
+        += BaseDeserializeSelf(buffer, starting_offset, value_deserializer);
+    current_position
+        += DerivedDeserializeSelf(buffer, current_position, value_deserializer);
+    // Figure out how many bytes were read
+    const uint64_t bytes_read = current_position - starting_offset;
+    return bytes_read;
+  }
+
   // These are pure-virtual in the base class to force their implementation in
   // derived classes.
 
@@ -690,22 +716,27 @@ protected:
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-  VoxelGridBase(const Eigen::Isometry3d& origin_transform,
-                const GridSizes& sizes,
-                const T& default_value,
-                const T& oob_value)
+  VoxelGridBase(
+      const Eigen::Isometry3d& origin_transform,
+      const GridSizes& sizes,
+      const T& default_value,
+      const T& oob_value)
+      : default_value_(default_value), oob_value_(oob_value)
   {
     Initialize(origin_transform, sizes, default_value, oob_value);
   }
 
-  VoxelGridBase(const GridSizes& sizes,
-                const T& default_value,
-                const T& oob_value)
+  VoxelGridBase(
+      const GridSizes& sizes,
+      const T& default_value,
+      const T& oob_value)
+      : default_value_(default_value), oob_value_(oob_value)
   {
     Initialize(sizes, default_value, oob_value);
   }
 
-  VoxelGridBase() = default;
+  // Explicitly invoke default initialization on the default and OOB values.
+  VoxelGridBase() : default_value_{}, oob_value_{} {}
 
   virtual ~VoxelGridBase() {}
 
@@ -745,28 +776,6 @@ public:
   std::unique_ptr<VoxelGridBase<T, BackingStore>> Clone() const
   {
     return DoClone();
-  }
-
-  uint64_t SerializeSelf(
-      std::vector<uint8_t>& buffer,
-      const serialization::Serializer<T>& value_serializer) const
-  {
-    return BaseSerializeSelf(buffer, value_serializer)
-        + DerivedSerializeSelf(buffer, value_serializer);
-  }
-
-  uint64_t DeserializeSelf(
-      const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-      const serialization::Deserializer<T>& value_deserializer)
-  {
-    uint64_t current_position = starting_offset;
-    current_position
-        += BaseDeserializeSelf(buffer, starting_offset, value_deserializer);
-    current_position
-        += DerivedDeserializeSelf(buffer, current_position, value_deserializer);
-    // Figure out how many bytes were read
-    const uint64_t bytes_read = current_position - starting_offset;
-    return bytes_read;
   }
 
   bool IsInitialized() const

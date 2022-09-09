@@ -5,6 +5,7 @@
 #include <map>
 #include <set>
 #include <stdexcept>
+#include <type_traits>
 #include <utility>
 #include <vector>
 
@@ -28,6 +29,16 @@ public:
 
   Deserialized(const T& value, const uint64_t bytes_read)
       : value_(value), bytes_read_(bytes_read)
+  {
+    if (bytes_read == 0)
+    {
+      throw std::invalid_argument(
+          "Deserialized item cannot have bytes_read == 0");
+    }
+  }
+
+  Deserialized(T&& value, const uint64_t bytes_read)
+      : value_(std::move(value)), bytes_read_(bytes_read)
   {
     if (bytes_read == 0)
     {
@@ -82,6 +93,14 @@ template<typename T>
 Deserialized<T> MakeDeserialized(const T& value, const uint64_t bytes_read)
 {
   return Deserialized<T>(value, bytes_read);
+}
+
+template<typename T>
+Deserialized<typename std::remove_reference<T>::type>
+MakeDeserialized(T&& value, const uint64_t bytes_read)
+{
+  return Deserialized<typename std::remove_reference<T>::type>(
+      std::move(value), bytes_read);
 }
 
 template<typename T>
@@ -420,9 +439,9 @@ inline Deserialized<VectorLike> DeserializeVectorLike(
   deserialized.reserve(size);
   for (uint64_t idx = 0; idx < size; idx++)
   {
-    const Deserialized<T> deserialized_item
+    Deserialized<T> deserialized_item
         = item_deserializer(buffer, current_position);
-    deserialized.push_back(deserialized_item.Value());
+    deserialized.emplace_back(std::move(deserialized_item.MutableValue()));
     current_position += deserialized_item.BytesRead();
   }
   deserialized.shrink_to_fit();
@@ -492,10 +511,10 @@ inline uint64_t SerializeMapLike(
   const uint64_t size = static_cast<uint64_t>(map_to_serialize.size());
   SerializeMemcpyable<uint64_t>(size, buffer);
   // Serialize the contained items
-  typename MapLike::const_iterator itr;
-  for (itr = map_to_serialize.begin(); itr != map_to_serialize.end(); ++itr)
+  for (const auto& key_value : map_to_serialize)
   {
-    SerializePair<Key, Value>(*itr, buffer, key_serializer, value_serializer);
+    key_serializer(key_value.first, buffer);
+    value_serializer(key_value.second, buffer);
   }
   // Figure out how many bytes were written
   const uint64_t end_buffer_size = buffer.size();
@@ -520,11 +539,15 @@ inline Deserialized<MapLike> DeserializeMapLike(
   MapLike deserialized;
   for (uint64_t idx = 0; idx < size; idx++)
   {
-    const Deserialized<std::pair<Key, Value>> deserialized_pair
-        = DeserializePair(buffer, current_position,
-                          key_deserializer, value_deserializer);
-    deserialized.insert(deserialized_pair.Value());
-    current_position += deserialized_pair.BytesRead();
+    Deserialized<Key> deserialized_key
+        = key_deserializer(buffer, current_position);
+    current_position += deserialized_key.BytesRead();
+    Deserialized<Value> deserialized_value
+        = value_deserializer(buffer, current_position);
+    current_position += deserialized_value.BytesRead();
+    deserialized.emplace(
+        std::move(deserialized_key.MutableValue()),
+        std::move(deserialized_value.MutableValue()));
   }
   // Figure out how many bytes were read
   const uint64_t bytes_read = current_position - starting_offset;
@@ -542,10 +565,9 @@ inline uint64_t SerializeSetLike(
   const uint64_t size = static_cast<uint64_t>(set_to_serialize.size());
   SerializeMemcpyable<uint64_t>(size, buffer);
   // Serialize the contained items
-  typename SetLike::const_iterator itr;
-  for (itr = set_to_serialize.begin(); itr != set_to_serialize.end(); ++itr)
+  for (const auto& element : set_to_serialize)
   {
-    key_serializer(*itr, buffer);
+    key_serializer(element, buffer);
   }
   // Figure out how many bytes were written
   const uint64_t end_buffer_size = buffer.size();
@@ -569,9 +591,9 @@ inline Deserialized<SetLike> DeserializeSetLike(
   SetLike deserialized;
   for (uint64_t idx = 0; idx < size; idx++)
   {
-    const Deserialized<Key> deserialized_key
+    Deserialized<Key> deserialized_key
         = key_deserializer(buffer, current_position);
-    deserialized.insert(deserialized_key.Value());
+    deserialized.insert(std::move(deserialized_key.MutableValue()));
     current_position += deserialized_key.BytesRead();
   }
   // Figure out how many bytes were read
@@ -605,16 +627,17 @@ inline Deserialized<std::pair<First, Second>> DeserializePair(
 {
   // Deserialize each item in the pair individually
   uint64_t current_position = starting_offset;
-  const Deserialized<First> deserialized_first
+  Deserialized<First> deserialized_first
       = first_deserializer(buffer, current_position);
   current_position += deserialized_first.BytesRead();
-  const Deserialized<Second> deserialized_second
+  Deserialized<Second> deserialized_second
       = second_deserializer(buffer, current_position);
   current_position += deserialized_second.BytesRead();
   // Build the resulting pair
   // TODO: Why can't I used make_pair here?
-  const std::pair<First, Second> deserialized(deserialized_first.Value(),
-                                              deserialized_second.Value());
+  std::pair<First, Second> deserialized(
+      std::move(deserialized_first.MutableValue()),
+      std::move(deserialized_second.MutableValue()));
   // Figure out how many bytes were read
   const uint64_t bytes_read = current_position - starting_offset;
   return MakeDeserialized(deserialized, bytes_read);
@@ -943,9 +966,9 @@ DeserializeNetworkVectorLike(
   deserialized.reserve(size);
   for (uint64_t idx = 0; idx < size; idx++)
   {
-    const Deserialized<T> deserialized_item
+    Deserialized<T> deserialized_item
         = item_deserializer(buffer, current_position);
-    deserialized.push_back(deserialized_item.Value());
+    deserialized.emplace_back(std::move(deserialized_item.MutableValue()));
     current_position += deserialized_item.BytesRead();
   }
   deserialized.shrink_to_fit();
@@ -1018,10 +1041,10 @@ inline uint64_t SerializeNetworkMapLike(
   const uint64_t size = static_cast<uint64_t>(map_to_serialize.size());
   SerializeNetworkMemcpyable<uint64_t>(size, buffer);
   // Serialize the contained items
-  typename MapLike::const_iterator itr;
-  for (itr = map_to_serialize.begin(); itr != map_to_serialize.end(); ++itr)
+  for (const auto& key_value : map_to_serialize)
   {
-    SerializePair<Key, Value>(*itr, buffer, key_serializer, value_serializer);
+    key_serializer(key_value.first, buffer);
+    value_serializer(key_value.second, buffer);
   }
   // Figure out how many bytes were written
   const uint64_t end_buffer_size = buffer.size();
@@ -1046,11 +1069,15 @@ inline Deserialized<MapLike> DeserializeNetworkMapLike(
   MapLike deserialized;
   for (uint64_t idx = 0; idx < size; idx++)
   {
-    const Deserialized<std::pair<Key, Value>> deserialized_pair
-        = DeserializePair(buffer, current_position,
-                          key_deserializer, value_deserializer);
-    deserialized.insert(deserialized_pair.Value());
-    current_position += deserialized_pair.BytesRead();
+    Deserialized<Key> deserialized_key
+        = key_deserializer(buffer, current_position);
+    current_position += deserialized_key.BytesRead();
+    Deserialized<Value> deserialized_value
+        = value_deserializer(buffer, current_position);
+    current_position += deserialized_value.BytesRead();
+    deserialized.emplace(
+        std::move(deserialized_key.MutableValue()),
+        std::move(deserialized_value.MutableValue()));
   }
   // Figure out how many bytes were read
   const uint64_t bytes_read = current_position - starting_offset;
@@ -1068,10 +1095,9 @@ inline uint64_t SerializeNetworkSetLike(
   const uint64_t size = static_cast<uint64_t>(set_to_serialize.size());
   SerializeNetworkMemcpyable<uint64_t>(size, buffer);
   // Serialize the contained items
-  typename SetLike::const_iterator itr;
-  for (itr = set_to_serialize.begin(); itr != set_to_serialize.end(); ++itr)
+  for (const auto& element : set_to_serialize)
   {
-    key_serializer(*itr, buffer);
+    key_serializer(element, buffer);
   }
   // Figure out how many bytes were written
   const uint64_t end_buffer_size = buffer.size();
@@ -1095,9 +1121,9 @@ inline Deserialized<SetLike> DeserializeNetworkSetLike(
   SetLike deserialized;
   for (uint64_t idx = 0; idx < size; idx++)
   {
-    const Deserialized<Key> deserialized_key
+    Deserialized<Key> deserialized_key
         = key_deserializer(buffer, current_position);
-    deserialized.insert(deserialized_key.Value());
+    deserialized.insert(std::move(deserialized_key.MutableValue()));
     current_position += deserialized_key.BytesRead();
   }
   // Figure out how many bytes were read

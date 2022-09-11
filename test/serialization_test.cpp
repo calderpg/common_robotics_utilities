@@ -344,17 +344,17 @@ namespace serialization_test
 {
 // Generic test method for pair serialization.
 template<typename Item>
-void TestPairSerialization()
+void TestPairLikeSerialization()
 {
   const std::pair<Item, Item> initial(Item(1), Item(2));
 
   std::vector<uint8_t> buffer;
   const uint64_t bytes_written =
-      serialization::SerializePair<Item, Item>(
+      serialization::SerializePairLike<Item, Item>(
           initial, buffer, Item::Serialize, Item::Serialize);
   EXPECT_EQ(bytes_written, buffer.size());
   const auto deserialized =
-      serialization::DeserializePair<Item, Item>(
+      serialization::DeserializePairLike<Item, Item, std::pair<Item, Item>>(
           buffer, 0, Item::Deserialize, Item::Deserialize);
   EXPECT_EQ(bytes_written, deserialized.BytesRead());
   EXPECT_EQ(initial.first, deserialized.Value().first);
@@ -519,7 +519,7 @@ void TestMapLikeSerialization()
 GTEST_TEST(SerializationTest, ContainersWithCopyMoveMemcpyable)
 {
   using CMM = CopyMoveMemcpyable;
-  TestPairSerialization<CMM>();
+  TestPairLikeSerialization<CMM>();
   TestVectorLikeSerialization<CMM, std::vector<CMM>>();
   TestSetLikeSerialization<CMM, std::set<CMM>>();
   TestSetLikeSerialization<CMM, std::unordered_set<CMM>>();
@@ -530,7 +530,7 @@ GTEST_TEST(SerializationTest, ContainersWithCopyMoveMemcpyable)
 GTEST_TEST(SerializationTest, ContainersWithMoveOnlyMemcpyable)
 {
   using MOM = MoveOnlyMemcpyable;
-  TestPairSerialization<MOM>();
+  TestPairLikeSerialization<MOM>();
   TestVectorLikeSerialization<MOM, std::vector<MOM>>();
   TestSetLikeSerialization<MOM, std::set<MOM>>();
   TestSetLikeSerialization<MOM, std::unordered_set<MOM>>();
@@ -541,7 +541,7 @@ GTEST_TEST(SerializationTest, ContainersWithMoveOnlyMemcpyable)
 GTEST_TEST(SerializationTest, ContainersWithCopyMoveComplex)
 {
   using CMC = CopyMoveComplex;
-  TestPairSerialization<CMC>();
+  TestPairLikeSerialization<CMC>();
   TestVectorLikeSerialization<CMC, std::vector<CMC>>();
   TestSetLikeSerialization<CMC, std::set<CMC>>();
   TestSetLikeSerialization<CMC, std::unordered_set<CMC>>();
@@ -552,7 +552,7 @@ GTEST_TEST(SerializationTest, ContainersWithCopyMoveComplex)
 GTEST_TEST(SerializationTest, ContainersWithMoveOnlyComplex)
 {
   using MOC = MoveOnlyComplex;
-  TestPairSerialization<MOC>();
+  TestPairLikeSerialization<MOC>();
   TestVectorLikeSerialization<MOC, std::vector<MOC>>();
   TestSetLikeSerialization<MOC, std::set<MOC>>();
   TestSetLikeSerialization<MOC, std::unordered_set<MOC>>();

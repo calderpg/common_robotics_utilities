@@ -449,7 +449,7 @@ GTEST_TEST(PlanningTest, Test)
   const serialization::Serializer<Waypoint> serialize_waypoint_fn
       = [] (const Waypoint& wp, std::vector<uint8_t>& serialization_buffer)
   {
-    return serialization::SerializePair<ssize_t, ssize_t>(
+    return serialization::SerializePairLike<ssize_t, ssize_t>(
         wp, serialization_buffer, serialization::SerializeMemcpyable<ssize_t>,
         serialization::SerializeMemcpyable<ssize_t>);
   };
@@ -457,7 +457,7 @@ GTEST_TEST(PlanningTest, Test)
       = [] (const std::vector<uint8_t>& deserialization_buffer,
             const uint64_t starting_offset)
   {
-    return serialization::DeserializePair<ssize_t, ssize_t>(
+    return serialization::DeserializePairLike<ssize_t, ssize_t>(
         deserialization_buffer, starting_offset,
         serialization::DeserializeMemcpyable<ssize_t>,
         serialization::DeserializeMemcpyable<ssize_t>);

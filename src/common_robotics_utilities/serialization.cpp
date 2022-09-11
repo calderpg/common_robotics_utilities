@@ -65,59 +65,65 @@ uint64_t SerializeVectorXd(
 uint64_t SerializeVector2d(
     const Eigen::Vector2d& value, std::vector<uint8_t>& buffer)
 {
-  // Takes a state to serialize and a buffer to serialize into
+  constexpr size_t item_size = static_cast<size_t>(SerializedSizeVector2d());
+  const size_t start_size = buffer.size();
+  // Resize buffer to provide space
+  buffer.resize(start_size + item_size, 0x00);
+  // Fixed-size serialization via memcpy
+  memcpy(&buffer[start_size], value.data(), item_size);
   // Return number of bytes written to buffer
-  std::vector<uint8_t> temp_buffer(SerializedSizeVector2d(), 0x00);
-  memcpy(&temp_buffer.front(), value.data(), SerializedSizeVector2d());
-  buffer.insert(buffer.end(), temp_buffer.begin(), temp_buffer.end());
   return SerializedSizeVector2d();
 }
 
 uint64_t SerializeVector3d(
     const Eigen::Vector3d& value, std::vector<uint8_t>& buffer)
 {
-  // Takes a state to serialize and a buffer to serialize into
+  constexpr size_t item_size = static_cast<size_t>(SerializedSizeVector3d());
+  const size_t start_size = buffer.size();
+  // Resize buffer to provide space
+  buffer.resize(start_size + item_size, 0x00);
+  // Fixed-size serialization via memcpy
+  memcpy(&buffer[start_size], value.data(), item_size);
   // Return number of bytes written to buffer
-  std::vector<uint8_t> temp_buffer(SerializedSizeVector3d(), 0x00);
-  memcpy(&temp_buffer.front(), value.data(), SerializedSizeVector3d());
-  buffer.insert(buffer.end(), temp_buffer.begin(), temp_buffer.end());
   return SerializedSizeVector3d();
 }
 
 uint64_t SerializeVector4d(
     const Eigen::Vector4d& value, std::vector<uint8_t>& buffer)
 {
-  // Takes a state to serialize and a buffer to serialize into
+  constexpr size_t item_size = static_cast<size_t>(SerializedSizeVector4d());
+  const size_t start_size = buffer.size();
+  // Resize buffer to provide space
+  buffer.resize(start_size + item_size, 0x00);
+  // Fixed-size serialization via memcpy
+  memcpy(&buffer[start_size], value.data(), item_size);
   // Return number of bytes written to buffer
-  std::vector<uint8_t> temp_buffer(SerializedSizeVector4d(), 0x00);
-  memcpy(&temp_buffer.front(), value.data(), SerializedSizeVector4d());
-  buffer.insert(buffer.end(), temp_buffer.begin(), temp_buffer.end());
   return SerializedSizeVector4d();
 }
 
 uint64_t SerializeQuaterniond(
     const Eigen::Quaterniond& value, std::vector<uint8_t>& buffer)
 {
-  // Takes a state to serialize and a buffer to serialize into
+  constexpr size_t item_size = static_cast<size_t>(SerializedSizeQuaterniond());
+  const size_t start_size = buffer.size();
+  // Resize buffer to provide space
+  buffer.resize(start_size + item_size, 0x00);
+  // Fixed-size serialization via memcpy
+  memcpy(&buffer[start_size], value.coeffs().data(), item_size);
   // Return number of bytes written to buffer
-  std::vector<uint8_t> temp_buffer(SerializedSizeQuaterniond(), 0x00);
-  memcpy(&temp_buffer.front(),
-         value.coeffs().data(),
-         SerializedSizeQuaterniond());
-  buffer.insert(buffer.end(), temp_buffer.begin(), temp_buffer.end());
   return SerializedSizeQuaterniond();
 }
 
 uint64_t SerializeIsometry3d(
     const Eigen::Isometry3d& value, std::vector<uint8_t>& buffer)
 {
-  // Takes a state to serialize and a buffer to serialize into
+  constexpr size_t item_size = static_cast<size_t>(SerializedSizeIsometry3d());
+  const size_t start_size = buffer.size();
+  // Resize buffer to provide space
+  buffer.resize(start_size + item_size, 0x00);
+  // Fixed-size serialization via memcpy
+  memcpy(&buffer[start_size], value.matrix().data(), item_size);
   // Return number of bytes written to buffer
-  std::vector<uint8_t> temp_buffer(SerializedSizeIsometry3d(), 0x00);
-  memcpy(&temp_buffer.front(),
-         value.matrix().data(),
-         SerializedSizeIsometry3d());
-  buffer.insert(buffer.end(), temp_buffer.begin(), temp_buffer.end());
   return SerializedSizeIsometry3d();
 }
 

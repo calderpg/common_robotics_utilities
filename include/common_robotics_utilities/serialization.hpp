@@ -364,46 +364,16 @@ inline uint64_t SerializeString(
     const std::basic_string<CharType>& str_to_serialize,
     std::vector<uint8_t>& buffer)
 {
-  const uint64_t start_buffer_size = buffer.size();
-  // First, write a uint64_t size header
-  const uint64_t size = static_cast<uint64_t>(str_to_serialize.size());
-  SerializeMemcpyable<uint64_t>(size, buffer);
-  // Serialize the contained items
-  for (size_t idx = 0; idx < size; idx++)
-  {
-    const CharType& current = str_to_serialize[idx];
-    SerializeMemcpyable<CharType>(current, buffer);
-  }
-  // Figure out how many bytes were written
-  const uint64_t end_buffer_size = buffer.size();
-  const uint64_t bytes_written = end_buffer_size - start_buffer_size;
-  return bytes_written;
+  return SerializeMemcpyableVectorLike
+      <CharType, std::basic_string<CharType>>(str_to_serialize, buffer);
 }
 
 template<typename CharType>
 inline Deserialized<std::basic_string<CharType>> DeserializeString(
     const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
 {
-  uint64_t current_position = starting_offset;
-  // Load the header
-  const Deserialized<uint64_t> deserialized_size
-      = DeserializeMemcpyable<uint64_t>(buffer, current_position);
-  const uint64_t size = deserialized_size.Value();
-  current_position += deserialized_size.BytesRead();
-  // Deserialize the items
-  std::basic_string<CharType> deserialized;
-  deserialized.reserve(size);
-  for (uint64_t idx = 0; idx < size; idx++)
-  {
-    const Deserialized<CharType> deserialized_char
-        = DeserializeMemcpyable<CharType>(buffer, current_position);
-    deserialized.push_back(deserialized_char.Value());
-    current_position += deserialized_char.BytesRead();
-  }
-  deserialized.shrink_to_fit();
-  // Figure out how many bytes were read
-  const uint64_t bytes_read = current_position - starting_offset;
-  return MakeDeserialized(deserialized, bytes_read);
+  return DeserializeMemcpyableVectorLike
+      <CharType, std::basic_string<CharType>>(buffer, starting_offset);
 }
 
 template<typename T, typename VectorLike>
@@ -501,8 +471,12 @@ DeserializeMemcpyableVectorLike(
   {
     throw std::invalid_argument("Not enough room in the provided buffer");
   }
-  VectorLike deserialized(size);
-  memcpy(deserialized.data(), &buffer[current_position], serialized_length);
+  VectorLike deserialized;
+  deserialized.resize(size);
+  memcpy(
+      const_cast<void*>(reinterpret_cast<const void*>(deserialized.data())),
+      &buffer[current_position],
+      serialized_length);
   current_position += serialized_length;
   // Figure out how many bytes were read
   const uint64_t bytes_read = current_position - starting_offset;
@@ -894,20 +868,8 @@ inline uint64_t SerializeNetworkString(
     const std::basic_string<CharType>& str_to_serialize,
     std::vector<uint8_t>& buffer)
 {
-  const uint64_t start_buffer_size = buffer.size();
-  // First, write a uint64_t size header
-  const uint64_t size = static_cast<uint64_t>(str_to_serialize.size());
-  SerializeNetworkMemcpyable<uint64_t>(size, buffer);
-  // Serialize the contained items
-  for (size_t idx = 0; idx < size; idx++)
-  {
-    const CharType& current = str_to_serialize[idx];
-    SerializeNetworkMemcpyable<CharType>(current, buffer);
-  }
-  // Figure out how many bytes were written
-  const uint64_t end_buffer_size = buffer.size();
-  const uint64_t bytes_written = end_buffer_size - start_buffer_size;
-  return bytes_written;
+  return SerializeNetworkMemcpyableVectorLike
+      <CharType, std::basic_string<CharType>>(str_to_serialize, buffer);
 }
 
 template<typename CharType>
@@ -916,26 +878,8 @@ DeserializeNetworkString(
     const std::vector<uint8_t>& buffer,
     const uint64_t starting_offset)
 {
-  uint64_t current_position = starting_offset;
-  // Load the header
-  const Deserialized<uint64_t> deserialized_size
-      = DeserializeNetworkMemcpyable<uint64_t>(buffer, current_position);
-  const uint64_t size = deserialized_size.Value();
-  current_position += deserialized_size.BytesRead();
-  // Deserialize the items
-  std::basic_string<CharType> deserialized;
-  deserialized.reserve(size);
-  for (uint64_t idx = 0; idx < size; idx++)
-  {
-    const Deserialized<CharType> deserialized_char
-        = DeserializeNetworkMemcpyable<CharType>(buffer, current_position);
-    deserialized.push_back(deserialized_char.Value());
-    current_position += deserialized_char.BytesRead();
-  }
-  deserialized.shrink_to_fit();
-  // Figure out how many bytes were read
-  const uint64_t bytes_read = current_position - starting_offset;
-  return MakeDeserialized(deserialized, bytes_read);
+  return DeserializeNetworkMemcpyableVectorLike
+      <CharType, std::basic_string<CharType>>(buffer, starting_offset);
 }
 
 template<typename T, typename VectorLike>
@@ -1032,7 +976,8 @@ DeserializeNetworkMemcpyableVectorLike(const std::vector<uint8_t>& buffer,
   const uint64_t size = deserialized_size.Value();
   current_position += deserialized_size.BytesRead();
   // Deserialize the items
-  VectorLike deserialized(size);
+  VectorLike deserialized;
+  deserialized.resize(size);
   for (size_t idx = 0; idx < deserialized.size(); idx++)
   {
     const Deserialized<T> deserialized_item

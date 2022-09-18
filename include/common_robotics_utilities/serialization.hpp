@@ -110,6 +110,77 @@ template<typename T>
 using Deserializer =
     std::function<Deserialized<T>(const std::vector<uint8_t>&, const uint64_t)>;
 
+// Byte-order conversions. For now, only Linux and macOS are supported.
+#if defined(__APPLE__)
+    #include <libkern/OSByteOrder.h>
+#else
+    #include <endian.h>
+#endif
+
+inline uint8_t HostToNetwork8(const uint8_t value)
+{
+  return value;
+}
+
+inline uint16_t HostToNetwork16(const uint16_t value)
+{
+#if defined(__APPLE__)
+  return OSSwapHostToBigInt16(value);
+#else
+  return htobe16(value);
+#endif
+}
+
+inline uint32_t HostToNetwork32(const uint32_t value)
+{
+#if defined(__APPLE__)
+  return OSSwapHostToBigInt32(value);
+#else
+  return htobe32(value);
+#endif
+}
+
+inline uint64_t HostToNetwork64(const uint64_t value)
+{
+#if defined(__APPLE__)
+  return OSSwapHostToBigInt64(value);
+#else
+  return htobe64(value);
+#endif
+}
+
+inline uint8_t NetworkToHost8(const uint8_t value)
+{
+  return value;
+}
+
+inline uint16_t NetworkToHost16(const uint16_t value)
+{
+#if defined(__APPLE__)
+  return OSSwapBigToHostInt16(value);
+#else
+  return be16toh(value);
+#endif
+}
+
+inline uint32_t NetworkToHost32(const uint32_t value)
+{
+#if defined(__APPLE__)
+  return OSSwapBigToHostInt32(value);
+#else
+  return be32toh(value);
+#endif
+}
+
+inline uint64_t NetworkToHost64(const uint64_t value)
+{
+#if defined(__APPLE__)
+  return OSSwapBigToHostInt64(value);
+#else
+  return be64toh(value);
+#endif
+}
+
 ///////////////////////////////////////////////////////////////
 /////                     PROTOTYPES ONLY                 /////
 ///////////////////////////////////////////////////////////////
@@ -321,6 +392,8 @@ inline Deserialized<SetLike> DeserializeNetworkSetLike(
 /////                   IMPLEMENTATIONS ONLY                    /////
 /////////////////////////////////////////////////////////////////////
 
+/// First, memcpy-able type serialization and deserialization, for both host
+/// and network byte order.
 template<typename T>
 inline uint64_t SerializeMemcpyable(const T& item_to_serialize,
                                     std::vector<uint8_t>& buffer)
@@ -357,345 +430,6 @@ inline Deserialized<T> DeserializeMemcpyable(
   }
   memcpy(&temp_item, &buffer[starting_offset], item_size);
   return MakeDeserialized(temp_item, static_cast<uint64_t>(item_size));
-}
-
-template<typename CharType>
-inline uint64_t SerializeString(
-    const std::basic_string<CharType>& str_to_serialize,
-    std::vector<uint8_t>& buffer)
-{
-  return SerializeMemcpyableVectorLike
-      <CharType, std::basic_string<CharType>>(str_to_serialize, buffer);
-}
-
-template<typename CharType>
-inline Deserialized<std::basic_string<CharType>> DeserializeString(
-    const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
-{
-  return DeserializeMemcpyableVectorLike
-      <CharType, std::basic_string<CharType>>(buffer, starting_offset);
-}
-
-template<typename T, typename VectorLike>
-inline uint64_t SerializeVectorLike(
-    const VectorLike& vec_to_serialize,
-    std::vector<uint8_t>& buffer,
-    const Serializer<T>& item_serializer)
-{
-  const uint64_t start_buffer_size = buffer.size();
-  // First, write a uint64_t size header
-  const uint64_t size = static_cast<uint64_t>(vec_to_serialize.size());
-  SerializeMemcpyable<uint64_t>(size, buffer);
-  // Serialize the contained items
-  for (size_t idx = 0; idx < size; idx++)
-  {
-    const T& current = vec_to_serialize[idx];
-    item_serializer(current, buffer);
-  }
-  // Figure out how many bytes were written
-  const uint64_t end_buffer_size = buffer.size();
-  const uint64_t bytes_written = end_buffer_size - start_buffer_size;
-  return bytes_written;
-}
-
-template<typename T, typename VectorLike>
-inline Deserialized<VectorLike> DeserializeVectorLike(
-    const std::vector<uint8_t>& buffer,
-    const uint64_t starting_offset,
-    const Deserializer<T>& item_deserializer)
-{
-  uint64_t current_position = starting_offset;
-  // Load the header
-  const Deserialized<uint64_t> deserialized_size
-      = DeserializeMemcpyable<uint64_t>(buffer, current_position);
-  const uint64_t size = deserialized_size.Value();
-  current_position += deserialized_size.BytesRead();
-  // Deserialize the items
-  VectorLike deserialized;
-  deserialized.reserve(size);
-  for (uint64_t idx = 0; idx < size; idx++)
-  {
-    Deserialized<T> deserialized_item
-        = item_deserializer(buffer, current_position);
-    deserialized.emplace_back(std::move(deserialized_item.MutableValue()));
-    current_position += deserialized_item.BytesRead();
-  }
-  deserialized.shrink_to_fit();
-  // Figure out how many bytes were read
-  const uint64_t bytes_read = current_position - starting_offset;
-  return MakeDeserialized(deserialized, bytes_read);
-}
-
-template<typename T, typename VectorLike>
-inline uint64_t SerializeMemcpyableVectorLike(
-    const VectorLike& vec_to_serialize,
-    std::vector<uint8_t>& buffer)
-{
-  constexpr size_t item_size = sizeof(T);
-  static_assert(item_size > 0, "Zero-byte types cannot be serialized");
-  const uint64_t start_buffer_size = buffer.size();
-  // First, write a uint64_t size header
-  const uint64_t size = static_cast<uint64_t>(vec_to_serialize.size());
-  SerializeMemcpyable<uint64_t>(size, buffer);
-  // Expand the buffer to handle everything
-  const size_t serialized_length =
-      item_size * static_cast<size_t>(vec_to_serialize.size());
-  const size_t previous_buffer_size = buffer.size();
-  buffer.resize(previous_buffer_size + serialized_length, 0x00);
-  // Serialize the contained items
-  memcpy(&buffer[previous_buffer_size],
-         vec_to_serialize.data(), serialized_length);
-  // Figure out how many bytes were written
-  const uint64_t end_buffer_size = buffer.size();
-  const uint64_t bytes_written = end_buffer_size - start_buffer_size;
-  return bytes_written;
-}
-
-template<typename T, typename VectorLike>
-inline Deserialized<VectorLike>
-DeserializeMemcpyableVectorLike(
-    const std::vector<uint8_t>& buffer,
-    const uint64_t starting_offset)
-{
-  constexpr size_t item_size = sizeof(T);
-  static_assert(item_size > 0, "Zero-byte types cannot be deserialized");
-  uint64_t current_position = starting_offset;
-  // Load the header
-  const Deserialized<uint64_t> deserialized_size
-      = DeserializeMemcpyable<uint64_t>(buffer, current_position);
-  const uint64_t size = deserialized_size.Value();
-  current_position += deserialized_size.BytesRead();
-  // Deserialize the items
-  const size_t serialized_length = item_size * static_cast<size_t>(size);
-  if ((current_position + serialized_length) > buffer.size())
-  {
-    throw std::invalid_argument("Not enough room in the provided buffer");
-  }
-  VectorLike deserialized;
-  deserialized.resize(size);
-  memcpy(
-      const_cast<void*>(reinterpret_cast<const void*>(deserialized.data())),
-      &buffer[current_position],
-      serialized_length);
-  current_position += serialized_length;
-  // Figure out how many bytes were read
-  const uint64_t bytes_read = current_position - starting_offset;
-  return MakeDeserialized(deserialized, bytes_read);
-}
-
-template<typename Key, typename Value, typename MapLike>
-inline uint64_t SerializeMapLike(
-    const MapLike& map_to_serialize,
-    std::vector<uint8_t>& buffer,
-    const Serializer<Key>& key_serializer,
-    const Serializer<Value>& value_serializer)
-{
-  const uint64_t start_buffer_size = buffer.size();
-  // First, write a uint64_t size header
-  const uint64_t size = static_cast<uint64_t>(map_to_serialize.size());
-  SerializeMemcpyable<uint64_t>(size, buffer);
-  // Serialize the contained items
-  for (const auto& key_value : map_to_serialize)
-  {
-    SerializePairLike<Key, Value>(
-        key_value, buffer, key_serializer, value_serializer);
-  }
-  // Figure out how many bytes were written
-  const uint64_t end_buffer_size = buffer.size();
-  const uint64_t bytes_written = end_buffer_size - start_buffer_size;
-  return bytes_written;
-}
-
-template<typename Key, typename Value, typename MapLike>
-inline Deserialized<MapLike> DeserializeMapLike(
-    const std::vector<uint8_t>& buffer,
-    const uint64_t starting_offset,
-    const Deserializer<Key>& key_deserializer,
-    const Deserializer<Value>& value_deserializer)
-{
-  uint64_t current_position = starting_offset;
-  // Load the header
-  const Deserialized<uint64_t> deserialized_size
-      = DeserializeMemcpyable<uint64_t>(buffer, current_position);
-  const uint64_t size = deserialized_size.Value();
-  current_position += deserialized_size.BytesRead();
-  // Deserialize the items
-  MapLike deserialized;
-  for (uint64_t idx = 0; idx < size; idx++)
-  {
-    auto deserialized_key_value = DeserializePairLike<Key, Value>(
-        buffer, current_position, key_deserializer, value_deserializer);
-    current_position += deserialized_key_value.BytesRead();
-    // Note: we use emplace(key, value) rather than insert(key_value) since we
-    // don't know the internal (key, value) type (i.e. for map types that aren't
-    // std::map and std::unordered_map the internal type may differ from
-    // std::pair<Key, Value>).
-    deserialized.emplace(
-        std::move(deserialized_key_value.MutableValue().first),
-        std::move(deserialized_key_value.MutableValue().second));
-  }
-  // Figure out how many bytes were read
-  const uint64_t bytes_read = current_position - starting_offset;
-  return MakeDeserialized(deserialized, bytes_read);
-}
-
-template<typename Key, typename SetLike>
-inline uint64_t SerializeSetLike(
-    const SetLike& set_to_serialize,
-    std::vector<uint8_t>& buffer,
-    const Serializer<Key>& key_serializer)
-{
-  const uint64_t start_buffer_size = buffer.size();
-  // First, write a uint64_t size header
-  const uint64_t size = static_cast<uint64_t>(set_to_serialize.size());
-  SerializeMemcpyable<uint64_t>(size, buffer);
-  // Serialize the contained items
-  for (const auto& element : set_to_serialize)
-  {
-    key_serializer(element, buffer);
-  }
-  // Figure out how many bytes were written
-  const uint64_t end_buffer_size = buffer.size();
-  const uint64_t bytes_written = end_buffer_size - start_buffer_size;
-  return bytes_written;
-}
-
-template<typename Key, typename SetLike>
-inline Deserialized<SetLike> DeserializeSetLike(
-    const std::vector<uint8_t>& buffer,
-    const uint64_t starting_offset,
-    const Deserializer<Key>& key_deserializer)
-{
-  uint64_t current_position = starting_offset;
-  // Load the header
-  const Deserialized<uint64_t> deserialized_size
-      = DeserializeMemcpyable<uint64_t>(buffer, current_position);
-  const uint64_t size = deserialized_size.Value();
-  current_position += deserialized_size.BytesRead();
-  // Deserialize the items
-  SetLike deserialized;
-  for (uint64_t idx = 0; idx < size; idx++)
-  {
-    Deserialized<Key> deserialized_key
-        = key_deserializer(buffer, current_position);
-    deserialized.insert(std::move(deserialized_key.MutableValue()));
-    current_position += deserialized_key.BytesRead();
-  }
-  // Figure out how many bytes were read
-  const uint64_t bytes_read = current_position - starting_offset;
-  return MakeDeserialized(deserialized, bytes_read);
-}
-
-template<typename First, typename Second, typename PairLike>
-inline uint64_t SerializePairLike(
-    const PairLike& pair_to_serialize,
-    std::vector<uint8_t>& buffer,
-    const Serializer<First>& first_serializer,
-    const Serializer<Second>& second_serializer)
-{
-  const uint64_t start_buffer_size = buffer.size();
-  // Write each element of the pair into the buffer
-  first_serializer(pair_to_serialize.first, buffer);
-  second_serializer(pair_to_serialize.second, buffer);
-  // Figure out how many bytes were written
-  const uint64_t end_buffer_size = buffer.size();
-  const uint64_t bytes_written = end_buffer_size - start_buffer_size;
-  return bytes_written;
-}
-
-template<typename First, typename Second, typename PairLike>
-inline Deserialized<PairLike> DeserializePairLike(
-    const std::vector<uint8_t>& buffer,
-    const uint64_t starting_offset,
-    const Deserializer<First>& first_deserializer,
-    const Deserializer<Second>& second_deserializer)
-{
-  // Deserialize each item in the pair individually
-  uint64_t current_position = starting_offset;
-  Deserialized<First> deserialized_first
-      = first_deserializer(buffer, current_position);
-  current_position += deserialized_first.BytesRead();
-  Deserialized<Second> deserialized_second
-      = second_deserializer(buffer, current_position);
-  current_position += deserialized_second.BytesRead();
-  // Build the resulting pair
-  PairLike deserialized(
-      std::move(deserialized_first.MutableValue()),
-      std::move(deserialized_second.MutableValue()));
-  // Figure out how many bytes were read
-  const uint64_t bytes_read = current_position - starting_offset;
-  return MakeDeserialized(deserialized, bytes_read);
-}
-
-// Byte-order conversions. For now, only Linux and macOS are supported.
-#if defined(__APPLE__)
-    #include <libkern/OSByteOrder.h>
-#else
-    #include <endian.h>
-#endif
-
-inline uint8_t HostToNetwork8(const uint8_t value)
-{
-  return value;
-}
-
-inline uint16_t HostToNetwork16(const uint16_t value)
-{
-#if defined(__APPLE__)
-  return OSSwapHostToBigInt16(value);
-#else
-  return htobe16(value);
-#endif
-}
-
-inline uint32_t HostToNetwork32(const uint32_t value)
-{
-#if defined(__APPLE__)
-  return OSSwapHostToBigInt32(value);
-#else
-  return htobe32(value);
-#endif
-}
-
-inline uint64_t HostToNetwork64(const uint64_t value)
-{
-#if defined(__APPLE__)
-  return OSSwapHostToBigInt64(value);
-#else
-  return htobe64(value);
-#endif
-}
-
-inline uint8_t NetworkToHost8(const uint8_t value)
-{
-  return value;
-}
-
-inline uint16_t NetworkToHost16(const uint16_t value)
-{
-#if defined(__APPLE__)
-  return OSSwapBigToHostInt16(value);
-#else
-  return be16toh(value);
-#endif
-}
-
-inline uint32_t NetworkToHost32(const uint32_t value)
-{
-#if defined(__APPLE__)
-  return OSSwapBigToHostInt32(value);
-#else
-  return be32toh(value);
-#endif
-}
-
-inline uint64_t NetworkToHost64(const uint64_t value)
-{
-#if defined(__APPLE__)
-  return OSSwapBigToHostInt64(value);
-#else
-  return be64toh(value);
-#endif
 }
 
 template<typename T>
@@ -863,27 +597,87 @@ inline Deserialized<T> DeserializeNetworkMemcpyable(
   return MakeDeserialized(temp_item, static_cast<uint64_t>(item_size));
 }
 
-template<typename CharType>
-inline uint64_t SerializeNetworkString(
-    const std::basic_string<CharType>& str_to_serialize,
-    std::vector<uint8_t>& buffer)
+/// Wrapper types for allowing host versus network byte order serialization of
+/// container sizes to be specified by template type.
+namespace internal
 {
-  return SerializeNetworkMemcpyableVectorLike
-      <CharType, std::basic_string<CharType>>(str_to_serialize, buffer);
+struct HostSizeSerializer
+{
+  static uint64_t Serialize(const uint64_t size, std::vector<uint8_t>& buffer)
+  {
+    return SerializeMemcpyable<uint64_t>(size, buffer);
+  }
+
+  static Deserialized<uint64_t> Deserialize(
+      const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
+  {
+    return DeserializeMemcpyable<uint64_t>(buffer, starting_offset);
+  }
+};
+
+struct NetworkSizeSerializer
+{
+  static uint64_t Serialize(const uint64_t size, std::vector<uint8_t>& buffer)
+  {
+    return SerializeNetworkMemcpyable<uint64_t>(size, buffer);
+  }
+
+  static Deserialized<uint64_t> Deserialize(
+      const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
+  {
+    return DeserializeNetworkMemcpyable<uint64_t>(buffer, starting_offset);
+  }
+};
+}  // namespace internal
+
+/// Second, pair-like type serialization. This does not require separate host
+/// and network byte order variants.
+template<typename First, typename Second, typename PairLike>
+inline uint64_t SerializePairLike(
+    const PairLike& pair_to_serialize,
+    std::vector<uint8_t>& buffer,
+    const Serializer<First>& first_serializer,
+    const Serializer<Second>& second_serializer)
+{
+  const uint64_t start_buffer_size = buffer.size();
+  // Write each element of the pair into the buffer
+  first_serializer(pair_to_serialize.first, buffer);
+  second_serializer(pair_to_serialize.second, buffer);
+  // Figure out how many bytes were written
+  const uint64_t end_buffer_size = buffer.size();
+  const uint64_t bytes_written = end_buffer_size - start_buffer_size;
+  return bytes_written;
 }
 
-template<typename CharType>
-inline Deserialized<std::basic_string<CharType>>
-DeserializeNetworkString(
+template<typename First, typename Second, typename PairLike>
+inline Deserialized<PairLike> DeserializePairLike(
     const std::vector<uint8_t>& buffer,
-    const uint64_t starting_offset)
+    const uint64_t starting_offset,
+    const Deserializer<First>& first_deserializer,
+    const Deserializer<Second>& second_deserializer)
 {
-  return DeserializeNetworkMemcpyableVectorLike
-      <CharType, std::basic_string<CharType>>(buffer, starting_offset);
+  // Deserialize each item in the pair individually
+  uint64_t current_position = starting_offset;
+  Deserialized<First> deserialized_first
+      = first_deserializer(buffer, current_position);
+  current_position += deserialized_first.BytesRead();
+  Deserialized<Second> deserialized_second
+      = second_deserializer(buffer, current_position);
+  current_position += deserialized_second.BytesRead();
+  // Build the resulting pair
+  PairLike deserialized(
+      std::move(deserialized_first.MutableValue()),
+      std::move(deserialized_second.MutableValue()));
+  // Figure out how many bytes were read
+  const uint64_t bytes_read = current_position - starting_offset;
+  return MakeDeserialized(deserialized, bytes_read);
 }
 
-template<typename T, typename VectorLike>
-inline uint64_t SerializeNetworkVectorLike(
+/// Third, vector-like type serialization, for both host and network byte order.
+namespace internal
+{
+template<typename SizeSerializer, typename T, typename VectorLike>
+inline uint64_t DoSerializeVectorLike(
     const VectorLike& vec_to_serialize,
     std::vector<uint8_t>& buffer,
     const Serializer<T>& item_serializer)
@@ -891,7 +685,7 @@ inline uint64_t SerializeNetworkVectorLike(
   const uint64_t start_buffer_size = buffer.size();
   // First, write a uint64_t size header
   const uint64_t size = static_cast<uint64_t>(vec_to_serialize.size());
-  SerializeNetworkMemcpyable<uint64_t>(size, buffer);
+  SizeSerializer::Serialize(size, buffer);
   // Serialize the contained items
   for (size_t idx = 0; idx < size; idx++)
   {
@@ -904,9 +698,8 @@ inline uint64_t SerializeNetworkVectorLike(
   return bytes_written;
 }
 
-template<typename T, typename VectorLike>
-inline Deserialized<VectorLike>
-DeserializeNetworkVectorLike(
+template<typename SizeSerializer, typename T, typename VectorLike>
+inline Deserialized<VectorLike> DoDeserializeVectorLike(
     const std::vector<uint8_t>& buffer,
     const uint64_t starting_offset,
     const Deserializer<T>& item_deserializer)
@@ -914,7 +707,7 @@ DeserializeNetworkVectorLike(
   uint64_t current_position = starting_offset;
   // Load the header
   const Deserialized<uint64_t> deserialized_size
-      = DeserializeNetworkMemcpyable<uint64_t>(buffer, current_position);
+      = SizeSerializer::Deserialize(buffer, current_position);
   const uint64_t size = deserialized_size.Value();
   current_position += deserialized_size.BytesRead();
   // Deserialize the items
@@ -928,6 +721,112 @@ DeserializeNetworkVectorLike(
     current_position += deserialized_item.BytesRead();
   }
   deserialized.shrink_to_fit();
+  // Figure out how many bytes were read
+  const uint64_t bytes_read = current_position - starting_offset;
+  return MakeDeserialized(deserialized, bytes_read);
+}
+}  // namespace internal
+
+template<typename T, typename VectorLike>
+inline uint64_t SerializeVectorLike(
+    const VectorLike& vec_to_serialize,
+    std::vector<uint8_t>& buffer,
+    const Serializer<T>& item_serializer)
+{
+  return internal::DoSerializeVectorLike
+      <internal::HostSizeSerializer, T, VectorLike>(
+          vec_to_serialize, buffer, item_serializer);
+}
+
+template<typename T, typename VectorLike>
+inline Deserialized<VectorLike> DeserializeVectorLike(
+    const std::vector<uint8_t>& buffer,
+    const uint64_t starting_offset,
+    const Deserializer<T>& item_deserializer)
+{
+  return internal::DoDeserializeVectorLike
+      <internal::HostSizeSerializer, T, VectorLike>(
+          buffer, starting_offset, item_deserializer);
+}
+
+template<typename T, typename VectorLike>
+inline uint64_t SerializeNetworkVectorLike(
+    const VectorLike& vec_to_serialize,
+    std::vector<uint8_t>& buffer,
+    const Serializer<T>& item_serializer)
+{
+  return internal::DoSerializeVectorLike
+      <internal::NetworkSizeSerializer, T, VectorLike>(
+          vec_to_serialize, buffer, item_serializer);
+}
+
+template<typename T, typename VectorLike>
+inline Deserialized<VectorLike>
+DeserializeNetworkVectorLike(
+    const std::vector<uint8_t>& buffer,
+    const uint64_t starting_offset,
+    const Deserializer<T>& item_deserializer)
+{
+  return internal::DoDeserializeVectorLike
+      <internal::NetworkSizeSerializer, T, VectorLike>(
+          buffer, starting_offset, item_deserializer);
+}
+
+/// Fourth, a special case of vector-like type serialization, for when the
+/// entire container can be serialized in memcpy form, in both host and network
+/// byte order forms.
+template<typename T, typename VectorLike>
+inline uint64_t SerializeMemcpyableVectorLike(
+    const VectorLike& vec_to_serialize,
+    std::vector<uint8_t>& buffer)
+{
+  constexpr size_t item_size = sizeof(T);
+  static_assert(item_size > 0, "Zero-byte types cannot be serialized");
+  const uint64_t start_buffer_size = buffer.size();
+  // First, write a uint64_t size header
+  const uint64_t size = static_cast<uint64_t>(vec_to_serialize.size());
+  SerializeMemcpyable<uint64_t>(size, buffer);
+  // Expand the buffer to handle everything
+  const size_t serialized_length =
+      item_size * static_cast<size_t>(vec_to_serialize.size());
+  const size_t previous_buffer_size = buffer.size();
+  buffer.resize(previous_buffer_size + serialized_length, 0x00);
+  // Serialize the contained items
+  memcpy(&buffer[previous_buffer_size],
+         vec_to_serialize.data(), serialized_length);
+  // Figure out how many bytes were written
+  const uint64_t end_buffer_size = buffer.size();
+  const uint64_t bytes_written = end_buffer_size - start_buffer_size;
+  return bytes_written;
+}
+
+template<typename T, typename VectorLike>
+inline Deserialized<VectorLike>
+DeserializeMemcpyableVectorLike(
+    const std::vector<uint8_t>& buffer,
+    const uint64_t starting_offset)
+{
+  constexpr size_t item_size = sizeof(T);
+  static_assert(item_size > 0, "Zero-byte types cannot be deserialized");
+  uint64_t current_position = starting_offset;
+  // Load the header
+  const Deserialized<uint64_t> deserialized_size
+      = DeserializeMemcpyable<uint64_t>(buffer, current_position);
+  const uint64_t size = deserialized_size.Value();
+  current_position += deserialized_size.BytesRead();
+  // Deserialize the items
+  const size_t serialized_length = item_size * static_cast<size_t>(size);
+  if ((current_position + serialized_length) > buffer.size())
+  {
+    throw std::invalid_argument("Not enough room in the provided buffer");
+  }
+  VectorLike deserialized;
+  deserialized.resize(size);
+  memcpy(
+      const_cast<void*>(reinterpret_cast<const void*>(deserialized.data())),
+      &buffer[current_position],
+      serialized_length);
+  current_position += serialized_length;
   // Figure out how many bytes were read
   const uint64_t bytes_read = current_position - starting_offset;
   return MakeDeserialized(deserialized, bytes_read);
@@ -990,8 +889,50 @@ DeserializeNetworkMemcpyableVectorLike(const std::vector<uint8_t>& buffer,
   return MakeDeserialized(deserialized, bytes_read);
 }
 
-template<typename Key, typename Value, typename MapLike>
-inline uint64_t SerializeNetworkMapLike(
+/// Fifth, string type serialization, for both host and network byte order, as
+/// these are just special cases of memcpy-able vector-like type serialization.
+template<typename CharType>
+inline uint64_t SerializeString(
+    const std::basic_string<CharType>& str_to_serialize,
+    std::vector<uint8_t>& buffer)
+{
+  return SerializeMemcpyableVectorLike
+      <CharType, std::basic_string<CharType>>(str_to_serialize, buffer);
+}
+
+template<typename CharType>
+inline Deserialized<std::basic_string<CharType>> DeserializeString(
+    const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
+{
+  return DeserializeMemcpyableVectorLike
+      <CharType, std::basic_string<CharType>>(buffer, starting_offset);
+}
+
+template<typename CharType>
+inline uint64_t SerializeNetworkString(
+    const std::basic_string<CharType>& str_to_serialize,
+    std::vector<uint8_t>& buffer)
+{
+  return SerializeNetworkMemcpyableVectorLike
+      <CharType, std::basic_string<CharType>>(str_to_serialize, buffer);
+}
+
+template<typename CharType>
+inline Deserialized<std::basic_string<CharType>>
+DeserializeNetworkString(
+    const std::vector<uint8_t>& buffer,
+    const uint64_t starting_offset)
+{
+  return DeserializeNetworkMemcpyableVectorLike
+      <CharType, std::basic_string<CharType>>(buffer, starting_offset);
+}
+
+/// Sixth, map-like type serialization, in host and network byte order forms.
+namespace internal
+{
+template<typename SizeSerializer, typename Key, typename Value,
+         typename MapLike>
+inline uint64_t DoSerializeMapLike(
     const MapLike& map_to_serialize,
     std::vector<uint8_t>& buffer,
     const Serializer<Key>& key_serializer,
@@ -1000,7 +941,7 @@ inline uint64_t SerializeNetworkMapLike(
   const uint64_t start_buffer_size = buffer.size();
   // First, write a uint64_t size header
   const uint64_t size = static_cast<uint64_t>(map_to_serialize.size());
-  SerializeNetworkMemcpyable<uint64_t>(size, buffer);
+  SizeSerializer::Serialize(size, buffer);
   // Serialize the contained items
   for (const auto& key_value : map_to_serialize)
   {
@@ -1013,8 +954,9 @@ inline uint64_t SerializeNetworkMapLike(
   return bytes_written;
 }
 
-template<typename Key, typename Value, typename MapLike>
-inline Deserialized<MapLike> DeserializeNetworkMapLike(
+template<typename SizeSerializer, typename Key, typename Value,
+         typename MapLike>
+inline Deserialized<MapLike> DoDeserializeMapLike(
     const std::vector<uint8_t>& buffer,
     const uint64_t starting_offset,
     const Deserializer<Key>& key_deserializer,
@@ -1023,7 +965,7 @@ inline Deserialized<MapLike> DeserializeNetworkMapLike(
   uint64_t current_position = starting_offset;
   // Load the header
   const Deserialized<uint64_t> deserialized_size
-      = DeserializeNetworkMemcpyable<uint64_t>(buffer, current_position);
+      = SizeSerializer::Deserialize(buffer, current_position);
   const uint64_t size = deserialized_size.Value();
   current_position += deserialized_size.BytesRead();
   // Deserialize the items
@@ -1045,9 +987,61 @@ inline Deserialized<MapLike> DeserializeNetworkMapLike(
   const uint64_t bytes_read = current_position - starting_offset;
   return MakeDeserialized(deserialized, bytes_read);
 }
+}  // namespace internal
 
-template<typename Key, typename SetLike>
-inline uint64_t SerializeNetworkSetLike(
+template<typename Key, typename Value, typename MapLike>
+inline uint64_t SerializeMapLike(
+    const MapLike& map_to_serialize,
+    std::vector<uint8_t>& buffer,
+    const Serializer<Key>& key_serializer,
+    const Serializer<Value>& value_serializer)
+{
+  return internal::DoSerializeMapLike
+      <internal::HostSizeSerializer, Key, Value, MapLike>(
+          map_to_serialize, buffer, key_serializer, value_serializer);
+}
+
+template<typename Key, typename Value, typename MapLike>
+inline Deserialized<MapLike> DeserializeMapLike(
+    const std::vector<uint8_t>& buffer,
+    const uint64_t starting_offset,
+    const Deserializer<Key>& key_deserializer,
+    const Deserializer<Value>& value_deserializer)
+{
+  return internal::DoDeserializeMapLike
+      <internal::HostSizeSerializer, Key, Value, MapLike>(
+          buffer, starting_offset, key_deserializer, value_deserializer);
+}
+
+template<typename Key, typename Value, typename MapLike>
+inline uint64_t SerializeNetworkMapLike(
+    const MapLike& map_to_serialize,
+    std::vector<uint8_t>& buffer,
+    const Serializer<Key>& key_serializer,
+    const Serializer<Value>& value_serializer)
+{
+  return internal::DoSerializeMapLike
+      <internal::NetworkSizeSerializer, Key, Value, MapLike>(
+          map_to_serialize, buffer, key_serializer, value_serializer);
+}
+
+template<typename Key, typename Value, typename MapLike>
+inline Deserialized<MapLike> DeserializeNetworkMapLike(
+    const std::vector<uint8_t>& buffer,
+    const uint64_t starting_offset,
+    const Deserializer<Key>& key_deserializer,
+    const Deserializer<Value>& value_deserializer)
+{
+  return internal::DoDeserializeMapLike
+      <internal::NetworkSizeSerializer, Key, Value, MapLike>(
+          buffer, starting_offset, key_deserializer, value_deserializer);
+}
+
+/// Seventh, set-like type serialization, in host and network byte order forms.
+namespace internal
+{
+template<typename SizeSerializer, typename Key, typename SetLike>
+inline uint64_t DoSerializeSetLike(
     const SetLike& set_to_serialize,
     std::vector<uint8_t>& buffer,
     const Serializer<Key>& key_serializer)
@@ -1055,7 +1049,7 @@ inline uint64_t SerializeNetworkSetLike(
   const uint64_t start_buffer_size = buffer.size();
   // First, write a uint64_t size header
   const uint64_t size = static_cast<uint64_t>(set_to_serialize.size());
-  SerializeNetworkMemcpyable<uint64_t>(size, buffer);
+  SizeSerializer::Serialize(size, buffer);
   // Serialize the contained items
   for (const auto& element : set_to_serialize)
   {
@@ -1067,8 +1061,8 @@ inline uint64_t SerializeNetworkSetLike(
   return bytes_written;
 }
 
-template<typename Key, typename SetLike>
-inline Deserialized<SetLike> DeserializeNetworkSetLike(
+template<typename SizeSerializer, typename Key, typename SetLike>
+inline Deserialized<SetLike> DoDeserializeSetLike(
     const std::vector<uint8_t>& buffer,
     const uint64_t starting_offset,
     const Deserializer<Key>& key_deserializer)
@@ -1076,7 +1070,7 @@ inline Deserialized<SetLike> DeserializeNetworkSetLike(
   uint64_t current_position = starting_offset;
   // Load the header
   const Deserialized<uint64_t> deserialized_size
-      = DeserializeNetworkMemcpyable<uint64_t>(buffer, current_position);
+      = SizeSerializer::Deserialize(buffer, current_position);
   const uint64_t size = deserialized_size.Value();
   current_position += deserialized_size.BytesRead();
   // Deserialize the items
@@ -1091,6 +1085,51 @@ inline Deserialized<SetLike> DeserializeNetworkSetLike(
   // Figure out how many bytes were read
   const uint64_t bytes_read = current_position - starting_offset;
   return MakeDeserialized(deserialized, bytes_read);
+}
+}  // namespace internal
+
+template<typename Key, typename SetLike>
+inline uint64_t SerializeSetLike(
+    const SetLike& set_to_serialize,
+    std::vector<uint8_t>& buffer,
+    const Serializer<Key>& key_serializer)
+{
+  return internal::DoSerializeSetLike
+      <internal::HostSizeSerializer, Key, SetLike>(
+          set_to_serialize, buffer, key_serializer);
+}
+
+template<typename Key, typename SetLike>
+inline Deserialized<SetLike> DeserializeSetLike(
+    const std::vector<uint8_t>& buffer,
+    const uint64_t starting_offset,
+    const Deserializer<Key>& key_deserializer)
+{
+  return internal::DoDeserializeSetLike
+      <internal::HostSizeSerializer, Key, SetLike>(
+          buffer, starting_offset, key_deserializer);
+}
+
+template<typename Key, typename SetLike>
+inline uint64_t SerializeNetworkSetLike(
+    const SetLike& set_to_serialize,
+    std::vector<uint8_t>& buffer,
+    const Serializer<Key>& key_serializer)
+{
+  return internal::DoSerializeSetLike
+      <internal::NetworkSizeSerializer, Key, SetLike>(
+          set_to_serialize, buffer, key_serializer);
+}
+
+template<typename Key, typename SetLike>
+inline Deserialized<SetLike> DeserializeNetworkSetLike(
+    const std::vector<uint8_t>& buffer,
+    const uint64_t starting_offset,
+    const Deserializer<Key>& key_deserializer)
+{
+  return internal::DoDeserializeSetLike
+      <internal::NetworkSizeSerializer, Key, SetLike>(
+          buffer, starting_offset, key_deserializer);
 }
 }  // namespace serialization
 }  // namespace common_robotics_utilities

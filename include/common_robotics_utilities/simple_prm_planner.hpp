@@ -34,6 +34,8 @@ enum class NNDistanceDirection {ROADMAP_TO_NEW_STATE, NEW_STATE_TO_ROADMAP};
 /// use_parallel is true, this must be thread-safe.
 /// @param K number of K neighboring states in the roadmap to attempt to connect
 /// the new state to.
+/// @param max_node_index_for_knn maximum node index to use for KNN. To consider
+/// all nodes in roadmap, provide roadmap.Size().
 /// @param use_parallel use parallel operations when possible.
 /// @param connection_is_symmetric are distance and edge validity symmetric
 /// (i.e. distance_fn(a, b) == distance_fn(b, a) and
@@ -55,9 +57,10 @@ inline int64_t AddNodeToRoadmap(
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const int64_t K,
-    const bool use_parallel = true,
-    const bool connection_is_symmetric = true,
-    const bool add_duplicate_states = false)
+    const int64_t max_node_index_for_knn,
+    const bool use_parallel,
+    const bool connection_is_symmetric,
+    const bool add_duplicate_states)
 {
   // Make the node->graph or graph->node distance function as needed
   std::function<double(const typename GraphType::NodeType&, const T&)>
@@ -82,8 +85,9 @@ inline int64_t AddNodeToRoadmap(
   // Call KNN with the distance function.
   const auto nearest_neighbors =
       simple_knearest_neighbors::GetKNearestNeighbors(
-          simple_graph::GraphKNNAdapter<GraphType>(roadmap), state,
-          graph_distance_fn, K, use_parallel);
+          simple_graph::GraphKNNAdapter<GraphType>(
+              roadmap, max_node_index_for_knn),
+          state, graph_distance_fn, K, use_parallel);
 
   // Check if we already have this state in the roadmap
   // (and we don't want to add duplicates)
@@ -239,7 +243,7 @@ inline std::map<std::string, double> GrowRoadMap(
       const int64_t pre_size = roadmap.Size();
       AddNodeToRoadmap<T, GraphType>(
           random_state, NNDistanceDirection::ROADMAP_TO_NEW_STATE, roadmap,
-          distance_fn, edge_validity_check_fn, K, use_parallel,
+          distance_fn, edge_validity_check_fn, K, pre_size, use_parallel,
           connection_is_symmetric, add_duplicate_states);
       const int64_t post_size = roadmap.Size();
       if (post_size > pre_size)
@@ -622,24 +626,26 @@ LazyQueryPathAndAddNodes(
     throw std::runtime_error("goals is empty");
   }
   // Add the start nodes to the roadmap
+  const int64_t pre_starts_size = roadmap.Size();
   std::vector<int64_t> start_node_indices(starts.size());
   for (size_t start_idx = 0; start_idx < starts.size(); start_idx++)
   {
     const T& start = starts.at(start_idx);
     start_node_indices.at(start_idx) = AddNodeToRoadmap<T, GraphType>(
         start, NNDistanceDirection::NEW_STATE_TO_ROADMAP, roadmap, distance_fn,
-        edge_validity_check_fn, K, use_parallel, connection_is_symmetric,
-        add_duplicate_states);
+        edge_validity_check_fn, K, pre_starts_size, use_parallel,
+        connection_is_symmetric, add_duplicate_states);
   }
   // Add the goal nodes to the roadmap
+  const int64_t pre_goals_size = roadmap.Size();
   std::vector<int64_t> goal_node_indices(goals.size());
   for (size_t goal_idx = 0; goal_idx < goals.size(); goal_idx++)
   {
     const T& goal = goals.at(goal_idx);
     goal_node_indices.at(goal_idx) = AddNodeToRoadmap<T, GraphType>(
         goal, NNDistanceDirection::ROADMAP_TO_NEW_STATE, roadmap, distance_fn,
-        edge_validity_check_fn, K, use_parallel, connection_is_symmetric,
-        add_duplicate_states);
+        edge_validity_check_fn, K, pre_goals_size, use_parallel,
+        connection_is_symmetric, add_duplicate_states);
   }
   // Call graph A*
   const auto astar_result =
@@ -699,24 +705,26 @@ QueryPathAndAddNodes(
     throw std::runtime_error("goals is empty");
   }
   // Add the start nodes to the roadmap
+  const int64_t pre_starts_size = roadmap.Size();
   std::vector<int64_t> start_node_indices(starts.size());
   for (size_t start_idx = 0; start_idx < starts.size(); start_idx++)
   {
     const T& start = starts.at(start_idx);
     start_node_indices.at(start_idx) = AddNodeToRoadmap<T, GraphType>(
         start, NNDistanceDirection::NEW_STATE_TO_ROADMAP, roadmap, distance_fn,
-        edge_validity_check_fn, K, use_parallel, connection_is_symmetric,
-        add_duplicate_states);
+        edge_validity_check_fn, K, pre_starts_size, use_parallel,
+        connection_is_symmetric, add_duplicate_states);
   }
   // Add the goal nodes to the roadmap
+  const int64_t pre_goals_size = roadmap.Size();
   std::vector<int64_t> goal_node_indices(goals.size());
   for (size_t goal_idx = 0; goal_idx < goals.size(); goal_idx++)
   {
     const T& goal = goals.at(goal_idx);
     goal_node_indices.at(goal_idx) = AddNodeToRoadmap<T, GraphType>(
         goal, NNDistanceDirection::ROADMAP_TO_NEW_STATE, roadmap, distance_fn,
-        edge_validity_check_fn, K, use_parallel, connection_is_symmetric,
-        add_duplicate_states);
+        edge_validity_check_fn, K, pre_goals_size, use_parallel,
+        connection_is_symmetric, add_duplicate_states);
   }
   const auto astar_result =
       simple_graph_search::PerformAstarSearch<T, GraphType>(

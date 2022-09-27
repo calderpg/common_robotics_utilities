@@ -304,11 +304,26 @@ class GraphKNNAdapter
 {
 private:
   const GraphType& graph_;
+  const int64_t max_size_;
 
 public:
-  GraphKNNAdapter(const GraphType& graph) : graph_(graph) {}
+  GraphKNNAdapter(const GraphType& graph, const int64_t max_size)
+      : graph_(graph), max_size_(max_size)
+  {
+    if (max_size_ > graph_.Size())
+    {
+      throw std::invalid_argument("GraphKNNAdapter max_size > graph.Size()");
+    }
+    else if (max_size_ < 0)
+    {
+      throw std::invalid_argument("GraphKNNAdapter max_size < 0");
+    }
+  }
 
-  size_t size() const { return static_cast<size_t>(graph_.Size()); }
+  explicit GraphKNNAdapter(const GraphType& graph)
+      : GraphKNNAdapter(graph, graph.Size()) {}
+
+  size_t size() const { return static_cast<size_t>(max_size_); }
 
   const typename GraphType::NodeType& operator[](const size_t index) const
   {

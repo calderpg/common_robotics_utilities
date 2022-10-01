@@ -516,6 +516,21 @@ public:
   const PlanningStatistics& Statistics() const { return statistics_; }
 };
 
+using BiRRTSelectSampleTypeFunction = std::function<bool(void)>;
+
+template<typename StateType, typename TreeType=SimpleRRTPlannerTree<StateType>>
+using BiRRTTreeSamplingFunction =
+    std::function<int64_t(
+        const TreeType&,  // Target tree
+        const bool)>;  // Is the start tree the active tree?
+
+template<typename StateType, typename TreeType=SimpleRRTPlannerTree<StateType>>
+using BiRRTSwitchActiveTreeFunction =
+    std::function<bool(
+        const TreeType&,  // Start tree
+        const TreeType&,  // Goal tree
+        const bool)>;  // Is the start tree the active tree?
+
 template<typename StateType, typename TreeType=SimpleRRTPlannerTree<StateType>>
 using BiRRTNearestNeighborFunction =
     std::function<int64_t(
@@ -846,7 +861,9 @@ inline MultipleSolutionPlanningResults<StateType, Container>
 BiRRTPlanMultiPath(
     TreeType& start_tree,
     TreeType& goal_tree,
+    const BiRRTSelectSampleTypeFunction& select_sample_type_fn,
     const SamplingFunction<StateType>& state_sampling_fn,
+    const BiRRTTreeSamplingFunction<StateType, TreeType>& tree_sampling_fn,
     const BiRRTNearestNeighborFunction<StateType, TreeType>&
         nearest_neighbor_fn,
     const BiRRTPropagationFunction<StateType>& propagation_fn,
@@ -855,21 +872,10 @@ BiRRTPlanMultiPath(
     const StatesConnectedFunction<StateType>& states_connected_fn,
     const GoalBridgeCallbackFunction<StateType, TreeType>&
         goal_bridge_callback_fn,
-    const double tree_sampling_bias,
-    const double p_switch_tree,
-    const BiRRTTerminationCheckFunction& termination_check_fn,
-    const utility::UniformUnitRealFunction& uniform_unit_real_fn)
+    const BiRRTSwitchActiveTreeFunction<StateType, TreeType>&
+        switch_active_tree_fn,
+    const BiRRTTerminationCheckFunction& termination_check_fn)
 {
-  if ((tree_sampling_bias < 0.0) || (tree_sampling_bias > 1.0))
-  {
-    throw std::invalid_argument(
-        "tree_sampling_bias is not a valid probability");
-  }
-  if ((p_switch_tree < 0.0) || (p_switch_tree > 1.0))
-  {
-    throw std::invalid_argument(
-        "p_switch_tree is not a valid probability");
-  }
   if (start_tree.Empty())
   {
     throw std::invalid_argument(
@@ -948,16 +954,13 @@ BiRRTPlanMultiPath(
     TreeType& active_tree = (start_tree_active) ? start_tree : goal_tree;
     TreeType& target_tree = (start_tree_active) ? goal_tree : start_tree;
     // Select our sampling type
-    const bool sample_from_tree
-        = (uniform_unit_real_fn() <= tree_sampling_bias);
-    int64_t target_tree_node_index = -1;
-    if (sample_from_tree)
-    {
-      target_tree_node_index = utility::GetUniformRandomIndex(
-          uniform_unit_real_fn, target_tree.Size());
-    }
+    const bool sample_from_tree = select_sample_type_fn();
     // Sample a target state
-    const StateType target_state
+    const int64_t target_tree_node_index
+        = (sample_from_tree)
+          ? tree_sampling_fn(target_tree, start_tree_active)
+          : -1;
+    const StateType& target_state
         = (sample_from_tree)
           ? target_tree.GetNodeImmutable(
               target_tree_node_index).GetValueImmutable()
@@ -1056,7 +1059,7 @@ BiRRTPlanMultiPath(
       statistics["failed_samples"] += 1.0;
     }
     // Decide if we should switch the active tree
-    if (uniform_unit_real_fn() <= p_switch_tree)
+    if (switch_active_tree_fn(start_tree, goal_tree, start_tree_active))
     {
       start_tree_active = !start_tree_active;
       statistics["active_tree_swaps"] += 1.0;
@@ -1246,7 +1249,9 @@ inline SingleSolutionPlanningResults<StateType, Container>
 BiRRTPlanSinglePath(
     TreeType& start_tree,
     TreeType& goal_tree,
+    const BiRRTSelectSampleTypeFunction& select_sample_type_fn,
     const SamplingFunction<StateType>& state_sampling_fn,
+    const BiRRTTreeSamplingFunction<StateType, TreeType>& tree_sampling_fn,
     const BiRRTNearestNeighborFunction<StateType, TreeType>&
         nearest_neighbor_fn,
     const BiRRTPropagationFunction<StateType>& propagation_fn,
@@ -1255,10 +1260,9 @@ BiRRTPlanSinglePath(
     const StatesConnectedFunction<StateType>& states_connected_fn,
     const GoalBridgeCallbackFunction<StateType, TreeType>&
         goal_bridge_callback_fn,
-    const double tree_sampling_bias,
-    const double p_switch_tree,
-    const BiRRTTerminationCheckFunction& termination_check_fn,
-    const utility::UniformUnitRealFunction& uniform_unit_real_fn)
+    const BiRRTSwitchActiveTreeFunction<StateType, TreeType>&
+        switch_active_tree_fn,
+    const BiRRTTerminationCheckFunction& termination_check_fn)
 {
   bool solution_found = false;
   const GoalBridgeCallbackFunction<StateType, TreeType>
@@ -1284,10 +1288,11 @@ BiRRTPlanSinglePath(
   };
   const auto birrt_result =
       BiRRTPlanMultiPath<StateType, TreeType, Container>(
-          start_tree, goal_tree, state_sampling_fn, nearest_neighbor_fn,
-          propagation_fn, state_added_callback_fn, states_connected_fn,
-          internal_goal_bridge_callback_fn, tree_sampling_bias, p_switch_tree,
-          internal_termination_check_fn, uniform_unit_real_fn);
+          start_tree, goal_tree, select_sample_type_fn, state_sampling_fn,
+          tree_sampling_fn, nearest_neighbor_fn, propagation_fn,
+          state_added_callback_fn, states_connected_fn,
+          internal_goal_bridge_callback_fn, switch_active_tree_fn,
+          internal_termination_check_fn);
   if (birrt_result.Paths().size() > 0)
   {
     return SingleSolutionPlanningResults<StateType, Container>(
@@ -1393,6 +1398,51 @@ inline BiRRTTerminationCheckFunction MakeBiRRTTimeoutTerminationFunction(
   return termination_function;
 }
 
+/// DOCS HERE
+inline BiRRTSelectSampleTypeFunction
+MakeUniformRandomBiRRTSelectSampleTypeFunction(
+    const utility::UniformUnitRealFunction& uniform_unit_real_fn,
+    const double tree_sampling_bias)
+{
+  if (tree_sampling_bias >= 0.0 && tree_sampling_bias <= 1.0)
+  {
+    BiRRTSelectSampleTypeFunction select_sample_type_function
+        = [uniform_unit_real_fn, tree_sampling_bias] (void)
+    {
+      return (uniform_unit_real_fn() <= tree_sampling_bias);
+    };
+    return select_sample_type_function;
+  }
+  else
+  {
+    throw std::invalid_argument(
+        "tree_sampling_bias is not a valid probability");
+  }
+}
+
+/// DOCS HERE
+template<typename StateType, typename TreeType=SimpleRRTPlannerTree<StateType>>
+inline BiRRTSwitchActiveTreeFunction<StateType, TreeType>
+MakeUniformRandomBiRRTSwitchActiveTreeFunction(
+    const utility::UniformUnitRealFunction& uniform_unit_real_fn,
+    const double p_switch_tree)
+{
+  if (p_switch_tree >= 0.0 && p_switch_tree <= 1.0)
+  {
+    BiRRTSwitchActiveTreeFunction<StateType, TreeType>
+        switch_active_tree_function = [uniform_unit_real_fn, p_switch_tree] (
+            const TreeType&, const TreeType&, const bool)
+    {
+      return (uniform_unit_real_fn() <= p_switch_tree);
+    };
+    return switch_active_tree_function;
+  }
+  else
+  {
+    throw std::invalid_argument("p_switch_tree is not a valid probability");
+  }
+}
+
 /// Helper function to create a sampling function that wraps a state sampling
 /// function @param state_sampling_fn and goal states @param goal_states and
 /// samples states and goals according to @param goal_bias. In the basic single-
@@ -1403,7 +1453,7 @@ inline BiRRTTerminationCheckFunction MakeBiRRTTimeoutTerminationFunction(
 /// distributed double from [0.0, 1.0).
 template<typename SampleType, typename Container=std::vector<SampleType>>
 inline SamplingFunction<SampleType> MakeStateAndGoalsSamplingFunction(
-    const std::function<SampleType(void)>& state_sampling_fn,
+    const SamplingFunction<SampleType>& state_sampling_fn,
     const Container& goal_states,
     const double goal_bias,
     const utility::UniformUnitRealFunction& uniform_unit_real_fn)
@@ -1414,14 +1464,14 @@ inline SamplingFunction<SampleType> MakeStateAndGoalsSamplingFunction(
     Container goal_samples_;
     const double goal_bias_ = 0.0;
     utility::UniformUnitRealFunction uniform_unit_real_fn_;
-    const std::function<SampleType(void)> state_sampling_fn_;
+    const SamplingFunction<SampleType> state_sampling_fn_;
 
   public:
     StateAndGoalsSamplingFunction(
         const Container& goal_samples,
         const double goal_bias,
         const utility::UniformUnitRealFunction& uniform_unit_real_fn,
-        const std::function<SampleType(void)>& state_sampling_fn)
+        const SamplingFunction<SampleType>& state_sampling_fn)
         : goal_samples_(goal_samples), goal_bias_(goal_bias),
           uniform_unit_real_fn_(uniform_unit_real_fn),
           state_sampling_fn_(state_sampling_fn)
@@ -1460,12 +1510,28 @@ inline SamplingFunction<SampleType> MakeStateAndGoalsSamplingFunction(
 
   StateAndGoalsSamplingFunction sampling_fn_helper(
       goal_states, goal_bias, uniform_unit_real_fn, state_sampling_fn);
-  std::function<SampleType(void)> sampling_function
+  SamplingFunction<SampleType> sampling_function
       = [sampling_fn_helper] (void) mutable
   {
     return sampling_fn_helper.Sample();
   };
   return sampling_function;
+}
+
+/// DOCS HERE
+template<typename StateType, typename TreeType=SimpleRRTPlannerTree<StateType>>
+inline BiRRTTreeSamplingFunction<StateType, TreeType>
+MakeUniformRandomBiRRTTreeSamplingFunction(
+    const utility::UniformUnitRealFunction& uniform_unit_real_fn)
+{
+  BiRRTTreeSamplingFunction<StateType, TreeType> tree_sample_function
+      = [uniform_unit_real_fn] (const TreeType& target_tree, const bool)
+  {
+    const int64_t target_node_index = utility::GetUniformRandomIndex(
+        uniform_unit_real_fn, target_tree.Size());
+    return target_node_index;
+  };
+  return tree_sample_function;
 }
 
 /// Helper function to create a serial/parallel linear nearest neighbors

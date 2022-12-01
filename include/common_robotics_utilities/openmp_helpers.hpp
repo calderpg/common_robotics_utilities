@@ -11,6 +11,16 @@ namespace common_robotics_utilities
 {
 namespace openmp_helpers
 {
+/// Returns if OpenMP is enabled in the build.
+constexpr bool IsOmpEnabledInBuild()
+{
+#if defined(_OPENMP)
+  return true;
+#else
+  return false;
+#endif
+}
+
 /// Returns the OpenMP thread number in the current OpenMP parallel context.
 /// If called from outside an OpenMP parallel context or without OpenMP enabled,
 /// it will return 0.

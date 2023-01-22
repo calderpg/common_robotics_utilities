@@ -729,6 +729,12 @@ MultipleSolutionPlanningResults<StateType, Container> RRTPlanMultiPath(
     if (!propagated.empty())
     {
       statistics["successful_samples"] += 1.0;
+
+      // Keep track of the mapping from propagated node to tree index
+      std::vector<int64_t> propagated_index_to_tree_index;
+      propagated_index_to_tree_index.reserve(propagated.size());
+
+      // Go through propagated states
       for (size_t idx = 0; idx < propagated.size(); idx++)
       {
         const PropagatedState<StateType>& current_propagation
@@ -743,28 +749,14 @@ MultipleSolutionPlanningResults<StateType, Container> RRTPlanMultiPath(
         // negative value, and so on.
         const int64_t& current_relative_parent_index
             = current_propagation.RelativeParentIndex();
-        int64_t node_parent_index = nearest_neighbor_index;
-        if (current_relative_parent_index >= 0)
-        {
-          const int64_t current_relative_index = static_cast<int64_t>(idx);
-          if (current_relative_parent_index >= current_relative_index)
-          {
-            throw std::invalid_argument(
-                "Linkage with relative parent index >="
-                " current relative index is invalid");
-          }
-          const int64_t current_relative_offset
-              = current_relative_parent_index - current_relative_index;
-          const int64_t current_nodes_size = tree.Size();
-          // Remember that current_relative_offset is negative!
-          node_parent_index = current_nodes_size + current_relative_offset;
-        }
-        else
-        {
-          // Negative relative parent index means our parent index is the
-          // nearest neighbor index.
-          node_parent_index = nearest_neighbor_index;
-        }
+
+        // Note: all negative indices correspond to the same nearest neighbor
+        // node; further indexing back into the tree is not supported.
+        const int64_t node_parent_index =
+            (current_relative_parent_index >= 0)
+                ? propagated_index_to_tree_index.at(
+                    static_cast<size_t>(current_relative_parent_index))
+                : nearest_neighbor_index;
 
         // Build the new state
         const StateType& current_propagated = current_propagation.State();
@@ -772,6 +764,9 @@ MultipleSolutionPlanningResults<StateType, Container> RRTPlanMultiPath(
         // Add the state to the tree
         const int64_t new_node_index =
             tree.AddNodeAndConnect(current_propagated, node_parent_index);
+
+        // Add the new index to the mapping
+        propagated_index_to_tree_index.emplace_back(new_node_index);
 
         // Call the state added callback
         if (state_added_callback_fn)
@@ -1017,6 +1012,12 @@ MultipleSolutionPlanningResults<StateType, Container> BiRRTPlanMultiPath(
     if (!propagated.empty())
     {
       statistics["successful_samples"] += 1.0;
+
+      // Keep track of the mapping from propagated node to tree index
+      std::vector<int64_t> propagated_index_to_tree_index;
+      propagated_index_to_tree_index.reserve(propagated.size());
+
+      // Go through propagated states
       for (size_t idx = 0; idx < propagated.size(); idx++)
       {
         const PropagatedState<StateType>& current_propagation
@@ -1031,28 +1032,14 @@ MultipleSolutionPlanningResults<StateType, Container> BiRRTPlanMultiPath(
         // negative value, and so on.
         const int64_t& current_relative_parent_index
             = current_propagation.RelativeParentIndex();
-        int64_t node_parent_index = nearest_neighbor_index;
-        if (current_relative_parent_index >= 0)
-        {
-          const int64_t current_relative_index = static_cast<int64_t>(idx);
-          if (current_relative_parent_index >= current_relative_index)
-          {
-            throw std::invalid_argument(
-                  "Linkage with relative parent index >="
-                  " current relative index is invalid");
-          }
-          const int64_t current_relative_offset
-              = current_relative_parent_index - current_relative_index;
-          const int64_t current_nodes_size = active_tree.Size();
-          // Remember that current_relative_offset is negative!
-          node_parent_index = current_nodes_size + current_relative_offset;
-        }
-        else
-        {
-          // Negative relative parent index means our parent index is the
-          // nearest neighbor index.
-          node_parent_index = nearest_neighbor_index;
-        }
+
+        // Note: all negative indices correspond to the same nearest neighbor
+        // node; further indexing back into the tree is not supported.
+        const int64_t node_parent_index =
+            (current_relative_parent_index >= 0)
+                ? propagated_index_to_tree_index.at(
+                    static_cast<size_t>(current_relative_parent_index))
+                : nearest_neighbor_index;
 
         // Build the new state
         const StateType& current_propagated = current_propagation.State();
@@ -1060,6 +1047,9 @@ MultipleSolutionPlanningResults<StateType, Container> BiRRTPlanMultiPath(
         // Add the state to the tree
         const int64_t new_node_index = active_tree.AddNodeAndConnect(
             current_propagated, node_parent_index);
+
+        // Add the new index to the mapping
+        propagated_index_to_tree_index.emplace_back(new_node_index);
 
         // Call the state added callback
         if (state_added_callback_fn)

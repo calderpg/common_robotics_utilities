@@ -641,10 +641,11 @@ PlannedPaths<StateType, Container> ExtractSolutionPaths(
 ///     is the index of the parent state, relative to the vector of propagated
 ///     nodes. A negative value means the nearest neighbor in the tree, zero
 ///     means the first propagated node, and so on. NOTE - the relative parent
-///     index *must* be lower than the index in the list of prograted nodes i.e.
-///     the first node must have a negative value, and so on. While complicated,
-///     this structure allows @param forward_propagation_fn to return an entire
-///     subtree at once, which is used for certain multi-outcome planners.
+///     index *must* be lower than the index in the list of propagated nodes
+///     i.e. the first node must have a negative value, and so on. While
+///     complicated, this structure allows @param forward_propagation_fn to
+///     return an entire subtree at once, which is used for certain
+///     multi-outcome planners.
 /// @param state_added_callback_fn callback function called once a state is
 ///     added to the tree, providing a mutable reference to the tree and the
 ///     index of the newly-added state. This can be used, for example, to update
@@ -730,7 +731,10 @@ MultipleSolutionPlanningResults<StateType, Container> RRTPlanMultiPath(
     {
       statistics["successful_samples"] += 1.0;
 
-      // Keep track of the mapping from propagated node to tree index
+      // Keep track of the mapping from propagated node to tree index.
+      // We rely on the bounds check of propagated_index_to_tree_index.at() to
+      // enforce the invariant that relative parent indices refer to prior
+      // nodes, thus this cannot use resize() or equivalent.
       std::vector<int64_t> propagated_index_to_tree_index;
       propagated_index_to_tree_index.reserve(propagated.size());
 
@@ -745,7 +749,7 @@ MultipleSolutionPlanningResults<StateType, Container> RRTPlanMultiPath(
         // relative to the list of propagated nodes. A negative value means the
         // nearest neighbor in the tree, zero means the first propagated node,
         // and so on. NOTE - the relative parent index *must* be lower than the
-        // index in the list of prograted nodes i.e. the first node must have a
+        // index in the list of propagated nodes i.e. the first node must have a
         // negative value, and so on.
         const int64_t& current_relative_parent_index
             = current_propagation.RelativeParentIndex();
@@ -835,7 +839,7 @@ MultipleSolutionPlanningResults<StateType, Container> RRTPlanMultiPath(
 ///     the parent state, relative to the vector of propagated nodes. A negative
 ///     value means the nearest neighbor in the tree, zero means the first
 ///     propagated node, and so on. NOTE - the relative parent index *must* be
-///     lower than the index in the list of prograted nodes i.e. the first node
+///     lower than the index in the list of propagated nodes i.e. the first node
 ///     must have a negative value, and so on. While complicated, this structure
 ///     allows @param forward_propagation_fn to return an entire subtree at
 ///     once, which is used for certain multi-outcome planners.
@@ -1013,7 +1017,10 @@ MultipleSolutionPlanningResults<StateType, Container> BiRRTPlanMultiPath(
     {
       statistics["successful_samples"] += 1.0;
 
-      // Keep track of the mapping from propagated node to tree index
+      // Keep track of the mapping from propagated node to tree index.
+      // We rely on the bounds check of propagated_index_to_tree_index.at() to
+      // enforce the invariant that relative parent indices refer to prior
+      // nodes, thus this cannot use resize() or equivalent.
       std::vector<int64_t> propagated_index_to_tree_index;
       propagated_index_to_tree_index.reserve(propagated.size());
 
@@ -1028,7 +1035,7 @@ MultipleSolutionPlanningResults<StateType, Container> BiRRTPlanMultiPath(
         // relative to the list of propagated nodes. A negative value means the
         // nearest neighbor in the tree, zero means the first propagated node,
         // and so on. NOTE - the relative parent index *must* be lower than the
-        // index in the list of prograted nodes i.e. the first node must have a
+        // index in the list of propagated nodes i.e. the first node must have a
         // negative value, and so on.
         const int64_t& current_relative_parent_index
             = current_propagation.RelativeParentIndex();
@@ -1157,10 +1164,11 @@ MultipleSolutionPlanningResults<StateType, Container> BiRRTPlanMultiPath(
 ///     is the index of the parent state, relative to the vector of propagated
 ///     nodes. A negative value means the nearest neighbor in the tree, zero
 ///     means the first propagated node, and so on. NOTE - the relative parent
-///     index *must* be lower than the index in the list of prograted nodes i.e.
-///     the first node must have a negative value, and so on. While complicated,
-///     this structure allows @param forward_propagation_fn to return an entire
-///     subtree at once, which is used for certain multi-outcome planners.
+///     index *must* be lower than the index in the list of propagated nodes
+///     i.e. the first node must have a negative value, and so on. While
+///     complicated, this structure allows @param forward_propagation_fn to
+///     return an entire subtree at once, which is used for certain
+///     multi-outcome planners.
 /// @param state_added_callback_fn callback function called once a state is
 ///     added to the tree, providing a mutable reference to the tree and the
 ///     index of the newly-added state. This can be used, for example, to update
@@ -1255,7 +1263,7 @@ SingleSolutionPlanningResults<StateType, Container> RRTPlanSinglePath(
 ///     the parent state, relative to the vector of propagated nodes. A negative
 ///     value means the nearest neighbor in the tree, zero means the first
 ///     propagated node, and so on. NOTE - the relative parent index *must* be
-///     lower than the index in the list of prograted nodes i.e. the first node
+///     lower than the index in the list of propagated nodes i.e. the first node
 ///     must have a negative value, and so on. While complicated, this structure
 ///     allows @param forward_propagation_fn to return an entire subtree at
 ///     once, which is used for certain multi-outcome planners.

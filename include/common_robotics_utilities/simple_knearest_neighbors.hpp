@@ -99,7 +99,7 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeSerial(
     }
     return k_nearests;
   }
-  // For small K, use a |items| * K approach.
+  // For small K, use an O(range_size * K) approach.
   else if (static_cast<double>(K) < std::log2(range_size))
   {
     std::vector<IndexAndDistance> k_nearests;
@@ -127,7 +127,7 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeSerial(
     }
     return k_nearests;
   }
-  // For larger K, use a |items| * log(|items|) approach.
+  // For larger K, use an O(range_size * log(range_size)) approach.
   else
   {
     // Collect index + distance for all items.
@@ -236,7 +236,7 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
     }
 
     // Merge the per-thread K-nearest together.
-    // For small K, use a num_threads * K^2 approach.
+    // For small K, use a O((K * num_threads) * K) approach.
     if (static_cast<double>(K) <
             std::log2(per_thread_nearests.size() * static_cast<size_t>(K)))
     {
@@ -266,7 +266,7 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
       }
       return k_nearests;
     }
-    // For larger K, use a (K * num_threads) * log(K * num_threads) approach.
+    // For larger K, use a O((K * num_threads) * log(K * num_threads)) approach.
     else
     {
       std::vector<IndexAndDistance> all_nearests;

@@ -381,6 +381,14 @@ GTEST_TEST(PlanningTest, Test)
           ::MakeKinematicRRTConnectPropagationFunction<Waypoint>(
               WaypointDistance, InterpolateWaypoint, check_edge_validity_fn,
               rrt_step_size);
+  auto select_sample_type_fn
+      = simple_rrt_planner
+          ::MakeUniformRandomBiRRTSelectSampleTypeFunction<Waypoint>(
+              uniform_unit_real_fn, birrt_tree_sampling_bias);
+  auto tree_sampling_fn
+      = simple_rrt_planner
+          ::MakeUniformRandomBiRRTTreeSamplingFunction<Waypoint>(
+              uniform_unit_real_fn);
   auto birrt_nearest_neighbors_fn
       = simple_rrt_planner
           ::MakeKinematicLinearBiRRTNearestNeighborsFunction<Waypoint>(
@@ -395,12 +403,17 @@ GTEST_TEST(PlanningTest, Test)
           ::MakeKinematicBiRRTConnectPropagationFunction<Waypoint>(
               WaypointDistance, InterpolateWaypoint, check_edge_validity_fn,
               rrt_step_size);
-  const simple_rrt_planner::StatesConnectedFunction<Waypoint>
-      birrt_states_connected_fn
-          = [] (const Waypoint& first, const Waypoint& second, const bool)
+  const simple_rrt_planner::BiRRTStatesConnectedFunction<Waypoint>
+      birrt_states_connected_fn = [] (
+          const Waypoint& first, const Waypoint& second,
+          const simple_rrt_planner::BiRRTActiveTreeType)
   {
     return WaypointsEqual(first, second);
   };
+  auto select_active_tree_fn
+      = simple_rrt_planner
+          ::MakeUniformRandomBiRRTSelectActiveTreeFunction<Waypoint>(
+              uniform_unit_real_fn, birrt_p_switch_trees);
 
   // Grow a roadmap for the environment
   const int64_t K = 5;
@@ -608,7 +621,7 @@ GTEST_TEST(PlanningTest, Test)
         const auto rrt_sample_fn
             = simple_rrt_planner::MakeStateAndGoalsSamplingFunction<Waypoint>(
                 state_sampling_fn, {goal}, rrt_goal_bias, uniform_unit_real_fn);
-        const simple_rrt_planner::CheckGoalReachedFunction<Waypoint>
+        const simple_rrt_planner::RRTCheckGoalReachedFunction<Waypoint>
             rrt_goal_reached_fn = [&] (const Waypoint& state)
         {
           return WaypointsEqual(goal, state);
@@ -658,12 +671,12 @@ GTEST_TEST(PlanningTest, Test)
             = simple_rrt_planner::BiRRTPlanSinglePath<
                 Waypoint, WaypointPlannerTree, WaypointVector>(
                     birrt_extend_start_tree, birrt_extend_goal_tree,
-                    state_sampling_fn, birrt_nearest_neighbors_fn,
-                    birrt_extend_fn, {}, birrt_states_connected_fn, {},
-                    birrt_tree_sampling_bias, birrt_p_switch_trees,
+                    select_sample_type_fn, state_sampling_fn, tree_sampling_fn,
+                    birrt_nearest_neighbors_fn, birrt_extend_fn, {},
+                    birrt_states_connected_fn, {}, select_active_tree_fn,
                     simple_rrt_planner
-                        ::MakeBiRRTTimeoutTerminationFunction(rrt_timeout),
-                    uniform_unit_real_fn).Path();
+                        ::MakeBiRRTTimeoutTerminationFunction(rrt_timeout))
+                .Path();
         check_plan(test_env, {start}, {goal}, birrt_extent_path);
 
         // Plan with BiRRT-Connect
@@ -678,12 +691,12 @@ GTEST_TEST(PlanningTest, Test)
             = simple_rrt_planner::BiRRTPlanSinglePath<
                 Waypoint, WaypointPlannerTree, WaypointVector>(
                     birrt_connect_start_tree, birrt_connect_goal_tree,
-                    state_sampling_fn, birrt_nearest_neighbors_fn,
-                    birrt_connect_fn, {}, birrt_states_connected_fn, {},
-                    birrt_tree_sampling_bias, birrt_p_switch_trees,
+                    select_sample_type_fn, state_sampling_fn, tree_sampling_fn,
+                    birrt_nearest_neighbors_fn, birrt_connect_fn, {},
+                    birrt_states_connected_fn, {}, select_active_tree_fn,
                     simple_rrt_planner
-                        ::MakeBiRRTTimeoutTerminationFunction(rrt_timeout),
-                    uniform_unit_real_fn).Path();
+                        ::MakeBiRRTTimeoutTerminationFunction(rrt_timeout))
+                .Path();
         check_plan(test_env, {start}, {goal}, birrt_connect_path);
       }
     }
@@ -723,12 +736,12 @@ GTEST_TEST(PlanningTest, Test)
       = simple_rrt_planner::BiRRTPlanSinglePath<
           Waypoint, WaypointPlannerTree, WaypointVector>(
               birrt_connect_start_tree, birrt_connect_goal_tree,
-              state_sampling_fn, birrt_nearest_neighbors_fn,
-              birrt_connect_fn, {}, birrt_states_connected_fn, {},
-              birrt_tree_sampling_bias, birrt_p_switch_trees,
+              select_sample_type_fn, state_sampling_fn, tree_sampling_fn,
+              birrt_nearest_neighbors_fn, birrt_connect_fn, {},
+              birrt_states_connected_fn, {}, select_active_tree_fn,
               simple_rrt_planner
-                  ::MakeBiRRTTimeoutTerminationFunction(rrt_timeout),
-              uniform_unit_real_fn).Path();
+                  ::MakeBiRRTTimeoutTerminationFunction(rrt_timeout))
+          .Path();
   check_plan(test_env, starts, goals, birrt_connect_path);
 
   // Use one of the trees to check tree serialization & deserialization

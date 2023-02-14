@@ -60,35 +60,207 @@ inline bool IndexAndDistanceCompare(
 }
 
 /// @return vector<pair<index, distance>> of the nearest @param K neighbors to
-/// @param current in @param items, with distance computed by @param distance_fn
-/// and search performed in parallel.
+/// @param current in the specified range [range_start, range_end) of
+/// @param items, with distance computed by @param distance_fn.
 template<typename Item, typename Value, typename Container=std::vector<Item>>
-inline std::vector<IndexAndDistance> GetKNearestNeighborsParallel(
-    const Container& items, const Value& current,
+inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeSerial(
+    const Container& items, const size_t range_start, const size_t range_end,
+    const Value& current,
     const std::function<double(const Item&, const Value&)>& distance_fn,
     const int64_t K)
 {
-  // Helper to merge per-thread K-nearests into a single K-nearests.
-  const auto merge_per_thread_nearests = [K] (
-      const std::vector<std::vector<IndexAndDistance>>& per_thread_nearests)
+  if (range_end < range_start)
   {
-    // For small K, use a num_threads * K^2 approach.
-    if (static_cast<double>(K) < std::log2(per_thread_nearests.size()))
+    throw std::invalid_argument("range_end < range_start");
+  }
+  if (range_end > items.size())
+  {
+    throw std::invalid_argument("range_end > items.size()");
+  }
+
+  const size_t range_size = range_end - range_start;
+
+  if (K < 0)
+  {
+    throw std::invalid_argument("K must be >= 0");
+  }
+  else if (K == 0 || range_size == 0)
+  {
+    return std::vector<IndexAndDistance>();
+  }
+  else if (range_size <= static_cast<size_t>(K))
+  {
+    std::vector<IndexAndDistance> k_nearests(range_size);
+    for (size_t idx = range_start; idx < range_size; idx++)
     {
-      std::vector<IndexAndDistance> k_nearests(static_cast<size_t>(K));
+      const Item& item = items[idx];
+      const double distance = distance_fn(item, current);
+      k_nearests[idx - range_start].SetIndexAndDistance(idx, distance);
+    }
+    return k_nearests;
+  }
+  // For small K, use a |items| * K approach.
+  else if (static_cast<double>(K) < std::log2(range_size))
+  {
+    std::vector<IndexAndDistance> k_nearests;
+    k_nearests.reserve(static_cast<size_t>(K));
+    for (size_t idx = range_start; idx < range_end; idx++)
+    {
+      const Item& item = items[idx];
+      const double distance = distance_fn(item, current);
+
+      // If we already have a full k_nearests, try to replace the max element.
+      if (k_nearests.size() == static_cast<size_t>(K))
+      {
+        auto itr = std::max_element(
+            k_nearests.begin(), k_nearests.end(), IndexAndDistanceCompare);
+        if (itr->Distance() > distance)
+        {
+          itr->SetIndexAndDistance(idx, distance);
+        }
+      }
+      // If k_nearests isn't full yet, just emplace.
+      else
+      {
+        k_nearests.emplace_back(idx, distance);
+      }
+    }
+    return k_nearests;
+  }
+  // For larger K, use a |items| * log(|items|) approach.
+  else
+  {
+    // Collect index + distance for all items.
+    std::vector<IndexAndDistance> all_distances(range_size);
+    for (size_t idx = range_start; idx < range_end; idx++)
+    {
+      const Item& item = items[idx];
+      const double distance = distance_fn(item, current);
+      all_distances[idx - range_start] = IndexAndDistance(idx, distance);
+    }
+
+    // Sort all index + distance entries by distance.
+    std::sort(
+        all_distances.begin(), all_distances.end(), IndexAndDistanceCompare);
+
+    // Return the first K elements by resizing down.
+    all_distances.resize(static_cast<size_t>(K));
+    return all_distances;
+  }
+}
+
+/// @return vector<pair<index, distance>> of the nearest @param K neighbors to
+/// @param current in the specified range [range_start, range_end) of
+/// @param items, with distance computed by @param distance_fn and search
+/// performed in parallel.
+template<typename Item, typename Value, typename Container=std::vector<Item>>
+inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
+    const Container& items, const size_t range_start, const size_t range_end,
+    const Value& current,
+    const std::function<double(const Item&, const Value&)>& distance_fn,
+    const int64_t K)
+{
+  if (range_end < range_start)
+  {
+    throw std::invalid_argument("range_end < range_start");
+  }
+  if (range_end > items.size())
+  {
+    throw std::invalid_argument("range_end > items.size()");
+  }
+
+  const size_t range_size = range_end - range_start;
+
+  // Handle the easy cases where no comparisons must be performed.
+  if (K < 0)
+  {
+    throw std::invalid_argument("K must be >= 0");
+  }
+  else if (K == 0 || range_size == 0)
+  {
+    return std::vector<IndexAndDistance>();
+  }
+  else if (range_size <= static_cast<size_t>(K))
+  {
+    std::vector<IndexAndDistance> k_nearests(range_size);
+    CRU_OMP_PARALLEL_FOR
+    for (size_t idx = range_start; idx < range_size; idx++)
+    {
+      const Item& item = items[idx];
+      const double distance = distance_fn(item, current);
+      k_nearests[idx - range_start].SetIndexAndDistance(idx, distance);
+    }
+    return k_nearests;
+  }
+  // Where real work is required, divide items into per-thread blocks, find the
+  // K nearest in each block (in parallel), then merge those results together.
+  else
+  {
+    const size_t num_threads =
+        static_cast<size_t>(openmp_helpers::GetNumOmpThreads());
+
+    // Generate range start and end for each thread to work on.
+    const size_t quotient = range_size / num_threads;
+    const size_t remainder = range_size % num_threads;
+
+    std::vector<size_t> per_thread_range_starts(num_threads, 0);
+    std::vector<size_t> per_thread_range_ends(num_threads, 0);
+
+    size_t current_range_start = range_start;
+    for (size_t thread_num = 0; thread_num < num_threads; thread_num++)
+    {
+      // Every thread gets at least range_size / num_threads work, and the
+      // remainder is distributed across the first range_size % num_threads.
+      const size_t thread_range =
+          (thread_num < remainder) ? quotient + 1 : quotient;
+      per_thread_range_starts[thread_num] = current_range_start;
+      const size_t current_range_end = current_range_start + thread_range;
+      per_thread_range_ends[thread_num] = current_range_end;
+      current_range_start = current_range_end;
+    }
+
+    // Allocate per-worker-thread storage.
+    std::vector<std::vector<IndexAndDistance>> per_thread_nearests(num_threads);
+
+    // Find the K nearest for each thread.
+    CRU_OMP_PARALLEL_FOR
+    for (size_t thread_num = 0; thread_num < num_threads; thread_num++)
+    {
+      const size_t thread_range_start = per_thread_range_starts[thread_num];
+      const size_t thread_range_end = per_thread_range_ends[thread_num];
+
+      per_thread_nearests[thread_num] =
+          GetKNearestNeighborsInRangeSerial<Item, Value, Container>(
+              items, thread_range_start, thread_range_end, current, distance_fn,
+              K);
+    }
+
+    // Merge the per-thread K-nearest together.
+    // For small K, use a num_threads * K^2 approach.
+    if (static_cast<double>(K) <
+            std::log2(per_thread_nearests.size() * static_cast<size_t>(K)))
+    {
+      std::vector<IndexAndDistance> k_nearests;
+      k_nearests.reserve(static_cast<size_t>(K));
       for (const auto& thread_nearests : per_thread_nearests)
       {
-        for (const auto& current_ith_nearest : thread_nearests)
+        for (const auto& current_nearest : thread_nearests)
         {
-          if (!std::isinf(current_ith_nearest.Distance())
-              && current_ith_nearest.Index() != -1)
+          // If we already have a full k_nearests, try to replace the max
+          // element.
+          if (k_nearests.size() == static_cast<size_t>(K))
           {
             auto itr = std::max_element(
                 k_nearests.begin(), k_nearests.end(), IndexAndDistanceCompare);
-            if (itr->Distance() > current_ith_nearest.Distance())
+            if (itr->Distance() > current_nearest.Distance())
             {
-              itr->SetFromOther(current_ith_nearest);
+              itr->SetFromOther(current_nearest);
             }
+          }
+          // If k_nearests isn't full yet, just emplace.
+          else
+          {
+            k_nearests.emplace_back(current_nearest);
           }
         }
       }
@@ -108,108 +280,10 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsParallel(
       std::sort(
           all_nearests.begin(), all_nearests.end(), IndexAndDistanceCompare);
 
-      std::vector<IndexAndDistance> k_nearests(static_cast<size_t>(K));
-      for (size_t idx = 0; idx < k_nearests.size(); idx++)
-      {
-        k_nearests.at(idx) = all_nearests.at(idx);
-      }
-      return k_nearests;
+      // Return the first K elements by resizing down.
+      all_nearests.resize(static_cast<size_t>(K));
+      return all_nearests;
     }
-  };
-
-  const size_t num_threads =
-      static_cast<size_t>(openmp_helpers::GetNumOmpThreads());
-  const size_t items_per_thread = static_cast<size_t>(std::ceil(
-      static_cast<double>(items.size()) / static_cast<double>(num_threads)));
-
-  if (K < 0)
-  {
-    throw std::invalid_argument("K must be >= 0");
-  }
-  else if (K == 0)
-  {
-    return std::vector<IndexAndDistance>();
-  }
-  else if (items.size() <= static_cast<size_t>(K))
-  {
-    std::vector<IndexAndDistance> k_nearests(items.size());
-    CRU_OMP_PARALLEL_FOR
-    for (size_t idx = 0; idx < items.size(); idx++)
-    {
-      const Item& item = items[idx];
-      const double distance = distance_fn(item, current);
-      k_nearests.at(idx).SetIndexAndDistance(idx, distance);
-    }
-    return k_nearests;
-  }
-  // For small K, use a parallel (|items| / num_threads) * K approach.
-  else if (static_cast<double>(K) < std::log2(items_per_thread))
-  {
-    // Find K-nearest neighbors for each worker thread.
-    std::vector<std::vector<IndexAndDistance>> per_thread_nearests(
-        num_threads, std::vector<IndexAndDistance>(static_cast<size_t>(K)));
-    CRU_OMP_PARALLEL_FOR
-    for (size_t idx = 0; idx < items.size(); idx++)
-    {
-      const Item& item = items[idx];
-      const double distance = distance_fn(item, current);
-      const size_t thread_num =
-          static_cast<size_t>(openmp_helpers::GetContextOmpThreadNum());
-      std::vector<IndexAndDistance>& current_thread_nearests =
-          per_thread_nearests.at(thread_num);
-      auto itr = std::max_element(current_thread_nearests.begin(),
-                                  current_thread_nearests.end(),
-                                  IndexAndDistanceCompare);
-      if (itr->Distance() > distance)
-      {
-        itr->SetIndexAndDistance(idx, distance);
-      }
-    }
-
-    // Merge the per-thread K-nearest together.
-    return merge_per_thread_nearests(per_thread_nearests);
-  }
-  // For larger K, use a parallel
-  // (|items| / num_threads) * log(|items| / num_threads) approach.
-  else
-  {
-    // Allocate per-worker-thread storage.
-    std::vector<std::vector<IndexAndDistance>> per_thread_nearests(num_threads);
-    for (auto& thread_nearest : per_thread_nearests)
-    {
-      thread_nearest.reserve(items_per_thread);
-    }
-
-    // Record index and distance for each element in its worker thread's own
-    // storage.
-    CRU_OMP_PARALLEL_FOR
-    for (size_t idx = 0; idx < items.size(); idx++)
-    {
-      const Item& item = items[idx];
-      const double distance = distance_fn(item, current);
-      const size_t thread_num =
-          static_cast<size_t>(openmp_helpers::GetContextOmpThreadNum());
-      std::vector<IndexAndDistance>& current_thread_nearests =
-          per_thread_nearests.at(thread_num);
-      current_thread_nearests.emplace_back(idx, distance);
-    }
-
-    // Sort and extract the closest K elements for each worker thread.
-    CRU_OMP_PARALLEL_FOR
-    for (size_t idx = 0; idx < per_thread_nearests.size(); idx++)
-    {
-      std::vector<IndexAndDistance>& current_thread_nearests =
-          per_thread_nearests.at(idx);
-      std::sort(
-          current_thread_nearests.begin(), current_thread_nearests.end(),
-          IndexAndDistanceCompare);
-      // Trim to the first K elements if larger than K.
-      current_thread_nearests.resize(
-          std::min(current_thread_nearests.size(), static_cast<size_t>(K)));
-    }
-
-    // Merge the per-thread K-nearest together.
-    return merge_per_thread_nearests(per_thread_nearests);
   }
 }
 
@@ -222,62 +296,43 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsSerial(
     const std::function<double(const Item&, const Value&)>& distance_fn,
     const int64_t K)
 {
-  if (K < 0)
+  return GetKNearestNeighborsInRangeSerial<Item, Value, Container>(
+      items, 0, items.size(), current, distance_fn, K);
+}
+
+/// @return vector<pair<index, distance>> of the nearest @param K neighbors to
+/// @param current in @param items, with distance computed by @param distance_fn
+/// and search performed in parallel.
+template<typename Item, typename Value, typename Container=std::vector<Item>>
+inline std::vector<IndexAndDistance> GetKNearestNeighborsParallel(
+    const Container& items, const Value& current,
+    const std::function<double(const Item&, const Value&)>& distance_fn,
+    const int64_t K)
+{
+  return GetKNearestNeighborsInRangeParallel<Item, Value, Container>(
+      items, 0, items.size(), current, distance_fn, K);
+}
+
+/// @return vector<pair<index, distance>> of the nearest @param K neighbors to
+/// @param current in the specified range [range_start, range_end) of
+/// @param items, with distance computed by @param distance_fn and
+/// @param use_parallel selects if search is performed in parallel.
+template<typename Item, typename Value, typename Container=std::vector<Item>>
+inline std::vector<IndexAndDistance> GetKNearestNeighborsInRange(
+    const Container& items, const size_t range_start, const size_t range_end,
+    const Value& current,
+    const std::function<double(const Item&, const Value&)>& distance_fn,
+    const int64_t K, const bool use_parallel = false)
+{
+  if (use_parallel)
   {
-    throw std::invalid_argument("K must be >= 0");
+    return GetKNearestNeighborsInRangeParallel<Item, Value, Container>(
+        items, range_start, range_end, current, distance_fn, K);
   }
-  else if (K == 0)
-  {
-    return std::vector<IndexAndDistance>();
-  }
-  else if (items.size() <= static_cast<size_t>(K))
-  {
-    std::vector<IndexAndDistance> k_nearests(items.size());
-    for (size_t idx = 0; idx < items.size(); idx++)
-    {
-      const Item& item = items[idx];
-      const double distance = distance_fn(item, current);
-      k_nearests.at(idx).SetIndexAndDistance(idx, distance);
-    }
-    return k_nearests;
-  }
-  // For small K, use a |items| * K approach.
-  else if (static_cast<double>(K) < std::log2(items.size()))
-  {
-    std::vector<IndexAndDistance> k_nearests(static_cast<size_t>(K));
-    for (size_t idx = 0; idx < items.size(); idx++)
-    {
-      const Item& item = items[idx];
-      const double distance = distance_fn(item, current);
-      auto itr = std::max_element(k_nearests.begin(), k_nearests.end(),
-                                  IndexAndDistanceCompare);
-      if (itr->Distance() > distance)
-      {
-        itr->SetIndexAndDistance(idx, distance);
-      }
-    }
-    return k_nearests;
-  }
-  // For larger K, use a |items| * log(|items|) approach.
   else
   {
-    std::vector<IndexAndDistance> all_distances(items.size());
-    for (size_t idx = 0; idx < items.size(); idx++)
-    {
-      const Item& item = items[idx];
-      const double distance = distance_fn(item, current);
-      all_distances.at(idx) = IndexAndDistance(idx, distance);
-    }
-
-    std::sort(
-        all_distances.begin(), all_distances.end(), IndexAndDistanceCompare);
-
-    std::vector<IndexAndDistance> k_nearests(static_cast<size_t>(K));
-    for (size_t idx = 0; idx < k_nearests.size(); idx++)
-    {
-      k_nearests.at(idx) = all_distances.at(idx);
-    }
-    return k_nearests;
+    return GetKNearestNeighborsInRangeSerial<Item, Value, Container>(
+        items, range_start, range_end, current, distance_fn, K);
   }
 }
 
@@ -290,14 +345,8 @@ inline std::vector<IndexAndDistance> GetKNearestNeighbors(
     const std::function<double(const Item&, const Value&)>& distance_fn,
     const int64_t K, const bool use_parallel = false)
 {
-  if (use_parallel)
-  {
-    return GetKNearestNeighborsParallel(items, current, distance_fn, K);
-  }
-  else
-  {
-    return GetKNearestNeighborsSerial(items, current, distance_fn, K);
-  }
+  return GetKNearestNeighborsInRange<Item, Value, Container>(
+      items, 0, items.size(), current, distance_fn, K, use_parallel);
 }
 }  // namespace simple_knearest_neighbors
 }  // namespace common_robotics_utilities

@@ -14,7 +14,13 @@ namespace common_robotics_utilities
 {
 namespace simple_knearest_neighbors
 {
-/// TODO(calderpg) Revise this heuristic as necessary.
+/// This specifies the switchover point from an O(|items| * K) strategy to an
+/// O(|items| * log(K)) strategy in KNN search. The O(|items| * K) strategy
+/// using linear search has a lower constant factor than the O(|items| * log(K))
+/// strategy using partial sort (heapselect), and so we expect for very small
+/// values of K (often encountered in PRM and RRT planning) the linear approach
+/// will be faster.
+// TODO(calderpg) Revise this heuristic as necessary.
 constexpr int64_t KNN_STRATEGY_SWITCH_POINT = 10;
 
 /// Type to wrap an index and its corresponding distance.
@@ -202,25 +208,36 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
     const size_t num_threads =
         static_cast<size_t>(openmp_helpers::GetNumOmpThreads());
 
-    // Generate range start and end for each thread to work on.
+    // Every thread gets at least floor(range_size / num_threads) work, and the
+    // remainder is distributed across the first range_size % num_threads as one
+    // additional element each. Note that starting with per-thread range of
+    // ceil(range_size / num_threads) will not leave enough work for all
+    // threads.
     const size_t quotient = range_size / num_threads;
     const size_t remainder = range_size % num_threads;
 
-    std::vector<size_t> per_thread_range_starts(num_threads, 0);
-    std::vector<size_t> per_thread_range_ends(num_threads, 0);
+    const size_t nominal_range = quotient;
+    const size_t remainder_range = nominal_range + 1;
 
-    size_t current_range_start = range_start;
-    for (size_t thread_num = 0; thread_num < num_threads; thread_num++)
+    const auto calc_thread_range_start_end = [&](const size_t thread_num)
     {
-      // Every thread gets at least range_size / num_threads work, and the
-      // remainder is distributed across the first range_size % num_threads.
-      const size_t thread_range =
-          (thread_num < remainder) ? quotient + 1 : quotient;
-      per_thread_range_starts[thread_num] = current_range_start;
-      const size_t current_range_end = current_range_start + thread_range;
-      per_thread_range_ends[thread_num] = current_range_end;
-      current_range_start = current_range_end;
-    }
+      if (thread_num < remainder)
+      {
+        const size_t thread_range = remainder_range;
+        const size_t thread_range_start = thread_num * remainder_range;
+        const size_t thread_range_end = thread_range_start + thread_range;
+        return std::make_pair(thread_range_start, thread_range_end);
+      }
+      else
+      {
+        const size_t thread_range = nominal_range;
+        const size_t thread_range_start =
+            (remainder * remainder_range) +
+                ((thread_num - remainder) * nominal_range);
+        const size_t thread_range_end = thread_range_start + thread_range;
+        return std::make_pair(thread_range_start, thread_range_end);
+      }
+    };
 
     // Allocate per-worker-thread storage.
     std::vector<std::vector<IndexAndDistance>> per_thread_nearests(num_threads);
@@ -229,13 +246,13 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
     CRU_OMP_PARALLEL_FOR
     for (size_t thread_num = 0; thread_num < num_threads; thread_num++)
     {
-      const size_t thread_range_start = per_thread_range_starts[thread_num];
-      const size_t thread_range_end = per_thread_range_ends[thread_num];
+      const auto thread_range_start_end =
+          calc_thread_range_start_end(thread_num);
 
       per_thread_nearests[thread_num] =
           GetKNearestNeighborsInRangeSerial<Item, Value, Container>(
-              items, thread_range_start, thread_range_end, current, distance_fn,
-              K);
+              items, thread_range_start_end.first,
+              thread_range_start_end.second, current, distance_fn, K);
     }
 
     // Merge the per-thread K-nearest together.

@@ -14,15 +14,6 @@ namespace common_robotics_utilities
 {
 namespace simple_knearest_neighbors
 {
-/// This specifies the switchover point from an O(|items| * K) strategy to an
-/// O(|items| * log(K)) strategy in KNN search. The O(|items| * K) strategy
-/// using linear search has a lower constant factor than the O(|items| * log(K))
-/// strategy using partial sort (heapselect), and so we expect for very small
-/// values of K (often encountered in PRM and RRT planning) the linear approach
-/// will be faster.
-// TODO(calderpg) Revise this heuristic as necessary.
-constexpr int64_t KNN_STRATEGY_SWITCH_POINT = 10;
-
 /// Type to wrap an index and its corresponding distance.
 class IndexAndDistance
 {
@@ -107,35 +98,6 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeSerial(
     }
     return k_nearests;
   }
-  // For small K, use an O(range_size * K) approach.
-  else if (K <= KNN_STRATEGY_SWITCH_POINT)
-  {
-    std::vector<IndexAndDistance> k_nearests;
-    k_nearests.reserve(static_cast<size_t>(K));
-    for (size_t idx = range_start; idx < range_end; idx++)
-    {
-      const Item& item = items[idx];
-      const double distance = distance_fn(item, current);
-
-      // If we already have a full k_nearests, try to replace the max element.
-      if (k_nearests.size() == static_cast<size_t>(K))
-      {
-        auto itr = std::max_element(
-            k_nearests.begin(), k_nearests.end(), IndexAndDistanceCompare);
-        if (itr->Distance() > distance)
-        {
-          itr->SetIndexAndDistance(idx, distance);
-        }
-      }
-      // If k_nearests isn't full yet, just emplace.
-      else
-      {
-        k_nearests.emplace_back(idx, distance);
-      }
-    }
-    return k_nearests;
-  }
-  // For larger K, use an O(range_size * log(K)) approach.
   else
   {
     // Collect index + distance for all items.
@@ -148,6 +110,7 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeSerial(
     }
 
     // Sort the K smallest elements by distance.
+    // Uses an O(range_size * log(K)) approach.
     std::partial_sort(
         all_distances.begin(), all_distances.begin() + K, all_distances.end(),
         IndexAndDistanceCompare);
@@ -256,54 +219,22 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
     }
 
     // Merge the per-thread K-nearest together.
-    // For small K, use a O((K * num_threads) * K) approach.
-    if (K <= KNN_STRATEGY_SWITCH_POINT)
+    // Uses an O((K * num_threads) * log(K)) approach.
+    std::vector<IndexAndDistance> all_nearests;
+    all_nearests.reserve(static_cast<size_t>(K) * per_thread_nearests.size());
+    for (const auto& thread_nearests : per_thread_nearests)
     {
-      std::vector<IndexAndDistance> k_nearests;
-      k_nearests.reserve(static_cast<size_t>(K));
-      for (const auto& thread_nearests : per_thread_nearests)
-      {
-        for (const auto& current_nearest : thread_nearests)
-        {
-          // If we already have a full k_nearests, try to replace the max
-          // element.
-          if (k_nearests.size() == static_cast<size_t>(K))
-          {
-            auto itr = std::max_element(
-                k_nearests.begin(), k_nearests.end(), IndexAndDistanceCompare);
-            if (itr->Distance() > current_nearest.Distance())
-            {
-              itr->SetFromOther(current_nearest);
-            }
-          }
-          // If k_nearests isn't full yet, just emplace.
-          else
-          {
-            k_nearests.emplace_back(current_nearest);
-          }
-        }
-      }
-      return k_nearests;
+      all_nearests.insert(
+          all_nearests.end(), thread_nearests.begin(), thread_nearests.end());
     }
-    // For larger K, use a O((K * num_threads) * log(K)) approach.
-    else
-    {
-      std::vector<IndexAndDistance> all_nearests;
-      all_nearests.reserve(static_cast<size_t>(K) * per_thread_nearests.size());
-      for (const auto& thread_nearests : per_thread_nearests)
-      {
-        all_nearests.insert(
-            all_nearests.end(), thread_nearests.begin(), thread_nearests.end());
-      }
 
-      std::partial_sort(
-          all_nearests.begin(), all_nearests.begin() + K, all_nearests.end(),
-          IndexAndDistanceCompare);
+    std::partial_sort(
+        all_nearests.begin(), all_nearests.begin() + K, all_nearests.end(),
+        IndexAndDistanceCompare);
 
-      // Return the first K elements by resizing down.
-      all_nearests.resize(static_cast<size_t>(K));
-      return all_nearests;
-    }
+    // Return the first K elements by resizing down.
+    all_nearests.resize(static_cast<size_t>(K));
+    return all_nearests;
   }
 }
 

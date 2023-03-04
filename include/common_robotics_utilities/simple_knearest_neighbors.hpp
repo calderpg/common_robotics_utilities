@@ -99,7 +99,7 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeSerial(
   else if (range_size <= static_cast<size_t>(K))
   {
     std::vector<IndexAndDistance> k_nearests(range_size);
-    for (size_t idx = range_start; idx < range_size; idx++)
+    for (size_t idx = range_start; idx < range_end; idx++)
     {
       const Item& item = items[idx];
       const double distance = distance_fn(item, current);
@@ -193,7 +193,7 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
   {
     std::vector<IndexAndDistance> k_nearests(range_size);
     CRU_OMP_PARALLEL_FOR
-    for (size_t idx = range_start; idx < range_size; idx++)
+    for (size_t idx = range_start; idx < range_end; idx++)
     {
       const Item& item = items[idx];
       const double distance = distance_fn(item, current);

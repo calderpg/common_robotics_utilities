@@ -134,6 +134,9 @@ if(BUILD_TESTING)
 
     ament_add_gtest(print_test test/print_test.cpp)
     target_link_libraries(print_test ${PROJECT_NAME})
+
+    ament_add_gtest(serialization_test test/serialization_test.cpp)
+    target_link_libraries(serialization_test ${PROJECT_NAME})
 endif()
 
 #############

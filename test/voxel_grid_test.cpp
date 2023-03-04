@@ -178,6 +178,48 @@ GTEST_TEST(VoxelGridTest, DshvgLookup)
     }
   }
 }
+
+class NonDefaultConstructibleItem
+{
+private:
+  int32_t value_ = 0;
+
+public:
+  NonDefaultConstructibleItem() = delete;
+
+  explicit NonDefaultConstructibleItem(const int32_t value) : value_(value) {}
+
+  NonDefaultConstructibleItem(
+      const NonDefaultConstructibleItem& other) = default;
+
+  NonDefaultConstructibleItem(
+      NonDefaultConstructibleItem&& other) = default;
+
+  NonDefaultConstructibleItem& operator=(
+      const NonDefaultConstructibleItem& other) = default;
+
+  NonDefaultConstructibleItem& operator=(
+      NonDefaultConstructibleItem&& other) = default;
+
+  int32_t& Value() { return value_; }
+
+  const int32_t& Value() const { return value_; }
+};
+
+GTEST_TEST(VoxelGridTest, NonDefaultConstructibleItemContained)
+{
+  // A non-default constructible element type is OK, so long as the grid is not
+  // default constructed as well.
+  const voxel_grid::GridSizes dense_grid_sizes(1.0, 20.0, 20.0, 20.0);
+  const voxel_grid::VoxelGrid<NonDefaultConstructibleItem> dense_grid(
+      dense_grid_sizes, NonDefaultConstructibleItem(10));
+  ASSERT_TRUE(dense_grid.IsInitialized());
+
+  const voxel_grid::GridSizes chunk_sizes(1.0, 4.0, 4.0, 4.0);
+  voxel_grid::DynamicSpatialHashedVoxelGrid<NonDefaultConstructibleItem>
+      spatial_hashed_grid(chunk_sizes, NonDefaultConstructibleItem(10), 10);
+  ASSERT_TRUE(spatial_hashed_grid.IsInitialized());
+}
 }  // namespace voxel_grid_test
 }  // namespace common_robotics_utilities
 

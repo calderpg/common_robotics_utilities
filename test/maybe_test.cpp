@@ -21,7 +21,7 @@ private:
 public:
   DefaultConstructibleWrapper() = default;
 
-  DefaultConstructibleWrapper(const int32_t value) : value_(value) {}
+  explicit DefaultConstructibleWrapper(const int32_t value) : value_(value) {}
 
   DefaultConstructibleWrapper(
       const DefaultConstructibleWrapper& other) = default;
@@ -98,7 +98,8 @@ private:
 public:
   NonDefaultConstructibleWrapper() = delete;
 
-  NonDefaultConstructibleWrapper(const int32_t value) : value_(value) {}
+  explicit NonDefaultConstructibleWrapper(const int32_t value)
+      : value_(value) {}
 
   NonDefaultConstructibleWrapper(
       const NonDefaultConstructibleWrapper& other) = default;

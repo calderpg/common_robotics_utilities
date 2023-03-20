@@ -445,9 +445,13 @@ inline uint64_t SerializeMemcpyableVectorLike(
       sizeof(T) * static_cast<size_t>(vec_to_serialize.size());
   const size_t previous_buffer_size = buffer.size();
   buffer.resize(previous_buffer_size + serialized_length, 0x00);
-  // Serialize the contained items
-  memcpy(&buffer[previous_buffer_size],
-         vec_to_serialize.data(), serialized_length);
+  // Only memcpy if a non-zero number of bytes will be copied, since memcpy on
+  // nullptr dst/src (encountered if a vector is empty) is undefined behavior.
+  if (size > 0)
+  {
+    memcpy(&buffer[previous_buffer_size],
+           vec_to_serialize.data(), serialized_length);
+  }
   // Figure out how many bytes were written
   const uint64_t end_buffer_size = buffer.size();
   const uint64_t bytes_written = end_buffer_size - start_buffer_size;
@@ -473,7 +477,12 @@ DeserializeMemcpyableVectorLike(
     throw std::invalid_argument("Not enough room in the provided buffer");
   }
   VectorLike deserialized(size);
-  memcpy(deserialized.data(), &buffer[current_position], serialized_length);
+  // Only memcpy if a non-zero number of bytes will be copied, since memcpy on
+  // nullptr dst/src (encountered if a vector is empty) is undefined behavior.
+  if (size > 0)
+  {
+    memcpy(deserialized.data(), &buffer[current_position], serialized_length);
+  }
   current_position += serialized_length;
   // Figure out how many bytes were read
   const uint64_t bytes_read = current_position - starting_offset;

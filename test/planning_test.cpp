@@ -440,8 +440,8 @@ GTEST_TEST(PlanningTest, Test)
   simple_graph::Graph<Waypoint> built_roadmap =
       simple_prm_planner::BuildRoadMap<Waypoint, simple_graph::Graph<Waypoint>>(
       built_roadmap_size, state_sampling_fn, WaypointDistance,
-      check_state_validity_fn, check_edge_validity_fn, K, 100, true, false,
-      false);
+      check_state_validity_fn, check_edge_validity_fn, K, 100, true, true,
+      false, false);
   ASSERT_TRUE(built_roadmap.CheckGraphLinkage());
   std::cout << "Roadmap built" << std::endl;
   simple_prm_planner::UpdateRoadMapEdges<Waypoint>(

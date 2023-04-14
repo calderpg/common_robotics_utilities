@@ -279,7 +279,9 @@ inline std::map<std::string, double> GrowRoadMap(
 /// the new state to.
 /// @param max_valid_sample_tries maximum number of calls to sampling_fn to
 /// produce a valid sample, throws if exceeded.
-/// @param use_parallel use parallel operations when possible.
+/// @param use_parallel_sampling parallelize the sampling phase.
+/// @param use_parallel use parallel (non-sampling) operations when possible. If
+/// false, overrides use_parallel_sampling.
 /// @param connection_is_symmetric are distance and edge validity symmetric
 /// (i.e. distance_fn(a, b) == distance_fn(b, a) and
 /// edge_validity_check_fn(a, b) == edge_validity_check_fn(b, a))? Asymmetric
@@ -298,6 +300,7 @@ GraphType BuildRoadMap(
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const int64_t K,
     const int32_t max_valid_sample_tries,
+    const bool use_parallel_sampling = true,
     const bool use_parallel = true,
     const bool connection_is_symmetric = true,
     const bool add_duplicate_states = false)
@@ -364,9 +367,10 @@ GraphType BuildRoadMap(
 
   // Sample roadmap_size valid configurations. This can only be parallelized if
   // add_duplicate_states is true, since the check for duplicate states would
-  // be a race condition otherwise.
-  const bool use_parallel_sampling = use_parallel && add_duplicate_states;
-  CRU_OMP_PARALLEL_FOR_IF(use_parallel_sampling)
+  // be a race condition otherwise, and if parallelization is generally enabled.
+  const bool can_parallel_sample =
+      use_parallel_sampling && use_parallel && add_duplicate_states;
+  CRU_OMP_PARALLEL_FOR_IF(can_parallel_sample)
   for (size_t index = 0; index < roadmap_states.size(); index++)
   {
     roadmap_states.at(index) = valid_sample_fn();
@@ -397,7 +401,7 @@ GraphType BuildRoadMap(
   // Perform edge validity and distance checks for all nodes, optionally in
   // parallel.
   CRU_OMP_PARALLEL_FOR_IF(use_parallel)
-  for (int64_t node_index = 0; node_index < roadmap.Size(); ++node_index)
+  for (int64_t node_index = 0; node_index < roadmap.Size(); node_index++)
   {
     auto& node = roadmap.GetNodeMutable(node_index);
     const T& state = node.GetValueImmutable();
@@ -470,7 +474,7 @@ GraphType BuildRoadMap(
   };
 
   // Go through the roadmap and make node linkages are consistent.
-  for (int64_t node_index = 0; node_index < roadmap.Size(); ++node_index)
+  for (int64_t node_index = 0; node_index < roadmap.Size(); node_index++)
   {
     const auto& node = roadmap.GetNodeImmutable(node_index);
 

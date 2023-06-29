@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <stdexcept>
+#include <thread>
 
 #if defined(_OPENMP)
 #include <omp.h>
@@ -184,18 +185,84 @@ public:
   DisableOmpWrapper() : ChangeOmpNumThreadsWrapper(1) {}
 };
 
+/// Abstraction for level of parallelism to use, covering both OpenMP and
+/// std::thread-based parallelism.
+class DegreeOfParallelism
+{
+public:
+  explicit DegreeOfParallelism(const bool parallelize)
+  {
+    if (parallelize)
+    {
+      num_threads_ = -1;
+    }
+    else
+    {
+      num_threads_ = 1;
+    }
+  }
+
+  explicit DegreeOfParallelism(const int32_t num_threads)
+  {
+    if (num_threads > 0)
+    {
+      num_threads_ = num_threads;
+    }
+    else if (num_threads < 0)
+    {
+      num_threads_ = -1;
+    }
+    else
+    {
+      num_threads_ = 1;
+    }
+  }
+
+  bool IsParallel() const { return num_threads_ != 1; }
+
+  int32_t GetNumOmpThreads() const
+  {
+    if (num_threads_ > 0)
+    {
+      return num_threads_;
+    }
+    else
+    {
+      return ::GetNumOmpThreads();
+    }
+  }
+
+  int32_t GetNumStdThreads() const
+  {
+    if (num_threads_ > 0)
+    {
+      return num_threads_;
+    }
+    else
+    {
+      return static_cast<int32_t>(std::thread::hardware_concurrency());
+    }
+  }
+
+private:
+  int32_t num_threads_ = 1;
+};
+
+}  // namespace openmp_helpers
+}  // namespace common_robotics_utilities
+
 /// Macro to stringify tokens for the purposes of the below macros.
 #define CRU_MACRO_STRINGIFY(s) #s
 
 /// Macros to declare OpenMP parallel for loops, handling conditionals as well
 /// as the case of OpenMP being disabled entirely.
 #if defined(_OPENMP)
+#define CRU_OMP_PARALLEL_FOR_DEGREE(degree) _Pragma(CRU_MACRO_STRINGIFY(omp parallel for if(degree.IsParallel()) num_threads(degree.GetNumOmpthreads())))
 #define CRU_OMP_PARALLEL_FOR_IF(enable_parallel) _Pragma(CRU_MACRO_STRINGIFY(omp parallel for if(enable_parallel)))
 #define CRU_OMP_PARALLEL_FOR _Pragma(CRU_MACRO_STRINGIFY(omp parallel for))
 #else
+#define CRU_OMP_PARALLEL_FOR_DEGREE(degree) (void)(degree);
 #define CRU_OMP_PARALLEL_FOR_IF(enable_parallel) (void)(enable_parallel);
 #define CRU_OMP_PARALLEL_FOR
 #endif
-}  // namespace openmp_helpers
-}  // namespace common_robotics_utilities
 

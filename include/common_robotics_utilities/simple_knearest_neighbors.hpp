@@ -126,12 +126,13 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeSerial(
 /// @param current in the specified range [range_start, range_end) of
 /// @param items, with distance computed by @param distance_fn and search
 /// performed in parallel.
+/// @param parallelism control if/how search is performed in parallel.
 template<typename Item, typename Value, typename Container=std::vector<Item>>
 inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
     const Container& items, const size_t range_start, const size_t range_end,
     const Value& current,
     const std::function<double(const Item&, const Value&)>& distance_fn,
-    const int64_t K)
+    const int64_t K, const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   if (range_end < range_start)
   {
@@ -156,9 +157,8 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
   else
   {
     // Per-thread work calculation common to both range_size <= K and full case.
-    // TODO(calderpg) Replace this use of OpenMP with DegreeOfParallelism.
     const size_t num_threads =
-        static_cast<size_t>(openmp_helpers::GetNumOmpThreads());
+        static_cast<size_t>(parallelism.GetNumStdThreads());
 
     // Every thread gets at least floor(range_size / num_threads) work, and the
     // remainder is distributed across the first range_size % num_threads as one
@@ -310,27 +310,27 @@ template<typename Item, typename Value, typename Container=std::vector<Item>>
 inline std::vector<IndexAndDistance> GetKNearestNeighborsParallel(
     const Container& items, const Value& current,
     const std::function<double(const Item&, const Value&)>& distance_fn,
-    const int64_t K)
+    const int64_t K, const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   return GetKNearestNeighborsInRangeParallel<Item, Value, Container>(
-      items, 0, items.size(), current, distance_fn, K);
+      items, 0, items.size(), current, distance_fn, K, parallelism);
 }
 
 /// @return vector<pair<index, distance>> of the nearest @param K neighbors to
 /// @param current in the specified range [range_start, range_end) of
 /// @param items, with distance computed by @param distance_fn and
-/// @param use_parallel selects if search is performed in parallel.
+/// @param parallelism control if/how search is performed in parallel.
 template<typename Item, typename Value, typename Container=std::vector<Item>>
 inline std::vector<IndexAndDistance> GetKNearestNeighborsInRange(
     const Container& items, const size_t range_start, const size_t range_end,
     const Value& current,
     const std::function<double(const Item&, const Value&)>& distance_fn,
-    const int64_t K, const bool use_parallel = false)
+    const int64_t K, const openmp_helpers::DegreeOfParallelism& parallelism)
 {
-  if (use_parallel)
+  if (parallelism.IsParallel())
   {
     return GetKNearestNeighborsInRangeParallel<Item, Value, Container>(
-        items, range_start, range_end, current, distance_fn, K);
+        items, range_start, range_end, current, distance_fn, K, parallelism);
   }
   else
   {
@@ -341,15 +341,15 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRange(
 
 /// @return vector<pair<index, distance>> of the nearest @param K neighbors to
 /// @param current in @param items, with distance computed by @param distance_fn
-/// and @param use_parallel selects if search is performed in parallel.
+/// @param parallelism control if/how search is performed in parallel.
 template<typename Item, typename Value, typename Container=std::vector<Item>>
 inline std::vector<IndexAndDistance> GetKNearestNeighbors(
     const Container& items, const Value& current,
     const std::function<double(const Item&, const Value&)>& distance_fn,
-    const int64_t K, const bool use_parallel = false)
+    const int64_t K, const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   return GetKNearestNeighborsInRange<Item, Value, Container>(
-      items, 0, items.size(), current, distance_fn, K, use_parallel);
+      items, 0, items.size(), current, distance_fn, K, parallelism);
 }
 }  // namespace simple_knearest_neighbors
 }  // namespace common_robotics_utilities

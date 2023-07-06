@@ -1602,7 +1602,7 @@ MakeUniformRandomBiRRTTreeSamplingFunction(
 
 /// Helper function to create a serial/parallel linear nearest neighbors
 /// function for use in RRT planner given the provided state-to-state distance
-/// function @param distance_fn and flag @param use_parallel which selects if
+/// function @param distance_fn and flag @param parallelism which selects if/how
 /// parallel linear nearest neighbors should be performed.
 template<typename StateType, typename TreeType=SimpleRRTPlannerTree<StateType>,
          typename SampleType=StateType>
@@ -1610,7 +1610,7 @@ RRTNearestNeighborFunction<StateType, TreeType, SampleType>
 MakeLinearRRTNearestNeighborsFunction(
     const std::function<double(const StateType&,
                                const SampleType&)>& distance_fn,
-    const bool use_parallel = true)
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   RRTNearestNeighborFunction<StateType, TreeType, SampleType>
       nearest_neighbors_function = [=] (
@@ -1625,7 +1625,7 @@ MakeLinearRRTNearestNeighborsFunction(
               return distance_fn(candidate_q, sample);
             };
     const auto neighbors = simple_knearest_neighbors::GetKNearestNeighbors(
-        tree.GetNodesImmutable(), sampled, real_distance_fn, 1, use_parallel);
+        tree.GetNodesImmutable(), sampled, real_distance_fn, 1, parallelism);
     if (neighbors.size() > 0)
     {
       const auto& nearest_neighbor = neighbors.at(0);
@@ -1641,7 +1641,7 @@ MakeLinearRRTNearestNeighborsFunction(
 
 /// Helper function to create a serial/parallel linear nearest neighbors
 /// function for use in RRT planner given the provided state-to-state distance
-/// function @param distance_fn and flag @param use_parallel which selects if
+/// function @param distance_fn and flag @param parallelism which selects if/how
 /// parallel linear nearest neighbors should be performed. Use this helper for
 /// kinematic planning problems, in which state type and sample type are the
 /// same.
@@ -1650,15 +1650,15 @@ RRTNearestNeighborFunction<StateType, TreeType, StateType>
 MakeKinematicLinearRRTNearestNeighborsFunction(
     const std::function<double(const StateType&,
                                const StateType&)>& distance_fn,
-    const bool use_parallel = true)
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   return MakeLinearRRTNearestNeighborsFunction<StateType, TreeType, StateType>(
-      distance_fn, use_parallel);
+      distance_fn, parallelism);
 }
 
 /// Helper function to create a serial/parallel linear nearest neighbors
 /// function for use in BiRRT planners given the provided state-to-state
-/// distance function @param distance_fn and flag @param use_parallel which
+/// distance function @param distance_fn and flag @param parallelism which
 /// selects if parallel linear nearest neighbors should be performed. This is
 /// best used for kinematic planning problems, where nearest neighbors is the
 /// same for both start and goal tree.
@@ -1667,7 +1667,7 @@ BiRRTNearestNeighborFunction<StateType, TreeType>
 MakeKinematicLinearBiRRTNearestNeighborsFunction(
     const std::function<double(const StateType&,
                                const StateType&)>& distance_fn,
-    const bool use_parallel = true)
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   BiRRTNearestNeighborFunction<StateType, TreeType> nearest_neighbors_function
       = [=] (
@@ -1683,7 +1683,7 @@ MakeKinematicLinearBiRRTNearestNeighborsFunction(
               return distance_fn(candidate_q, sample);
             };
     const auto neighbors = simple_knearest_neighbors::GetKNearestNeighbors(
-        tree.GetNodesImmutable(), sampled, real_distance_fn, 1, use_parallel);
+        tree.GetNodesImmutable(), sampled, real_distance_fn, 1, parallelism);
     if (neighbors.size() > 0)
     {
       const auto& nearest_neighbor = neighbors.at(0);

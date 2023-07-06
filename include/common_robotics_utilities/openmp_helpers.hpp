@@ -190,6 +190,8 @@ public:
 class DegreeOfParallelism
 {
 public:
+  DegreeOfParallelism() : DegreeOfParallelism(false) {}
+
   explicit DegreeOfParallelism(const bool parallelize)
   {
     if (parallelize)
@@ -228,7 +230,7 @@ public:
     }
     else
     {
-      return ::GetNumOmpThreads();
+      return openmp_helpers::GetNumOmpThreads();
     }
   }
 
@@ -257,12 +259,10 @@ private:
 /// Macros to declare OpenMP parallel for loops, handling conditionals as well
 /// as the case of OpenMP being disabled entirely.
 #if defined(_OPENMP)
-#define CRU_OMP_PARALLEL_FOR_DEGREE(degree) _Pragma(CRU_MACRO_STRINGIFY(omp parallel for if(degree.IsParallel()) num_threads(degree.GetNumOmpthreads())))
-#define CRU_OMP_PARALLEL_FOR_IF(enable_parallel) _Pragma(CRU_MACRO_STRINGIFY(omp parallel for if(enable_parallel)))
-#define CRU_OMP_PARALLEL_FOR _Pragma(CRU_MACRO_STRINGIFY(omp parallel for))
+#define CRU_OMP_PARALLEL_FOR_DEGREE(degree) _Pragma(CRU_MACRO_STRINGIFY(omp parallel for if(degree.IsParallel()) num_threads(degree.GetNumOmpThreads())))
+#define CRU_OMP_PARALLEL_FOR_NUM_THREADS(thread_count) _Pragma(CRU_MACRO_STRINGIFY(omp parallel for num_threads(thread_count)))
 #else
 #define CRU_OMP_PARALLEL_FOR_DEGREE(degree) (void)(degree);
-#define CRU_OMP_PARALLEL_FOR_IF(enable_parallel) (void)(enable_parallel);
-#define CRU_OMP_PARALLEL_FOR
+#define CRU_OMP_PARALLEL_FOR_NUM_THREADS(thread_count) (void)(thread_count);
 #endif
 

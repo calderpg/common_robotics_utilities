@@ -531,11 +531,11 @@ template<typename DataType, typename Container=std::vector<DataType>>
 Eigen::MatrixXd BuildPairwiseDistanceMatrix(
     const Container& data,
     const std::function<double(const DataType&, const DataType&)>& distance_fn,
-    const bool use_parallel = false)
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   Eigen::MatrixXd distance_matrix(data.size(), data.size());
 
-  CRU_OMP_PARALLEL_FOR_IF(use_parallel)
+  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
   for (size_t idx = 0; idx < data.size(); idx++)
   {
     for (size_t jdx = idx; jdx < data.size(); jdx++)
@@ -566,7 +566,7 @@ Eigen::MatrixXd BuildPairwiseDistanceMatrixParallel(
     const std::function<double(const DataType&, const DataType&)>& distance_fn)
 {
   return BuildPairwiseDistanceMatrix<DataType, Container>(
-      data, distance_fn, true);
+      data, distance_fn, openmp_helpers::DegreeOfParallelism(true));
 }
 
 template<typename DataType, typename Container=std::vector<DataType>>
@@ -575,7 +575,7 @@ Eigen::MatrixXd BuildPairwiseDistanceMatrixSerial(
     const std::function<double(const DataType&, const DataType&)>& distance_fn)
 {
   return BuildPairwiseDistanceMatrix<DataType, Container>(
-      data, distance_fn, false);
+      data, distance_fn, openmp_helpers::DegreeOfParallelism(false));
 }
 
 template<typename FirstDataType, typename SecondDataType,
@@ -585,11 +585,11 @@ Eigen::MatrixXd BuildPairwiseDistanceMatrix(
     const FirstContainer& data1, const SecondContainer& data2,
     const std::function<double(const FirstDataType&,
                                const SecondDataType&)>& distance_fn,
-    const bool use_parallel = false)
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   Eigen::MatrixXd distance_matrix(data1.size(), data2.size());
 
-  CRU_OMP_PARALLEL_FOR_IF(use_parallel)
+  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
   for (size_t idx = 0; idx < data1.size(); idx++)
   {
     for (size_t jdx = 0; jdx < data2.size(); jdx++)
@@ -612,7 +612,8 @@ Eigen::MatrixXd BuildPairwiseDistanceMatrixParallel(
 {
   return BuildPairwiseDistanceMatrixParallel
       <FirstDataType, SecondDataType, FirstContainer, SecondContainer>(
-          data1, data2, distance_fn, true);
+          data1, data2, distance_fn,
+          openmp_helpers::DegreeOfParallelism(true));
 }
 
 template<typename FirstDataType, typename SecondDataType,
@@ -625,7 +626,8 @@ Eigen::MatrixXd BuildPairwiseDistanceMatrixSerial(
 {
   return BuildPairwiseDistanceMatrixParallel
       <FirstDataType, SecondDataType, FirstContainer, SecondContainer>(
-          data1, data2, distance_fn, false);
+          data1, data2, distance_fn,
+          openmp_helpers::DegreeOfParallelism(false));
 }
 
 class Hyperplane

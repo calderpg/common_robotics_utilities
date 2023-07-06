@@ -23,16 +23,16 @@ namespace simple_kmeans_clustering
 /// are assigned a label based on the closest cluster center in @param
 /// current_cluster_centers. Cluster center-to-element distance is computed by
 /// @param distance_fn. @return labels for all elements.
-/// @param use_parallel selects if clustering should be performed in parallel.
+/// @param parallelism selects if/how clustering should be parallelized.
 template<typename DataType, typename Container=std::vector<DataType>>
-inline std::vector<int32_t> PerformSingleClusteringIteration(
+std::vector<int32_t> PerformSingleClusteringIteration(
     const Container& data, const Container& current_cluster_centers,
     const std::function<double(const DataType&, const DataType&)>& distance_fn,
-    const bool use_parallel)
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   std::vector<int32_t> new_cluster_labels(data.size());
 
-  CRU_OMP_PARALLEL_FOR_IF(use_parallel)
+  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
   for (size_t idx = 0; idx < data.size(); idx++)
   {
     const DataType& datapoint = data.at(idx);
@@ -51,15 +51,16 @@ inline std::vector<int32_t> PerformSingleClusteringIteration(
 /// provided Container of data and corresponding weights from @param
 /// data_weights. @param num_clusters specifies the number of clusters, and is
 /// used to preallocate storage. @return the new cluster centers.
-/// @param use_parallel selects if cluster centers should be computed in
+/// @param parallelism selects if/how cluster centers should be computed in
 /// parallel.
 template<typename DataType, typename Container=std::vector<DataType>>
-inline Container ComputeClusterCentersWeighted(
+Container ComputeClusterCentersWeighted(
     const Container& data,  const std::vector<double>& data_weights,
     const std::vector<int32_t>& cluster_labels,
     const std::function<DataType(
         const Container&, const std::vector<double>&)>& weighted_average_fn,
-    const int32_t num_clusters, const bool use_parallel)
+    const int32_t num_clusters,
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   if (data.size() == cluster_labels.size())
   {
@@ -81,7 +82,7 @@ inline Container ComputeClusterCentersWeighted(
     // Compute the center of each cluster
     Container cluster_centers(static_cast<size_t>(num_clusters));
 
-    CRU_OMP_PARALLEL_FOR_IF(use_parallel)
+    CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
     for (size_t cluster = 0; cluster < clustered_data.size(); cluster++)
     {
       const Container& cluster_data = clustered_data.at(cluster);
@@ -130,15 +131,16 @@ inline bool CheckForConvergence(
 /// internal PRNG used to draw from @param data.
 /// @param do_preliminary_clustering selects if a first pass of clustering using
 /// 1/8 of the elements in @param data should be performed first, and
-/// @param use_parallel selects if internal operations should be parallelized.
+/// @param parallelism selects if/how operations should be parallelized.
 template<typename DataType, typename Container=std::vector<DataType>>
-inline std::vector<int32_t> ClusterWeighted(
+std::vector<int32_t> ClusterWeighted(
     const Container& data, const std::vector<double>& data_weights,
     const std::function<double(const DataType&, const DataType&)>& distance_fn,
     const std::function<DataType(const Container&, const std::vector<double>&)>&
         weighted_average_fn,
     const int32_t num_clusters, const int64_t prng_seed,
-    const bool do_preliminary_clustering, const bool use_parallel = false,
+    const bool do_preliminary_clustering,
+    const openmp_helpers::DegreeOfParallelism& parallelism,
     const utility::LoggingFunction& logging_fn = {})
 {
   if (data.empty())
@@ -226,12 +228,12 @@ inline std::vector<int32_t> ClusterWeighted(
     std::vector<int32_t> random_subset_labels
         = ClusterWeighted<DataType, Container>(
             random_subset, random_subset_weights, distance_fn,
-            weighted_average_fn, num_clusters, false, use_parallel);
+            weighted_average_fn, num_clusters, prng_seed, false, parallelism);
     // Now we use the centers of the clusters to form the cluster centers
     cluster_centers
         = ComputeClusterCentersWeighted(
             random_subset, random_subset_weights, random_subset_labels,
-            weighted_average_fn, num_clusters, use_parallel);
+            weighted_average_fn, num_clusters, parallelism);
   }
   else
   {
@@ -261,7 +263,7 @@ inline std::vector<int32_t> ClusterWeighted(
   // Run the first iteration of clustering
   std::vector<int32_t> cluster_labels
       = PerformSingleClusteringIteration(
-          data, cluster_centers, distance_fn, use_parallel);
+          data, cluster_centers, distance_fn, parallelism);
   bool converged = false;
   int32_t iteration = 1;
   // Run until convergence
@@ -272,11 +274,11 @@ inline std::vector<int32_t> ClusterWeighted(
     cluster_centers
         = ComputeClusterCentersWeighted(
             data, data_weights, cluster_labels, weighted_average_fn,
-            num_clusters, use_parallel);
+            num_clusters, parallelism);
     // Cluster with the new centers
     const std::vector<int32_t> new_cluster_labels
         = PerformSingleClusteringIteration(
-            data, cluster_centers, distance_fn, use_parallel);
+            data, cluster_centers, distance_fn, parallelism);
     // Check for convergence
     converged = CheckForConvergence(cluster_labels, new_cluster_labels);
     cluster_labels = new_cluster_labels;
@@ -296,15 +298,16 @@ inline std::vector<int32_t> ClusterWeighted(
 /// number of clusters, and @param prng_seed specifies the seed for the internal
 /// PRNG used to draw from @param data. @param do_preliminary_clustering selects
 /// if a first pass of clustering using 1/8 of the elements in @param data
-/// should be performed first, and @param use_parallel selects if internal
+/// should be performed first, and @param parallelize selects if/how internal
 /// operations should be parallelized.
 template<typename DataType, typename Container=std::vector<DataType>>
-inline std::vector<int32_t> Cluster(
+std::vector<int32_t> Cluster(
     const Container& data,
     const std::function<double(const DataType&, const DataType&)>& distance_fn,
     const std::function<DataType(const Container&)>& average_fn,
     const int32_t num_clusters, const int64_t prng_seed,
-    const bool do_preliminary_clustering, const bool use_parallel = false,
+    const bool do_preliminary_clustering,
+    const openmp_helpers::DegreeOfParallelism& parallelism,
     const utility::LoggingFunction& logging_fn = {})
 {
   // Make a dummy set of uniform weights
@@ -319,7 +322,7 @@ inline std::vector<int32_t> Cluster(
   };
   return ClusterWeighted<DataType, Container>(
       data, data_weights, distance_fn, weighted_average_fn, num_clusters,
-      prng_seed, do_preliminary_clustering, use_parallel, logging_fn);
+      prng_seed, do_preliminary_clustering, parallelism, logging_fn);
 }
 }  // namespace simple_kmeans_clustering
 }  // namespace common_robotics_utilities

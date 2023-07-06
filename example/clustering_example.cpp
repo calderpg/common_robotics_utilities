@@ -84,6 +84,8 @@ int main(int argc, char** argv)
   const std::vector<bool> use_parallel_options = {false, true};
   for (const bool use_parallel : use_parallel_options)
   {
+    const common_robotics_utilities::openmp_helpers::DegreeOfParallelism
+        parallelism(use_parallel);
     // Cluster using index-cluster methods
     // Single-link clustering
     std::cout << "Single-link hierarchical index clustering " << num_points
@@ -94,7 +96,7 @@ int main(int argc, char** argv)
             ::IndexCluster(
                 random_points, distance_fn, 1.0,
                 common_robotics_utilities::simple_hierarchical_clustering
-                    ::ClusterStrategy::SINGLE_LINK, use_parallel);
+                    ::ClusterStrategy::SINGLE_LINK, parallelism);
     const auto slhic_end = std::chrono::steady_clock::now();
     const double slhic_elapsed =
         std::chrono::duration<double>(slhic_end - slhic_start).count();
@@ -113,7 +115,7 @@ int main(int argc, char** argv)
             ::IndexCluster(
                 random_points, distance_fn, 1.0,
                 common_robotics_utilities::simple_hierarchical_clustering
-                    ::ClusterStrategy::COMPLETE_LINK, use_parallel);
+                    ::ClusterStrategy::COMPLETE_LINK, parallelism);
     const auto clhic_end = std::chrono::steady_clock::now();
     const double clhic_elapsed =
         std::chrono::duration<double>(clhic_end - clhic_start).count();
@@ -132,7 +134,7 @@ int main(int argc, char** argv)
         = common_robotics_utilities::simple_hierarchical_clustering::Cluster(
             random_points, distance_fn, 1.0,
             common_robotics_utilities::simple_hierarchical_clustering
-                ::ClusterStrategy::SINGLE_LINK, use_parallel);
+                ::ClusterStrategy::SINGLE_LINK, parallelism);
     const auto slhc_end = std::chrono::steady_clock::now();
     const double slhc_elapsed =
         std::chrono::duration<double>(slhc_end - slhc_start).count();
@@ -149,7 +151,7 @@ int main(int argc, char** argv)
         = common_robotics_utilities::simple_hierarchical_clustering::Cluster(
             random_points, distance_fn, 1.0,
             common_robotics_utilities::simple_hierarchical_clustering
-                ::ClusterStrategy::COMPLETE_LINK, use_parallel);
+                ::ClusterStrategy::COMPLETE_LINK, parallelism);
     const auto clhc_end = std::chrono::steady_clock::now();
     const double clhc_elapsed =
         std::chrono::duration<double>(clhc_end - clhc_start).count();
@@ -175,7 +177,7 @@ int main(int argc, char** argv)
     const std::vector<int32_t> kmeans_labels
         = common_robotics_utilities::simple_kmeans_clustering::Cluster(
             random_points, distance_fn, average_fn, num_clusters, 42, true,
-            use_parallel, logging_fn);
+            parallelism, logging_fn);
     const auto kmeans_end = std::chrono::steady_clock::now();
     const double kmeans_elapsed =
         std::chrono::duration<double>(kmeans_end - kmeans_start).count();

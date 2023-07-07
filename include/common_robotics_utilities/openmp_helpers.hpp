@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include <stdexcept>
+#include <string>
 #include <thread>
 
 #if defined(_OPENMP)
@@ -190,61 +191,30 @@ public:
 class DegreeOfParallelism
 {
 public:
-  DegreeOfParallelism() : DegreeOfParallelism(false) {}
+  static DegreeOfParallelism None() { return DegreeOfParallelism(1); }
 
-  explicit DegreeOfParallelism(const bool parallelize)
-  {
-    if (parallelize)
-    {
-      num_threads_ = -1;
-    }
-    else
-    {
-      num_threads_ = 1;
-    }
-  }
+  static DegreeOfParallelism FromOmp()
+  { return DegreeOfParallelism(GetNumOmpThreads()); }
+
+  DegreeOfParallelism() : DegreeOfParallelism(1) {}
 
   explicit DegreeOfParallelism(const int32_t num_threads)
   {
-    if (num_threads > 0)
+    if (num_threads >= 1)
     {
       num_threads_ = num_threads;
     }
-    else if (num_threads < 0)
-    {
-      num_threads_ = -1;
-    }
     else
     {
-      num_threads_ = 1;
+      throw std::invalid_argument(
+          "Provided num_threads " + std::to_string(num_threads) +
+          " cannot be less than 1");
     }
   }
 
   bool IsParallel() const { return num_threads_ != 1; }
 
-  int32_t GetNumOmpThreads() const
-  {
-    if (num_threads_ > 0)
-    {
-      return num_threads_;
-    }
-    else
-    {
-      return openmp_helpers::GetNumOmpThreads();
-    }
-  }
-
-  int32_t GetNumStdThreads() const
-  {
-    if (num_threads_ > 0)
-    {
-      return num_threads_;
-    }
-    else
-    {
-      return static_cast<int32_t>(std::thread::hardware_concurrency());
-    }
-  }
+  int32_t GetNumThreads() const { return num_threads_; }
 
 private:
   int32_t num_threads_ = 1;
@@ -259,7 +229,7 @@ private:
 /// Macros to declare OpenMP parallel for loops, handling conditionals as well
 /// as the case of OpenMP being disabled entirely.
 #if defined(_OPENMP)
-#define CRU_OMP_PARALLEL_FOR_DEGREE(degree) _Pragma(CRU_MACRO_STRINGIFY(omp parallel for if(degree.IsParallel()) num_threads(degree.GetNumOmpThreads())))
+#define CRU_OMP_PARALLEL_FOR_DEGREE(degree) _Pragma(CRU_MACRO_STRINGIFY(omp parallel for if(degree.IsParallel()) num_threads(degree.GetNumThreads())))
 #define CRU_OMP_PARALLEL_FOR_NUM_THREADS(thread_count) _Pragma(CRU_MACRO_STRINGIFY(omp parallel for num_threads(thread_count)))
 #else
 #define CRU_OMP_PARALLEL_FOR_DEGREE(degree) (void)(degree);

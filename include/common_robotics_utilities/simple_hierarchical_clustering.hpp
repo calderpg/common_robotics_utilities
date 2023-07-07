@@ -120,7 +120,7 @@ inline ClosestPair GetClosestClustersParallel(
     const ClusterStrategy strategy,
     const openmp_helpers::DegreeOfParallelism& parallelism)
 {
-  const int32_t num_threads = parallelism.GetNumOmpThreads();
+  const int32_t num_threads = parallelism.GetNumThreads();
   std::vector<ClosestPair> per_thread_closest_clusters(
       static_cast<size_t>(num_threads), ClosestPair());
   CRU_OMP_PARALLEL_FOR_NUM_THREADS(num_threads)
@@ -275,7 +275,7 @@ inline ClosestPair GetClosestValueToOtherParallel(
     const ClusterStrategy strategy,
     const openmp_helpers::DegreeOfParallelism& parallelism)
 {
-  const int32_t num_threads = parallelism.GetNumOmpThreads();
+  const int32_t num_threads = parallelism.GetNumThreads();
   std::vector<ClosestPair> per_thread_closest_value_other(
       static_cast<size_t>(num_threads), ClosestPair());
   CRU_OMP_PARALLEL_FOR_NUM_THREADS(num_threads)

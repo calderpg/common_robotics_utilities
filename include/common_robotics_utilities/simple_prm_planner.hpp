@@ -366,7 +366,7 @@ GraphType BuildRoadMap(
   // Sample roadmap_size valid configurations. This can only be parallelized if
   // add_duplicate_states is true, since the check for duplicate states would
   // be a race condition otherwise, and if parallelization is generally enabled.
-  openmp_helpers::DegreeOfParallelism sampling_parallelism(false);
+  auto sampling_parallelism = openmp_helpers::DegreeOfParallelism::None();
   if (use_parallel_sampling && add_duplicate_states)
   {
     sampling_parallelism = parallelism;
@@ -413,7 +413,7 @@ GraphType BuildRoadMap(
         simple_knearest_neighbors::GetKNearestNeighbors(
             simple_graph::GraphKNNAdapter<GraphType>(roadmap), state,
             roadmap_to_state_distance_fn, K + 1,
-            openmp_helpers::DegreeOfParallelism(false));
+            openmp_helpers::DegreeOfParallelism::None());
 
     for (const auto& neighbor : nearest_neighbors)
     {

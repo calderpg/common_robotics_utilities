@@ -361,7 +361,7 @@ GTEST_TEST(PlanningTest, Test)
   };
 
   // Configure parallelism
-  const openmp_helpers::DegreeOfParallelism parallelism(true);
+  const auto parallelism = openmp_helpers::DegreeOfParallelism::None();
 
   // RRT and BiRRT parameters
   const double rrt_step_size = 3.0;
@@ -455,10 +455,10 @@ GTEST_TEST(PlanningTest, Test)
   // Test graph pruning
   const std::unordered_set<int64_t> nodes_to_prune = {10, 20, 30, 40, 50, 60};
   const auto serial_pruned_roadmap = grown_roadmap.MakePrunedCopy(
-      nodes_to_prune, openmp_helpers::DegreeOfParallelism(false));
+      nodes_to_prune, openmp_helpers::DegreeOfParallelism::None());
   ASSERT_TRUE(serial_pruned_roadmap.CheckGraphLinkage());
   const auto parallel_pruned_roadmap = grown_roadmap.MakePrunedCopy(
-      nodes_to_prune, openmp_helpers::DegreeOfParallelism(true));
+      nodes_to_prune, openmp_helpers::DegreeOfParallelism::FromOmp());
   ASSERT_TRUE(parallel_pruned_roadmap.CheckGraphLinkage());
 
   // Helpers for waypoint de/serialization

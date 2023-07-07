@@ -10,6 +10,7 @@
 #include <common_robotics_utilities/simple_hierarchical_clustering.hpp>
 #include <common_robotics_utilities/simple_kmeans_clustering.hpp>
 
+using common_robotics_utilities::openmp_helpers::DegreeOfParallelism;
 using PointVector = common_robotics_utilities::math::VectorVector4d;
 using IndexClusteringResult
     = common_robotics_utilities::simple_hierarchical_clustering
@@ -84,8 +85,9 @@ int main(int argc, char** argv)
   const std::vector<bool> use_parallel_options = {false, true};
   for (const bool use_parallel : use_parallel_options)
   {
-    const common_robotics_utilities::openmp_helpers::DegreeOfParallelism
-        parallelism(use_parallel);
+    const DegreeOfParallelism parallelism = (use_parallel)
+        ? DegreeOfParallelism::FromOmp()
+        : DegreeOfParallelism::None();
     // Cluster using index-cluster methods
     // Single-link clustering
     std::cout << "Single-link hierarchical index clustering " << num_points

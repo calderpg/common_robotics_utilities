@@ -44,8 +44,9 @@ GTEST_TEST(HausdorffDistanceTest, Test)
 
   for (const bool use_parallel : {false, true})
   {
-    const common_robotics_utilities::openmp_helpers::DegreeOfParallelism
-        parallelism(use_parallel);
+    const openmp_helpers::DegreeOfParallelism parallelism = (use_parallel)
+        ? openmp_helpers::DegreeOfParallelism::FromOmp()
+        : openmp_helpers::DegreeOfParallelism::None();
 
     // Compute pairwise distance matrices
     const Eigen::MatrixXd d1d2_dist_matrix = math::BuildPairwiseDistanceMatrix(

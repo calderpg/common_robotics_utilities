@@ -157,8 +157,7 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
   else
   {
     // Per-thread work calculation common to both range_size <= K and full case.
-    const size_t num_threads =
-        static_cast<size_t>(parallelism.GetNumStdThreads());
+    const size_t num_threads = static_cast<size_t>(parallelism.GetNumThreads());
 
     // Every thread gets at least floor(range_size / num_threads) work, and the
     // remainder is distributed across the first range_size % num_threads as one

@@ -47,7 +47,7 @@ inline double ComputeDistanceParallel(
   }
 
   // Make per-thread storage
-  const int32_t num_threads = parallelism.GetNumOmpThreads();
+  const int32_t num_threads = parallelism.GetNumThreads();
   std::vector<double> per_thread_storage(static_cast<size_t>(num_threads), 0.0);
   CRU_OMP_PARALLEL_FOR_NUM_THREADS(num_threads)
   for (size_t idx = 0; idx < first_distribution.size(); idx++)
@@ -154,7 +154,7 @@ inline double ComputeDistanceParallel(
   }
 
   // Make per-thread storage
-  const int32_t num_threads = parallelism.GetNumOmpThreads();
+  const int32_t num_threads = parallelism.GetNumThreads();
   std::vector<double> per_thread_storage(static_cast<size_t>(num_threads), 0.0);
   CRU_OMP_PARALLEL_FOR_NUM_THREADS(num_threads)
   for (size_t idx = 0; idx < first_distribution.size(); idx++)

@@ -6,6 +6,7 @@
 #include <map>
 #include <random>
 #include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -27,7 +28,7 @@
 
 namespace common_robotics_utilities
 {
-namespace planning_test
+namespace
 {
 using TestMap = Eigen::Matrix<char, Eigen::Dynamic, Eigen::Dynamic>;
 using Waypoint = std::pair<ssize_t, ssize_t>;
@@ -89,7 +90,19 @@ WaypointVector ResampleWaypoints(const WaypointVector& waypoints)
 
 void DrawEnvironment(const TestMap& environment)
 {
-  std::cout << environment << std::endl;
+  std::string str_rep;
+  str_rep.reserve((environment.rows() + 1) * environment.cols());
+
+  for (ssize_t row = 0; row < environment.rows(); row++)
+  {
+    for (ssize_t col = 0; col < environment.cols(); col++)
+    {
+      str_rep.push_back(environment(row, col));
+    }
+    str_rep.push_back('\n');
+  }
+
+  std::cout << str_rep << std::endl;
 }
 
 void SetCell(TestMap& map, const ssize_t row, const ssize_t col, const char val)
@@ -265,8 +278,14 @@ Waypoint SampleWaypoint(
   return Waypoint(row, col);
 }
 
-GTEST_TEST(PlanningTest, Test)
+class PlanningTestSuite
+    : public testing::TestWithParam<openmp_helpers::DegreeOfParallelism> {};
+
+TEST_P(PlanningTestSuite, Test)
 {
+  const openmp_helpers::DegreeOfParallelism parallelism = GetParam();
+  std::cout << "# of threads = " << parallelism.GetNumThreads() << std::endl;
+
   const std::string test_env_raw = "####################"
                                    "#                  #"
                                    "#  ####            #"
@@ -360,9 +379,6 @@ GTEST_TEST(PlanningTest, Test)
     check_path(resampled_path);
   };
 
-  // Configure parallelism
-  const auto parallelism = openmp_helpers::DegreeOfParallelism::None();
-
   // RRT and BiRRT parameters
   const double rrt_step_size = 3.0;
   const double rrt_goal_bias = 0.1;
@@ -454,12 +470,9 @@ GTEST_TEST(PlanningTest, Test)
 
   // Test graph pruning
   const std::unordered_set<int64_t> nodes_to_prune = {10, 20, 30, 40, 50, 60};
-  const auto serial_pruned_roadmap = grown_roadmap.MakePrunedCopy(
-      nodes_to_prune, openmp_helpers::DegreeOfParallelism::None());
-  ASSERT_TRUE(serial_pruned_roadmap.CheckGraphLinkage());
-  const auto parallel_pruned_roadmap = grown_roadmap.MakePrunedCopy(
-      nodes_to_prune, openmp_helpers::DegreeOfParallelism::FromOmp());
-  ASSERT_TRUE(parallel_pruned_roadmap.CheckGraphLinkage());
+  const auto pruned_roadmap =
+      grown_roadmap.MakePrunedCopy(nodes_to_prune, parallelism);
+  ASSERT_TRUE(pruned_roadmap.CheckGraphLinkage());
 
   // Helpers for waypoint de/serialization
   const serialization::Serializer<Waypoint> serialize_waypoint_fn
@@ -783,7 +796,15 @@ GTEST_TEST(PlanningTest, Test)
     }
   }
 }
-}  // namespace planning_test
+
+INSTANTIATE_TEST_SUITE_P(
+    SerialPlanningTest, PlanningTestSuite,
+    testing::Values(openmp_helpers::DegreeOfParallelism::None()));
+
+INSTANTIATE_TEST_SUITE_P(
+    ParallelPlanningTest, PlanningTestSuite,
+    testing::Values(openmp_helpers::DegreeOfParallelism::FromOmp()));
+}  // namespace
 }  // namespace common_robotics_utilities
 
 int main(int argc, char** argv)

@@ -1,5 +1,6 @@
 #include <cmath>
 #include <cstdint>
+#include <cstdlib>
 #include <functional>
 #include <iostream>
 #include <limits>
@@ -801,9 +802,22 @@ INSTANTIATE_TEST_SUITE_P(
     SerialPlanningTest, PlanningTestSuite,
     testing::Values(openmp_helpers::DegreeOfParallelism::None()));
 
+// For fallback testing on platforms with no OpenMP support, specify 2 threads.
+int32_t GetNumThreads()
+{
+  if (openmp_helpers::IsOmpEnabledInBuild())
+  {
+    return openmp_helpers::GetNumOmpThreads();
+  }
+  else
+  {
+    return 2;
+  }
+}
+
 INSTANTIATE_TEST_SUITE_P(
     ParallelPlanningTest, PlanningTestSuite,
-    testing::Values(openmp_helpers::DegreeOfParallelism::FromOmp()));
+    testing::Values(openmp_helpers::DegreeOfParallelism(GetNumThreads())));
 }  // namespace
 }  // namespace common_robotics_utilities
 

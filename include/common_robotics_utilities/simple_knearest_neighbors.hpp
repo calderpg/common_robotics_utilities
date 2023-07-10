@@ -211,21 +211,32 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
         }
       };
 
-      // Find the K nearest for each thread.
-
-      // Dispatch worker threads.
-      std::vector<std::future<void>> workers;
-      for (size_t thread_num = 0; thread_num < num_threads; thread_num++)
+      // Find the K nearest for each thread. Use OpenMP if available, if not
+      // fall back to manual dispatch via std::async.
+      if (openmp_helpers::IsOmpEnabledInBuild())
       {
-        workers.emplace_back(
-            std::async(std::launch::async, per_thread_work, thread_num));
+        CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
+        for (size_t thread_num = 0; thread_num < num_threads; thread_num++)
+        {
+          per_thread_work(thread_num);
+        }
       }
-
-      // Wait for worker threads to complete. This also rethrows any exception
-      // thrown in a worker thread.
-      for (auto& worker : workers)
+      else
       {
-        worker.get();
+        // Dispatch worker threads.
+        std::vector<std::future<void>> workers;
+        for (size_t thread_num = 0; thread_num < num_threads; thread_num++)
+        {
+          workers.emplace_back(
+              std::async(std::launch::async, per_thread_work, thread_num));
+        }
+
+        // Wait for worker threads to complete. This also rethrows any exception
+        // thrown in a worker thread.
+        for (auto& worker : workers)
+        {
+          worker.get();
+        }
       }
 
       return k_nearests;
@@ -251,21 +262,32 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
                 thread_range_start_end.second, current, distance_fn, K);
       };
 
-      // Find the K nearest for each thread.
-
-      // Dispatch worker threads.
-      std::vector<std::future<void>> workers;
-      for (size_t thread_num = 0; thread_num < num_threads; thread_num++)
+      // Find the K nearest for each thread. Use OpenMP if available, if not
+      // fall back to manual dispatch via std::async.
+      if (openmp_helpers::IsOmpEnabledInBuild())
       {
-        workers.emplace_back(
-            std::async(std::launch::async, per_thread_work, thread_num));
+        CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
+        for (size_t thread_num = 0; thread_num < num_threads; thread_num++)
+        {
+          per_thread_work(thread_num);
+        }
       }
-
-      // Wait for worker threads to complete. This also rethrows any exception
-      // thrown in a worker thread.
-      for (auto& worker : workers)
+      else
       {
-        worker.get();
+        // Dispatch worker threads.
+        std::vector<std::future<void>> workers;
+        for (size_t thread_num = 0; thread_num < num_threads; thread_num++)
+        {
+          workers.emplace_back(
+              std::async(std::launch::async, per_thread_work, thread_num));
+        }
+
+        // Wait for worker threads to complete. This also rethrows any exception
+        // thrown in a worker thread.
+        for (auto& worker : workers)
+        {
+          worker.get();
+        }
       }
 
       // Merge the per-thread K-nearest together.

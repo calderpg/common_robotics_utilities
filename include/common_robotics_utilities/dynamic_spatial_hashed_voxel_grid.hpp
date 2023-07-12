@@ -158,6 +158,12 @@ public:
 
   T& Value() const { return value_.Value(); }
 
+  void Reset()
+  {
+    value_.Reset();
+    status_ = DSHVGFoundStatus::NOT_FOUND;
+  }
+
   DSHVGFoundStatus FoundStatus() const { return found_status_; }
 
   bool HasValue() const { return value_.HasValue(); }

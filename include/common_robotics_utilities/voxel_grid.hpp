@@ -17,6 +17,19 @@ namespace common_robotics_utilities
 {
 namespace voxel_grid
 {
+namespace internal
+{
+inline bool CheckPositiveValid(const double param)
+{
+  return (std::isfinite(param) && (param > 0.0));
+}
+
+inline bool CheckPositiveValid(const int64_t param)
+{
+  return (param > 0);
+}
+}  // namespace internal
+
 class GridIndex
 {
 private:
@@ -52,6 +65,228 @@ public:
     return !(*this == other);
   }
 };
+
+class VoxelSizes
+{
+private:
+  double x_size_ = 0.0;
+  double y_size_ = 0.0;
+  double z_size_ = 0.0;
+  double inv_x_size_ = 0.0;
+  double inv_y_size_ = 0.0;
+  double inv_z_size_ = 0.0;
+
+  bool Initialize(const double x_size, const double y_size, const double z_size)
+  {
+    if (internal::CheckPositiveValid(x_size) &&
+        internal::CheckPositiveValid(y_size) &&
+        internal::CheckPositiveValid(z_size))
+    {
+      x_size_ = x_size;
+      y_size_ = y_size;
+      z_size_ = z_size;
+      inv_x_size_ = 1.0 / x_size_;
+      inv_y_size_ = 1.0 / y_size_;
+      inv_z_size_ = 1.0 / z_size_;
+      return true;
+    }
+    else
+    {
+      return false;
+    }
+  }
+
+public:
+  explicit VoxelSizes(const double size) : VoxelSizes(size, size, size) {}
+
+  VoxelSizes(const double x_size, const double y_size, const double z_size)
+  {
+    const bool initialized = Initialize(x_size, y_size, z_size);
+
+    if (!initialized)
+    {
+      throw std::invalid_argument(
+          "All voxel size parameters must be positive, non-zero, and finite");
+    }
+  }
+
+  VoxelSizes() = default;
+
+  bool Valid() const { return internal::CheckPositiveValid(x_size_); }
+
+  bool UniformCellSize() const
+  {
+    return ((x_size_ == y_size_) && (x_size_ == z_size_));
+  }
+
+  double XSize() const { return x_size_; }
+
+  double YSize() const { return y_size_; }
+
+  double ZSize() const { return z_size_; }
+
+  Eigen::Vector3d Sizes() const
+  {
+    return Eigen::Vector3d(x_size_, y_size_, z_size_);
+  }
+
+  double InvXSize() const { return inv_x_size_; }
+
+  double InvYSize() const { return inv_y_size_; }
+
+  double InvZSize() const { return inv_z_size_; }
+};
+
+/// Forward declaration.
+class GridNumCells;
+
+class GridDimensions
+{
+private:
+  double x_dimension_ = 0.0;
+  double y_dimension_ = 0.0;
+  double z_dimension_ = 0.0;
+
+  bool Initialize(
+      const double x_dimension, const double y_dimension,
+      const double z_dimension)
+  {
+    if (internal::CheckPositiveValid(x_dimension) &&
+        internal::CheckPositiveValid(y_dimension) &&
+        internal::CheckPositiveValid(z_dimension))
+    {
+      x_dimension_ = x_dimension;
+      y_dimension_ = y_dimension;
+      z_dimension_ = z_dimension;
+      return true;
+    }
+    else
+    {
+      return false;
+    }
+  }
+
+public:
+  GridDimensions(
+      const VoxelSizes& voxel_sizes, const GridNumCells& grid_num_cells)
+  {
+    x_dimension_ =
+        voxel_sizes.XSize() * static_cast<double>(grid_num_cells.NumXCells());
+    y_dimension_ =
+        voxel_sizes.YSize() * static_cast<double>(grid_num_cells.NumYCells());
+    z_dimension_ =
+        voxel_sizes.ZSize() * static_cast<double>(grid_num_cells.NumZCells());
+  }
+
+  GridDimensions(
+      const double x_dimension, const double y_dimension,
+      const double z_dimension)
+  {
+    const bool initialized = Initialize(x_dimension, y_dimension, z_dimension);
+
+    if (!initialized)
+    {
+      throw std::invalid_argument(
+          "All grid dimensions must be positive, non-zero, and finite");
+    }
+  }
+
+  GridDimensions() = default;
+
+  bool Valid() const { return internal::CheckPositiveValid(x_dimension_); }
+
+  double XDimension() const { return x_dimension_; }
+
+  double YDimension() const { return y_dimension_; }
+
+  double ZDimension() const { return z_dimension_; }
+
+  Eigen::Vector3d Dimensions() const
+  {
+    return Eigen::Vector3d(x_dimension_, y_dimension_, z_dimension_);
+  }
+};
+
+class GridNumCells
+{
+private:
+  int64_t num_x_cells_ = 0;
+  int64_t num_y_cells_ = 0;
+  int64_t num_z_cells_ = 0;
+  int64_t stride1_ = 0;
+  int64_t stride2_ = 0;
+
+  bool Initialize(
+      const int64_t num_x_cells, const int64_t num_y_cells,
+      const int64_t num_z_cells)
+  {
+    if (internal::CheckPositiveValid(num_x_cells) &&
+        internal::CheckPositiveValid(num_y_cells) &&
+        internal::CheckPositiveValid(num_z_cells))
+    {
+      num_x_cells_ = num_x_cells;
+      num_y_cells_ = num_y_cells;
+      num_z_cells_ = num_z_cells;
+      stride1_ = num_y_cells_ * num_z_cells_;
+      stride2_ = num_z_cells_;
+      return true;
+    }
+    else
+    {
+      return false;
+    }
+  }
+
+public:
+  GridNumCells(
+      const VoxelSizes& voxel_sizes, const GridDimensions& grid_dimensions)
+  {
+    num_x_cells_ = static_cast<int64_t>(
+        std::ceil(grid_dimensions.XDimension() / voxel_sizes.XSize()));
+    num_y_cells_ = static_cast<int64_t>(
+        std::ceil(grid_dimensions.YDimension() / voxel_sizes.YSize()));
+    num_z_cells_ = static_cast<int64_t>(
+        std::ceil(grid_dimensions.ZDimension() / voxel_sizes.ZSize()));
+  }
+
+  GridNumCells(
+      const int64_t num_x_cells, const int64_t num_y_cells,
+      const int64_t num_z_cells)
+  {
+    const bool initialized = Initialize(num_x_cells, num_y_cells, num_z_cells);
+
+    if (!initialized)
+    {
+      throw std::invalid_argument(
+          "All grid num cells must be positive, non-zero, and finite");
+    }
+  }
+
+  GridNumCells() = default;
+
+  int64_t NumXCells() const { return num_x_cells_; }
+
+  int64_t NumYCells() const { return num_y_cells_; }
+
+  int64_t NumZCells() const { return num_z_cells_; }
+
+  Eigen::Matrix<int64_t, 3, 1> NumCells() const
+  {
+    Eigen::Matrix<int64_t, 3, 1> num_cells;
+    num_cells << num_x_cells_, num_y_cells_, num_z_cells_;
+    return num_cells;
+  }
+
+  int64_t Stride1() const { return stride1_; }
+
+  int64_t Stride2() const { return stride2_; }
+
+  int64_t TotalCells() const
+  {
+    return num_x_cells_ * num_y_cells_ * num_z_cells_;
+  }
+};
+
 
 class GridSizes
 {

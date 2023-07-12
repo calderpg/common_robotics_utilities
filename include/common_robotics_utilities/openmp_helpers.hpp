@@ -212,7 +212,7 @@ public:
     }
   }
 
-  bool IsParallel() const { return num_threads_ != 1; }
+  bool IsParallel() const { return num_threads_ > 1; }
 
   int32_t GetNumThreads() const { return num_threads_; }
 
@@ -230,9 +230,7 @@ private:
 /// as the case of OpenMP being disabled entirely.
 #if defined(_OPENMP)
 #define CRU_OMP_PARALLEL_FOR_DEGREE(degree) _Pragma(CRU_MACRO_STRINGIFY(omp parallel for if(degree.IsParallel()) num_threads(degree.GetNumThreads())))
-#define CRU_OMP_PARALLEL_FOR_NUM_THREADS(thread_count) _Pragma(CRU_MACRO_STRINGIFY(omp parallel for num_threads(thread_count)))
 #else
 #define CRU_OMP_PARALLEL_FOR_DEGREE(degree) (void)(degree);
-#define CRU_OMP_PARALLEL_FOR_NUM_THREADS(thread_count) (void)(thread_count);
 #endif
 

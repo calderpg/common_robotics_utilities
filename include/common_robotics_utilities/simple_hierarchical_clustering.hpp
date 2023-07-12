@@ -30,6 +30,8 @@ namespace simple_hierarchical_clustering
 {
 enum class ClusterStrategy { SINGLE_LINK, COMPLETE_LINK };
 
+namespace internal
+{
 /// Storage for a single "item" - either an index to a single value or an index
 /// to an existing cluster.
 class Item
@@ -120,10 +122,9 @@ inline ClosestPair GetClosestClustersParallel(
     const ClusterStrategy strategy,
     const openmp_helpers::DegreeOfParallelism& parallelism)
 {
-  const int32_t num_threads = parallelism.GetNumThreads();
   std::vector<ClosestPair> per_thread_closest_clusters(
-      static_cast<size_t>(num_threads), ClosestPair());
-  CRU_OMP_PARALLEL_FOR_NUM_THREADS(num_threads)
+      static_cast<size_t>(parallelism.GetNumThreads()), ClosestPair());
+  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
   for (size_t first_cluster_idx = 0; first_cluster_idx < clusters.size();
        first_cluster_idx++)
   {
@@ -275,10 +276,9 @@ inline ClosestPair GetClosestValueToOtherParallel(
     const ClusterStrategy strategy,
     const openmp_helpers::DegreeOfParallelism& parallelism)
 {
-  const int32_t num_threads = parallelism.GetNumThreads();
   std::vector<ClosestPair> per_thread_closest_value_other(
-      static_cast<size_t>(num_threads), ClosestPair());
-  CRU_OMP_PARALLEL_FOR_NUM_THREADS(num_threads)
+      static_cast<size_t>(parallelism.GetNumThreads()), ClosestPair());
+  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
   for (size_t value_idx = 0; value_idx < datapoint_mask.size(); value_idx++)
   {
     // Make sure we're not already clustered
@@ -487,6 +487,7 @@ inline ClosestPair GetClosestPair(
     return ClosestPair();
   }
 }
+}  // namespace internal
 
 template<typename DataType, typename Container=std::vector<DataType>>
 class ClusteringResult
@@ -535,7 +536,7 @@ inline IndexClusteringResult IndexClusterWithDistanceMatrix(
   while (!complete)
   {
     // Get closest pair of items (an element can be a cluster or single value!)
-    const ClosestPair closest_element_pair = GetClosestPair(
+    const internal::ClosestPair closest_element_pair = internal::GetClosestPair(
         datapoint_mask, distance_matrix, cluster_indices, strategy,
         parallelism);
     if (closest_element_pair.IsValid()

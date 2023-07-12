@@ -1,6 +1,5 @@
 #include <cmath>
 #include <cstdint>
-#include <cstdlib>
 #include <functional>
 #include <iostream>
 #include <limits>
@@ -92,7 +91,7 @@ WaypointVector ResampleWaypoints(const WaypointVector& waypoints)
 void DrawEnvironment(const TestMap& environment)
 {
   std::string str_rep;
-  str_rep.reserve((environment.rows() + 1) * environment.cols());
+  str_rep.reserve(environment.rows() * (environment.cols() + 1));
 
   for (ssize_t row = 0; row < environment.rows(); row++)
   {

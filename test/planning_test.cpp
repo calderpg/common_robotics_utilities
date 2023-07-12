@@ -6,6 +6,7 @@
 #include <map>
 #include <random>
 #include <stdexcept>
+#include <string>
 #include <unordered_map>
 #include <unordered_set>
 #include <utility>
@@ -27,7 +28,7 @@
 
 namespace common_robotics_utilities
 {
-namespace planning_test
+namespace
 {
 using TestMap = Eigen::Matrix<char, Eigen::Dynamic, Eigen::Dynamic>;
 using Waypoint = std::pair<ssize_t, ssize_t>;
@@ -89,7 +90,19 @@ WaypointVector ResampleWaypoints(const WaypointVector& waypoints)
 
 void DrawEnvironment(const TestMap& environment)
 {
-  std::cout << environment << std::endl;
+  std::string str_rep;
+  str_rep.reserve(environment.rows() * (environment.cols() + 1));
+
+  for (ssize_t row = 0; row < environment.rows(); row++)
+  {
+    for (ssize_t col = 0; col < environment.cols(); col++)
+    {
+      str_rep.push_back(environment(row, col));
+    }
+    str_rep.push_back('\n');
+  }
+
+  std::cout << str_rep << std::endl;
 }
 
 void SetCell(TestMap& map, const ssize_t row, const ssize_t col, const char val)
@@ -265,8 +278,14 @@ Waypoint SampleWaypoint(
   return Waypoint(row, col);
 }
 
-GTEST_TEST(PlanningTest, Test)
+class PlanningTestSuite
+    : public testing::TestWithParam<openmp_helpers::DegreeOfParallelism> {};
+
+TEST_P(PlanningTestSuite, Test)
 {
+  const openmp_helpers::DegreeOfParallelism parallelism = GetParam();
+  std::cout << "# of threads = " << parallelism.GetNumThreads() << std::endl;
+
   const std::string test_env_raw = "####################"
                                    "#                  #"
                                    "#  ####            #"
@@ -371,7 +390,7 @@ GTEST_TEST(PlanningTest, Test)
   auto rrt_nearest_neighbors_fn
       = simple_rrt_planner
           ::MakeKinematicLinearRRTNearestNeighborsFunction<Waypoint>(
-              WaypointDistance, false);
+              WaypointDistance, parallelism);
   auto rrt_extend_fn
       = simple_rrt_planner::MakeKinematicRRTExtendPropagationFunction<Waypoint>(
           WaypointDistance, InterpolateWaypoint, check_edge_validity_fn,
@@ -392,7 +411,7 @@ GTEST_TEST(PlanningTest, Test)
   auto birrt_nearest_neighbors_fn
       = simple_rrt_planner
           ::MakeKinematicLinearBiRRTNearestNeighborsFunction<Waypoint>(
-              WaypointDistance, false);
+              WaypointDistance, parallelism);
   auto birrt_extend_fn
       = simple_rrt_planner
           ::MakeKinematicBiRRTExtendPropagationFunction<Waypoint>(
@@ -427,11 +446,11 @@ GTEST_TEST(PlanningTest, Test)
   simple_prm_planner::GrowRoadMap<Waypoint>(
       grown_roadmap, state_sampling_fn, WaypointDistance,
       check_state_validity_fn, check_edge_validity_fn,
-      grown_roadmap_termination_fn, K, false, true, false);
+      grown_roadmap_termination_fn, K, parallelism, true, false);
   ASSERT_TRUE(grown_roadmap.CheckGraphLinkage());
   std::cout << "Roadmap grown" << std::endl;
   simple_prm_planner::UpdateRoadMapEdges<Waypoint>(
-      grown_roadmap, check_edge_validity_fn, WaypointDistance, false);
+      grown_roadmap, check_edge_validity_fn, WaypointDistance, parallelism);
   ASSERT_TRUE(grown_roadmap.CheckGraphLinkage());
   std::cout << "Roadmap (grown) updated" << std::endl;
 
@@ -440,23 +459,20 @@ GTEST_TEST(PlanningTest, Test)
   simple_graph::Graph<Waypoint> built_roadmap =
       simple_prm_planner::BuildRoadMap<Waypoint, simple_graph::Graph<Waypoint>>(
       built_roadmap_size, state_sampling_fn, WaypointDistance,
-      check_state_validity_fn, check_edge_validity_fn, K, 100, true, true,
-      false, false);
+      check_state_validity_fn, check_edge_validity_fn, K, 100, parallelism,
+      true, false, false);
   ASSERT_TRUE(built_roadmap.CheckGraphLinkage());
   std::cout << "Roadmap built" << std::endl;
   simple_prm_planner::UpdateRoadMapEdges<Waypoint>(
-      built_roadmap, check_edge_validity_fn, WaypointDistance, false);
+      built_roadmap, check_edge_validity_fn, WaypointDistance, parallelism);
   ASSERT_TRUE(built_roadmap.CheckGraphLinkage());
   std::cout << "Roadmap (built) updated" << std::endl;
 
   // Test graph pruning
   const std::unordered_set<int64_t> nodes_to_prune = {10, 20, 30, 40, 50, 60};
-  const auto serial_pruned_roadmap
-      = grown_roadmap.MakePrunedCopy(nodes_to_prune, false);
-  ASSERT_TRUE(serial_pruned_roadmap.CheckGraphLinkage());
-  const auto parallel_pruned_roadmap
-      = grown_roadmap.MakePrunedCopy(nodes_to_prune, true);
-  ASSERT_TRUE(parallel_pruned_roadmap.CheckGraphLinkage());
+  const auto pruned_roadmap =
+      grown_roadmap.MakePrunedCopy(nodes_to_prune, parallelism);
+  ASSERT_TRUE(pruned_roadmap.CheckGraphLinkage());
 
   // Helpers for waypoint de/serialization
   const serialization::Serializer<Waypoint> serialize_waypoint_fn
@@ -576,7 +592,8 @@ GTEST_TEST(PlanningTest, Test)
         const auto grown_path =
             simple_prm_planner::QueryPath<Waypoint, WaypointVector>(
                 {start}, {goal}, loaded_grown_roadmap, WaypointDistance,
-                check_edge_validity_fn, K, false, true, false, true).Path();
+                check_edge_validity_fn, K, parallelism, true, false, true)
+                .Path();
         check_plan(test_env, {start}, {goal}, grown_path);
 
         // Plan with Lazy-PRM (grown)
@@ -585,7 +602,8 @@ GTEST_TEST(PlanningTest, Test)
         const auto lazy_grown_path =
             simple_prm_planner::LazyQueryPath<Waypoint, WaypointVector>(
                 {start}, {goal}, loaded_grown_roadmap, WaypointDistance,
-                check_edge_validity_fn, K, false, true, false, true).Path();
+                check_edge_validity_fn, K, parallelism, true, false, true)
+                .Path();
         check_plan(test_env, {start}, {goal}, lazy_grown_path);
 
         // Plan with PRM (built)
@@ -594,7 +612,8 @@ GTEST_TEST(PlanningTest, Test)
         const auto built_path =
             simple_prm_planner::QueryPath<Waypoint, WaypointVector>(
                 {start}, {goal}, loaded_built_roadmap, WaypointDistance,
-                check_edge_validity_fn, K, false, true, false, true).Path();
+                check_edge_validity_fn, K, parallelism, true, false, true)
+                .Path();
         check_plan(test_env, {start}, {goal}, built_path);
 
         // Plan with Lazy-PRM (built)
@@ -603,7 +622,8 @@ GTEST_TEST(PlanningTest, Test)
         const auto lazy_built_path =
             simple_prm_planner::LazyQueryPath<Waypoint, WaypointVector>(
                 {start}, {goal}, loaded_built_roadmap, WaypointDistance,
-                check_edge_validity_fn, K, false, true, false, true).Path();
+                check_edge_validity_fn, K, parallelism, true, false, true)
+                .Path();
         check_plan(test_env, {start}, {goal}, lazy_built_path);
 
         // Plan with A*
@@ -709,13 +729,13 @@ GTEST_TEST(PlanningTest, Test)
             << " to " << print::Print(goals) << ")" << std::endl;
   const auto grown_multi_path = simple_prm_planner::QueryPath<Waypoint>(
       starts, goals, loaded_grown_roadmap, WaypointDistance,
-      check_edge_validity_fn, K, false, true, false).Path();
+      check_edge_validity_fn, K, parallelism, true, false, true).Path();
   check_plan(test_env, starts, goals, grown_multi_path);
   std::cout << "Multi start/goal PRM (built) Path (" << print::Print(starts)
             << " to " << print::Print(goals) << ")" << std::endl;
   const auto built_multi_path = simple_prm_planner::QueryPath<Waypoint>(
       starts, goals, loaded_built_roadmap, WaypointDistance,
-      check_edge_validity_fn, K, false, true, false).Path();
+      check_edge_validity_fn, K, parallelism, true, false, true).Path();
   check_plan(test_env, starts, goals, built_multi_path);
 
   // Plan with multi-start/multi-goal BiRRT-Connect
@@ -776,7 +796,28 @@ GTEST_TEST(PlanningTest, Test)
     }
   }
 }
-}  // namespace planning_test
+
+INSTANTIATE_TEST_SUITE_P(
+    SerialPlanningTest, PlanningTestSuite,
+    testing::Values(openmp_helpers::DegreeOfParallelism::None()));
+
+// For fallback testing on platforms with no OpenMP support, specify 2 threads.
+int32_t GetNumThreads()
+{
+  if (openmp_helpers::IsOmpEnabledInBuild())
+  {
+    return openmp_helpers::GetNumOmpThreads();
+  }
+  else
+  {
+    return 2;
+  }
+}
+
+INSTANTIATE_TEST_SUITE_P(
+    ParallelPlanningTest, PlanningTestSuite,
+    testing::Values(openmp_helpers::DegreeOfParallelism(GetNumThreads())));
+}  // namespace
 }  // namespace common_robotics_utilities
 
 int main(int argc, char** argv)

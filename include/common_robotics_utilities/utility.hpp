@@ -1,14 +1,15 @@
 #pragma once
 
+#include <chrono>
 #include <cstdlib>
 #include <functional>
+#include <future>
 #include <string>
 #include <map>
 #include <set>
 #include <type_traits>
 #include <utility>
 #include <vector>
-#include <iostream>
 
 #include <Eigen/Geometry>
 
@@ -19,6 +20,19 @@ namespace common_robotics_utilities
 {
 namespace utility
 {
+/// Check if the provided std::future is ready. Note that future.wait_for() (or
+/// future.wait_until()) are the only ways to check the status of a future
+/// without waiting for it to complete first.
+template <typename T>
+bool IsFutureReady(const std::future<T>& future)
+{
+  // Note: both libcxx and libstdc++ special case the zero-duration case so that
+  // no waiting actually occurs.
+  const std::future_status status =
+      future.wait_for(std::chrono::microseconds(0));
+  return (status == std::future_status::ready);
+}
+
 // Functions to combine multiple std::hash<T>.
 // Derived from: https://stackoverflow.com/questions/2590677/
 //   how-do-i-combine-hash-values-in-c0x

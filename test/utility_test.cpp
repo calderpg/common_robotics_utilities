@@ -1,6 +1,7 @@
 #include <cstdint>
 #include <iostream>
 #include <random>
+#include <thread>
 #include <unordered_map>
 #include <unordered_set>
 #include <stdlib.h>
@@ -222,6 +223,19 @@ GTEST_TEST(UtilityTest, MakeMapAndSet)
 
   ASSERT_TRUE(test_map1_match);
   ASSERT_TRUE(test_map2_match);
+}
+
+GTEST_TEST(UtilityTest, IsFutureReadyTest)
+{
+  const auto wait_op = [] (const double wait)
+  {
+    std::this_thread::sleep_for(std::chrono::duration<double>(wait));
+  };
+  std::future<void> wait_future =
+      std::async(std::launch::async, wait_op, 1.0);
+  EXPECT_FALSE(utility::IsFutureReady(wait_future));
+  wait_future.wait();
+  EXPECT_TRUE(utility::IsFutureReady(wait_future));
 }
 }  // namespace utility_test
 }  // namespace common_robotics_utilities

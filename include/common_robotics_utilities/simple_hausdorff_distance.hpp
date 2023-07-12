@@ -19,6 +19,8 @@ namespace common_robotics_utilities
 /// set." - from Wikipedia
 namespace simple_hausdorff_distance
 {
+namespace internal
+{
 /// Compute Hausdorff distance between @param first_distribution and @param
 /// second_distribution using @param distance_function to compute distance
 /// between an element in @param first_distribution and an element in @param
@@ -32,7 +34,8 @@ inline double ComputeDistanceParallel(
     const FirstContainer& first_distribution,
     const SecondContainer& second_distribution,
     const std::function<double(const FirstDatatype&,
-                               const SecondDatatype&)>& distance_fn)
+                               const SecondDatatype&)>& distance_fn,
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   if (first_distribution.empty())
   {
@@ -42,23 +45,18 @@ inline double ComputeDistanceParallel(
   {
     throw std::invalid_argument("second_distribution is empty");
   }
-  // Swap if needed to make the outer parallel loop be larger
-  const bool swap = (first_distribution.size() < second_distribution.size());
-  const auto& outer_distribution
-      = (swap) ? second_distribution : first_distribution;
-  const auto& inner_distribution
-      = (swap) ? first_distribution : second_distribution;
+
   // Make per-thread storage
   std::vector<double> per_thread_storage(
-      openmp_helpers::GetNumOmpThreads(), 0.0);
-  CRU_OMP_PARALLEL_FOR
-  for (size_t idx = 0; idx < outer_distribution.size(); idx++)
+      static_cast<size_t>(parallelism.GetNumThreads()), 0.0);
+  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
+  for (size_t idx = 0; idx < first_distribution.size(); idx++)
   {
-    const FirstDatatype& first = outer_distribution[idx];
+    const FirstDatatype& first = first_distribution[idx];
     double minimum_distance = std::numeric_limits<double>::infinity();
-    for (size_t jdx = 0; jdx < inner_distribution.size(); jdx++)
+    for (size_t jdx = 0; jdx < second_distribution.size(); jdx++)
     {
-      const SecondDatatype& second = inner_distribution[jdx];
+      const SecondDatatype& second = second_distribution[jdx];
       const double current_distance = distance_fn(first, second);
       if (current_distance < minimum_distance)
       {
@@ -137,7 +135,8 @@ template<typename FirstDatatype, typename SecondDatatype,
 inline double ComputeDistanceParallel(
     const FirstContainer& first_distribution,
     const SecondContainer& second_distribution,
-    const Eigen::MatrixXd& distance_matrix)
+    const Eigen::MatrixXd& distance_matrix,
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   if (first_distribution.empty())
   {
@@ -153,27 +152,17 @@ inline double ComputeDistanceParallel(
   {
     throw std::invalid_argument("distance_matrix is the wrong size");
   }
-  // Swap if needed to make the outer parallel loop be larger
-  const bool swap = (first_distribution.size() < second_distribution.size());
-  const auto& outer_distribution
-      = (swap) ? second_distribution : first_distribution;
-  const auto& inner_distribution
-      = (swap) ? first_distribution : second_distribution;
+
   // Make per-thread storage
   std::vector<double> per_thread_storage(
-      openmp_helpers::GetNumOmpThreads(), 0.0);
-  CRU_OMP_PARALLEL_FOR
-  for (size_t idx = 0; idx < outer_distribution.size(); idx++)
+      static_cast<size_t>(parallelism.GetNumThreads()), 0.0);
+  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
+  for (size_t idx = 0; idx < first_distribution.size(); idx++)
   {
     double minimum_distance = std::numeric_limits<double>::infinity();
-    for (size_t jdx = 0; jdx < inner_distribution.size(); jdx++)
+    for (size_t jdx = 0; jdx < second_distribution.size(); jdx++)
     {
-      // Swap the lookup if we've swapped the loops
-      const ssize_t row = (swap) ? static_cast<ssize_t>(jdx)
-                                 : static_cast<ssize_t>(idx);
-      const ssize_t col = (swap) ? static_cast<ssize_t>(idx)
-                                 : static_cast<ssize_t>(jdx);
-      const double current_distance = distance_matrix(row, col);
+      const double current_distance = distance_matrix(idx, jdx);
       if (current_distance < minimum_distance)
       {
         minimum_distance = current_distance;
@@ -243,12 +232,13 @@ inline double ComputeDistanceSerial(
   }
   return maximum_minimum_distance;
 }
+}  // namespace internal
 
 /// Compute Hausdorff distance between @param first_distribution and @param
 /// second_distribution using @param distance_function to compute distance
 /// between an element in @param first_distribution and an element in @param
 /// second_distribution. @return distance between distributions.
-/// @param use_parallel selects if the computation should be performed in
+/// @param parallelism selects if/how the computation should be performed in
 /// parallel. If computation is performed in parallel, the larger of the two
 /// input distributions is automatically selected to be the outer (parallelized)
 /// loop.
@@ -260,17 +250,18 @@ inline double ComputeDistance(
     const SecondContainer& second_distribution,
     const std::function<double(const FirstDatatype&,
                                const SecondDatatype&)>& distance_fn,
-    const bool use_parallel = false)
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
-  if (use_parallel)
+  if (parallelism.IsParallel())
   {
-    return ComputeDistanceParallel
+    return internal::ComputeDistanceParallel
         <FirstDatatype, SecondDatatype, FirstContainer, SecondContainer>(
-            first_distribution, second_distribution, distance_fn);
+            first_distribution, second_distribution, distance_fn,
+            parallelism);
   }
   else
   {
-    return ComputeDistanceSerial
+    return internal::ComputeDistanceSerial
         <FirstDatatype, SecondDatatype, FirstContainer, SecondContainer>(
             first_distribution, second_distribution, distance_fn);
   }
@@ -280,7 +271,7 @@ inline double ComputeDistance(
 /// second_distribution using @param distance_matrix which stores the pairwise
 /// distance between all elements in @param first_distribution and @param
 /// second_distribution. @return distance between distributions.
-/// @param use_parallel selects if the computation should be performed in
+/// @param parallelism selects if/how the computation should be performed in
 /// parallel. If computation is performed in parallel, the larger of the two
 /// input distributions is automatically selected to be the outer (parallelized)
 /// loop.
@@ -291,17 +282,18 @@ inline double ComputeDistance(
     const FirstContainer& first_distribution,
     const SecondContainer& second_distribution,
     const Eigen::MatrixXd& distance_matrix,
-    const bool use_parallel = false)
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
-  if (use_parallel)
+  if (parallelism.IsParallel())
   {
-    return ComputeDistanceParallel
+    return internal::ComputeDistanceParallel
         <FirstDatatype, SecondDatatype, FirstContainer, SecondContainer>(
-            first_distribution, second_distribution, distance_matrix);
+            first_distribution, second_distribution, distance_matrix,
+            parallelism);
   }
   else
   {
-    return ComputeDistanceSerial
+    return internal::ComputeDistanceSerial
         <FirstDatatype, SecondDatatype, FirstContainer, SecondContainer>(
             first_distribution, second_distribution, distance_matrix);
   }

@@ -30,6 +30,8 @@ namespace simple_hierarchical_clustering
 {
 enum class ClusterStrategy { SINGLE_LINK, COMPLETE_LINK };
 
+namespace internal
+{
 /// Storage for a single "item" - either an index to a single value or an index
 /// to an existing cluster.
 class Item
@@ -117,11 +119,12 @@ public:
 inline ClosestPair GetClosestClustersParallel(
     const Eigen::MatrixXd& distance_matrix,
     const std::vector<std::vector<int64_t>>& clusters,
-    const ClusterStrategy strategy)
+    const ClusterStrategy strategy,
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   std::vector<ClosestPair> per_thread_closest_clusters(
-      static_cast<size_t>(openmp_helpers::GetNumOmpThreads()), ClosestPair());
-  CRU_OMP_PARALLEL_FOR
+      static_cast<size_t>(parallelism.GetNumThreads()), ClosestPair());
+  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
   for (size_t first_cluster_idx = 0; first_cluster_idx < clusters.size();
        first_cluster_idx++)
   {
@@ -243,16 +246,17 @@ inline ClosestPair GetClosestClustersSerial(
 /// Find the closest existing clusters in @param clusters, using the pairwise
 /// element-to-element distances in @param distance_matrix and the strategy
 /// specified by @param strategy. @return closest pair of clusters.
-/// @param use_parallel selects if the search should be performed in parallel.
+/// @param parallelism selects if/how the search should be parallelized.
 inline ClosestPair GetClosestClusters(
     const Eigen::MatrixXd& distance_matrix,
     const std::vector<std::vector<int64_t>>& clusters,
     const ClusterStrategy strategy,
-    const bool use_parallel)
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
-  if (use_parallel)
+  if (parallelism.IsParallel())
   {
-    return GetClosestClustersParallel(distance_matrix, clusters, strategy);
+    return GetClosestClustersParallel(
+        distance_matrix, clusters, strategy, parallelism);
   }
   else
   {
@@ -269,11 +273,12 @@ inline ClosestPair GetClosestValueToOtherParallel(
     const std::vector<uint8_t>& datapoint_mask,
     const Eigen::MatrixXd& distance_matrix,
     const std::vector<std::vector<int64_t>>& clusters,
-    const ClusterStrategy strategy)
+    const ClusterStrategy strategy,
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   std::vector<ClosestPair> per_thread_closest_value_other(
-      static_cast<size_t>(openmp_helpers::GetNumOmpThreads()), ClosestPair());
-  CRU_OMP_PARALLEL_FOR
+      static_cast<size_t>(parallelism.GetNumThreads()), ClosestPair());
+  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
   for (size_t value_idx = 0; value_idx < datapoint_mask.size(); value_idx++)
   {
     // Make sure we're not already clustered
@@ -420,19 +425,19 @@ inline ClosestPair GetClosestValueToOtherSerial(
 /// ignore values that have already been clustered, @param distance_matrix to
 /// provide pairwise value-to-value distances, existing clusters provided by
 /// @param clusters, and strategy specified by @param strategy.
-/// @param use_parallel selects if the search should be performed in parallel.
+/// @param parallelism selects if/how the search should be parallelized.
 /// @return closest pair.
 inline ClosestPair GetClosestValueToOther(
     const std::vector<uint8_t>& datapoint_mask,
     const Eigen::MatrixXd& distance_matrix,
     const std::vector<std::vector<int64_t>>& clusters,
     const ClusterStrategy strategy,
-    const bool use_parallel)
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
-  if (use_parallel)
+  if (parallelism.IsParallel())
   {
     return GetClosestValueToOtherParallel(
-        datapoint_mask, distance_matrix, clusters, strategy);
+        datapoint_mask, distance_matrix, clusters, strategy, parallelism);
   }
   else
   {
@@ -445,20 +450,19 @@ inline ClosestPair GetClosestValueToOther(
 /// datapoint_mask to ignore values that have already been clustered, @param
 /// distance_matrix to provide pairwise value-to-value distances, existing
 /// clusters provided by @param clusters, and strategy specified by @param
-/// strategy. @param use_parallel selects if the search should be performed in
-/// parallel. @return closest pair.
+/// strategy. @param parallelize selects if/how the search should be
+/// parallelized. @return closest pair.
 inline ClosestPair GetClosestPair(
     const std::vector<uint8_t>& datapoint_mask,
     const Eigen::MatrixXd& distance_matrix,
     const std::vector<std::vector<int64_t>>& clusters,
     const ClusterStrategy strategy,
-    const bool use_parallel)
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
-  const ClosestPair closest_value_to_other
-      = GetClosestValueToOther(datapoint_mask, distance_matrix, clusters,
-                               strategy, use_parallel);
-  const ClosestPair closest_clusters
-      = GetClosestClusters(distance_matrix, clusters, strategy, use_parallel);
+  const ClosestPair closest_value_to_other = GetClosestValueToOther(
+      datapoint_mask, distance_matrix, clusters, strategy, parallelism);
+  const ClosestPair closest_clusters = GetClosestClusters(
+      distance_matrix, clusters, strategy, parallelism);
   if (closest_value_to_other.IsValid() && closest_clusters.IsValid())
   {
     if (closest_value_to_other.Distance() < closest_clusters.Distance())
@@ -483,6 +487,7 @@ inline ClosestPair GetClosestPair(
     return ClosestPair();
   }
 }
+}  // namespace internal
 
 template<typename DataType, typename Container=std::vector<DataType>>
 class ClusteringResult
@@ -508,11 +513,12 @@ using IndexClusteringResult = ClusteringResult<int64_t, std::vector<int64_t>>;
 /// Perform hierarchical index clustering of @param data up to @param
 /// max_cluster_distance, using @param distance_matrix to provide pairwise
 /// value-to-value distance for values in @param data. Strategy to use is
-/// specified by @param strategy, and @param use_parallel selects if parallel
+/// specified by @param strategy, and @param parallelism selects if/how parallel
 /// search should be used internally.
 inline IndexClusteringResult IndexClusterWithDistanceMatrix(
     const Eigen::MatrixXd& distance_matrix, const double max_cluster_distance,
-    const ClusterStrategy strategy, const bool use_parallel = false)
+    const ClusterStrategy strategy,
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   if (distance_matrix.rows() != distance_matrix.cols())
   {
@@ -530,9 +536,9 @@ inline IndexClusteringResult IndexClusterWithDistanceMatrix(
   while (!complete)
   {
     // Get closest pair of items (an element can be a cluster or single value!)
-    const ClosestPair closest_element_pair
-        = GetClosestPair(datapoint_mask, distance_matrix, cluster_indices,
-                         strategy, use_parallel);
+    const internal::ClosestPair closest_element_pair = internal::GetClosestPair(
+        datapoint_mask, distance_matrix, cluster_indices, strategy,
+        parallelism);
     if (closest_element_pair.IsValid()
         && closest_element_pair.Distance() <= max_cluster_distance)
     {
@@ -610,8 +616,7 @@ inline IndexClusteringResult IndexClusterWithDistanceMatrix(
 }
 
 template<typename DataType, typename Container=std::vector<DataType>>
-inline ClusteringResult<DataType, Container>
-MakeElementClusteringFromIndexClustering(
+ClusteringResult<DataType, Container> MakeElementClusteringFromIndexClustering(
     const Container& data,
     const IndexClusteringResult& index_clustering)
 {
@@ -637,13 +642,13 @@ MakeElementClusteringFromIndexClustering(
 /// Perform hierarchical clustering of @param data up to @param
 /// max_cluster_distance, using @param distance_matrix to provide pairwise
 /// value-to-value distance for values in @param data. Strategy to use is
-/// specified by @param strategy, and @param use_parallel selects if parallel
+/// specified by @param strategy, and @param parallelism selects if/how parallel
 /// search should be used internally.
 template<typename DataType, typename Container=std::vector<DataType>>
-inline ClusteringResult<DataType, Container> ClusterWithDistanceMatrix(
+ClusteringResult<DataType, Container> ClusterWithDistanceMatrix(
     const Container& data, const Eigen::MatrixXd& distance_matrix,
     const double max_cluster_distance, const ClusterStrategy strategy,
-    const bool use_parallel = false)
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   // Safety check the input
   if (data.empty())
@@ -657,7 +662,7 @@ inline ClusteringResult<DataType, Container> ClusterWithDistanceMatrix(
   }
   // Perform index clustering
   const auto index_clustering = IndexClusterWithDistanceMatrix(
-      distance_matrix, max_cluster_distance, strategy, use_parallel);
+      distance_matrix, max_cluster_distance, strategy, parallelism);
   // Extract the actual cluster data from index clusters
   return MakeElementClusteringFromIndexClustering<DataType, Container>(
       data, index_clustering);
@@ -666,39 +671,39 @@ inline ClusteringResult<DataType, Container> ClusterWithDistanceMatrix(
 /// Perform hierarchical index clustering of @param data up to @param
 /// max_cluster_distance, using @param distance_fn to compute pairwise
 /// value-to-value distance for values in @param data. Strategy to use is
-/// specified by @param strategy, and @param use_parallel selects if parallel
+/// specified by @param strategy, and @param parallelism selects if/how parallel
 /// search should be used internally.
 template<typename DataType, typename Container=std::vector<DataType>>
-inline IndexClusteringResult IndexCluster(
+IndexClusteringResult IndexCluster(
     const Container& data,
     const std::function<double(const DataType&, const DataType&)>& distance_fn,
     const double max_cluster_distance, const ClusterStrategy strategy,
-    const bool use_parallel = false)
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   const Eigen::MatrixXd distance_matrix
       = math::BuildPairwiseDistanceMatrix<DataType, Container>(
-          data, distance_fn, use_parallel);
+          data, distance_fn, parallelism);
   return IndexClusterWithDistanceMatrix(
-      distance_matrix, max_cluster_distance, strategy, use_parallel);
+      distance_matrix, max_cluster_distance, strategy, parallelism);
 }
 
 /// Perform hierarchical clustering of @param data up to @param
 /// max_cluster_distance, using @param distance_fn to compute pairwise
 /// value-to-value distance for values in @param data. Strategy to use is
-/// specified by @param strategy, and @param use_parallel selects if parallel
+/// specified by @param strategy, and @param parallelism selects if/how parallel
 /// search should be used internally.
 template<typename DataType, typename Container=std::vector<DataType>>
-inline ClusteringResult<DataType, Container> Cluster(
+ClusteringResult<DataType, Container> Cluster(
     const Container& data,
     const std::function<double(const DataType&, const DataType&)>& distance_fn,
     const double max_cluster_distance, const ClusterStrategy strategy,
-    const bool use_parallel = false)
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   const Eigen::MatrixXd distance_matrix
       = math::BuildPairwiseDistanceMatrix<DataType, Container>(
-          data, distance_fn, use_parallel);
+          data, distance_fn, parallelism);
   return ClusterWithDistanceMatrix<DataType, Container>(
-      data, distance_matrix, max_cluster_distance, strategy, use_parallel);
+      data, distance_matrix, max_cluster_distance, strategy, parallelism);
 }
 }  // namespace simple_hierarchical_clustering
 }  // namespace common_robotics_utilities

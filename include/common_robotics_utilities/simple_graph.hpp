@@ -424,7 +424,7 @@ template<typename InputGraphType, typename OutputGraphType=InputGraphType>
 OutputGraphType PruneGraph(
     const InputGraphType& graph,
     const std::unordered_set<int64_t>& nodes_to_prune,
-    const bool use_parallel)
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   // By making a sorted copy of the indices in nodes_to_prune, the two
   // for-loops that update edge to/from indices can terminate early once the
@@ -449,7 +449,7 @@ OutputGraphType PruneGraph(
   pruned_graph.ShrinkToFit();
 
   // Second, optionally parallel pass to update edges for the kept nodes
-  CRU_OMP_PARALLEL_FOR_IF(use_parallel)
+  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
   for (int64_t kept_node_index = 0; kept_node_index < pruned_graph.Size();
        kept_node_index++)
   {
@@ -662,10 +662,10 @@ public:
 
   GraphType MakePrunedCopy(
       const std::unordered_set<int64_t>& nodes_to_prune,
-      const bool use_parallel) const
+      const openmp_helpers::DegreeOfParallelism& parallelism) const
   {
     return PruneGraph<GraphType, GraphType>(
-        *this, nodes_to_prune, use_parallel);
+        *this, nodes_to_prune, parallelism);
   }
 
   void ShrinkToFit()

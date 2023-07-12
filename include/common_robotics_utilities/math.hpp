@@ -531,11 +531,11 @@ template<typename DataType, typename Container=std::vector<DataType>>
 Eigen::MatrixXd BuildPairwiseDistanceMatrix(
     const Container& data,
     const std::function<double(const DataType&, const DataType&)>& distance_fn,
-    const bool use_parallel = false)
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   Eigen::MatrixXd distance_matrix(data.size(), data.size());
 
-  CRU_OMP_PARALLEL_FOR_IF(use_parallel)
+  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
   for (size_t idx = 0; idx < data.size(); idx++)
   {
     for (size_t jdx = idx; jdx < data.size(); jdx++)
@@ -560,24 +560,6 @@ Eigen::MatrixXd BuildPairwiseDistanceMatrix(
   return distance_matrix;
 }
 
-template<typename DataType, typename Container=std::vector<DataType>>
-Eigen::MatrixXd BuildPairwiseDistanceMatrixParallel(
-    const Container& data,
-    const std::function<double(const DataType&, const DataType&)>& distance_fn)
-{
-  return BuildPairwiseDistanceMatrix<DataType, Container>(
-      data, distance_fn, true);
-}
-
-template<typename DataType, typename Container=std::vector<DataType>>
-Eigen::MatrixXd BuildPairwiseDistanceMatrixSerial(
-    const Container& data,
-    const std::function<double(const DataType&, const DataType&)>& distance_fn)
-{
-  return BuildPairwiseDistanceMatrix<DataType, Container>(
-      data, distance_fn, false);
-}
-
 template<typename FirstDataType, typename SecondDataType,
          typename FirstContainer=std::vector<FirstDataType>,
          typename SecondContainer=std::vector<SecondDataType>>
@@ -585,11 +567,11 @@ Eigen::MatrixXd BuildPairwiseDistanceMatrix(
     const FirstContainer& data1, const SecondContainer& data2,
     const std::function<double(const FirstDataType&,
                                const SecondDataType&)>& distance_fn,
-    const bool use_parallel = false)
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   Eigen::MatrixXd distance_matrix(data1.size(), data2.size());
 
-  CRU_OMP_PARALLEL_FOR_IF(use_parallel)
+  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
   for (size_t idx = 0; idx < data1.size(); idx++)
   {
     for (size_t jdx = 0; jdx < data2.size(); jdx++)
@@ -600,32 +582,6 @@ Eigen::MatrixXd BuildPairwiseDistanceMatrix(
     }
   }
   return distance_matrix;
-}
-
-template<typename FirstDataType, typename SecondDataType,
-         typename FirstContainer=std::vector<FirstDataType>,
-         typename SecondContainer=std::vector<SecondDataType>>
-Eigen::MatrixXd BuildPairwiseDistanceMatrixParallel(
-    const FirstContainer& data1, const SecondContainer& data2,
-    const std::function<double(const FirstDataType&,
-                               const SecondDataType&)>& distance_fn)
-{
-  return BuildPairwiseDistanceMatrixParallel
-      <FirstDataType, SecondDataType, FirstContainer, SecondContainer>(
-          data1, data2, distance_fn, true);
-}
-
-template<typename FirstDataType, typename SecondDataType,
-         typename FirstContainer=std::vector<FirstDataType>,
-         typename SecondContainer=std::vector<SecondDataType>>
-Eigen::MatrixXd BuildPairwiseDistanceMatrixSerial(
-    const FirstContainer& data1, const SecondContainer& data2,
-    const std::function<double(const FirstDataType&,
-                               const SecondDataType&)>& distance_fn)
-{
-  return BuildPairwiseDistanceMatrixParallel
-      <FirstDataType, SecondDataType, FirstContainer, SecondContainer>(
-          data1, data2, distance_fn, false);
 }
 
 class Hyperplane

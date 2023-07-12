@@ -29,14 +29,14 @@ enum class NNDistanceDirection {ROADMAP_TO_NEW_STATE, NEW_STATE_TO_ROADMAP};
 /// @param state new state to add.
 /// @param roadmap existing roadmap.
 /// @param distance_fn distance function for state-to-state distance. If
-/// use_parallel is true, this must be thread-safe.
+/// parallelism is enabled, this must be thread-safe.
 /// @param edge_validity_check_fn edge validity checking function. If
-/// use_parallel is true, this must be thread-safe.
+/// parallelism is enabled, this must be thread-safe.
 /// @param K number of K neighboring states in the roadmap to attempt to connect
 /// the new state to.
 /// @param max_node_index_for_knn maximum node index to use for KNN. To consider
 /// all nodes in roadmap, provide roadmap.Size().
-/// @param use_parallel use parallel operations when possible.
+/// @param parallelism control if/how parallel operations should be performed.
 /// @param connection_is_symmetric are distance and edge validity symmetric
 /// (i.e. distance_fn(a, b) == distance_fn(b, a) and
 /// edge_validity_check_fn(a, b) == edge_validity_check_fn(b, a))? Asymmetric
@@ -58,7 +58,7 @@ inline int64_t AddNodeToRoadmap(
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const int64_t K,
     const int64_t max_node_index_for_knn,
-    const bool use_parallel,
+    const openmp_helpers::DegreeOfParallelism& parallelism,
     const bool connection_is_symmetric,
     const bool add_duplicate_states)
 {
@@ -87,7 +87,7 @@ inline int64_t AddNodeToRoadmap(
       simple_knearest_neighbors::GetKNearestNeighbors(
           simple_graph::GraphKNNAdapter<GraphType>(
               roadmap, max_node_index_for_knn),
-          state, graph_distance_fn, K, use_parallel);
+          state, graph_distance_fn, K, parallelism);
 
   // Check if we already have this state in the roadmap
   // (and we don't want to add duplicates)
@@ -106,12 +106,10 @@ inline int64_t AddNodeToRoadmap(
   const int64_t new_node_index = roadmap.AddNode(state);
 
   // Parallelize the collision-checking and distance computation
-  // Because we don't need any special caching here, we define the loop contents
-  // as a lambda and then call branch between parfor/for loops that call it.
   std::vector<std::pair<double, double>> nearest_neighbors_distances(
       nearest_neighbors.size());
 
-  CRU_OMP_PARALLEL_FOR_IF(use_parallel)
+  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
   for (size_t idx = 0; idx < nearest_neighbors.size(); idx++)
   {
     const auto& nearest_neighbor = nearest_neighbors.at(idx);
@@ -191,17 +189,17 @@ inline int64_t AddNodeToRoadmap(
 /// @param roadmap roadmap to grow. This may be empty to start with.
 /// @param sampling_fn function to sample new states.
 /// @param distance_fn distance function for state-to-state distance. If
-/// use_parallel is true, this must be thread-safe.
+/// parallelism is enabled, this must be thread-safe.
 /// @param state_validity_check function to check if a sampled state is valid.
 /// @param edge_validity_check_fn edge validity checking function. If
-/// use_parallel is true, this must be thread-safe.
+/// parallelism is enabled, this must be thread-safe.
 /// @param termination_check_fn function to check if we have finished building
 /// the roadmap. Returns true when roadmap construction is done. The provided
 /// int64_t is the current size of the roadmap, since roadmap size is a common
 /// termination condition.
 /// @param K number of K neighboring states in the roadmap to attempt to connect
 /// the new state to.
-/// @param use_parallel use parallel operations when possible.
+/// @param parallelism control if/how parallel operations should be performed.
 /// @param connection_is_symmetric are distance and edge validity symmetric
 /// (i.e. distance_fn(a, b) == distance_fn(b, a) and
 /// edge_validity_check_fn(a, b) == edge_validity_check_fn(b, a))? Asymmetric
@@ -222,7 +220,7 @@ inline std::map<std::string, double> GrowRoadMap(
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const std::function<bool(const int64_t)>& termination_check_fn,
     const int64_t K,
-    const bool use_parallel = true,
+    const openmp_helpers::DegreeOfParallelism& parallelism,
     const bool connection_is_symmetric = true,
     const bool add_duplicate_states = false)
 {
@@ -243,7 +241,7 @@ inline std::map<std::string, double> GrowRoadMap(
       const int64_t pre_size = roadmap.Size();
       AddNodeToRoadmap<T, GraphType>(
           random_state, NNDistanceDirection::ROADMAP_TO_NEW_STATE, roadmap,
-          distance_fn, edge_validity_check_fn, K, pre_size, use_parallel,
+          distance_fn, edge_validity_check_fn, K, pre_size, parallelism,
           connection_is_symmetric, add_duplicate_states);
       const int64_t post_size = roadmap.Size();
       if (post_size > pre_size)
@@ -271,17 +269,17 @@ inline std::map<std::string, double> GrowRoadMap(
 /// @param roadmap_size size of roadmap to build.
 /// @param sampling_fn function to sample new states.
 /// @param distance_fn distance function for state-to-state distance. If
-/// use_parallel is true, this must be thread-safe.
+/// parallelism is enabled, this must be thread-safe.
 /// @param state_validity_check function to check if a sampled state is valid.
 /// @param edge_validity_check_fn edge validity checking function. If
-/// use_parallel is true, this must be thread-safe.
+/// parallelism is enabled, this must be thread-safe.
 /// @param K number of K neighboring states in the roadmap to attempt to connect
 /// the new state to.
 /// @param max_valid_sample_tries maximum number of calls to sampling_fn to
 /// produce a valid sample, throws if exceeded.
-/// @param use_parallel_sampling parallelize the sampling phase.
-/// @param use_parallel use parallel (non-sampling) operations when possible. If
-/// false, overrides use_parallel_sampling.
+/// @param parallelism control if/how parallel operations should be performed.
+/// @param use_parallel_sampling if parallelism is enabled, should the sampling
+/// phase be parallelized too?
 /// @param connection_is_symmetric are distance and edge validity symmetric
 /// (i.e. distance_fn(a, b) == distance_fn(b, a) and
 /// edge_validity_check_fn(a, b) == edge_validity_check_fn(b, a))? Asymmetric
@@ -300,8 +298,8 @@ GraphType BuildRoadMap(
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const int64_t K,
     const int32_t max_valid_sample_tries,
+    const openmp_helpers::DegreeOfParallelism& parallelism,
     const bool use_parallel_sampling = true,
-    const bool use_parallel = true,
     const bool connection_is_symmetric = true,
     const bool add_duplicate_states = false)
 {
@@ -355,7 +353,7 @@ GraphType BuildRoadMap(
         const auto nearest_state =
             simple_knearest_neighbors::GetKNearestNeighbors(
                 roadmap_states, sample, roadmap_states_distance_fn, 1,
-                use_parallel).at(0);
+                parallelism).at(0);
         if (nearest_state.Distance() > 0.0)
         {
           return OwningMaybe<T>(sample);
@@ -368,9 +366,13 @@ GraphType BuildRoadMap(
   // Sample roadmap_size valid configurations. This can only be parallelized if
   // add_duplicate_states is true, since the check for duplicate states would
   // be a race condition otherwise, and if parallelization is generally enabled.
-  const bool can_parallel_sample =
-      use_parallel_sampling && use_parallel && add_duplicate_states;
-  CRU_OMP_PARALLEL_FOR_IF(can_parallel_sample)
+  auto sampling_parallelism = openmp_helpers::DegreeOfParallelism::None();
+  if (use_parallel_sampling && add_duplicate_states)
+  {
+    sampling_parallelism = parallelism;
+  }
+
+  CRU_OMP_PARALLEL_FOR_DEGREE(sampling_parallelism)
   for (size_t index = 0; index < roadmap_states.size(); index++)
   {
     roadmap_states.at(index) = valid_sample_fn();
@@ -400,7 +402,7 @@ GraphType BuildRoadMap(
 
   // Perform edge validity and distance checks for all nodes, optionally in
   // parallel.
-  CRU_OMP_PARALLEL_FOR_IF(use_parallel)
+  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
   for (int64_t node_index = 0; node_index < roadmap.Size(); node_index++)
   {
     auto& node = roadmap.GetNodeMutable(node_index);
@@ -410,7 +412,8 @@ GraphType BuildRoadMap(
     const auto nearest_neighbors =
         simple_knearest_neighbors::GetKNearestNeighbors(
             simple_graph::GraphKNNAdapter<GraphType>(roadmap), state,
-            roadmap_to_state_distance_fn, K + 1, false);
+            roadmap_to_state_distance_fn, K + 1,
+            openmp_helpers::DegreeOfParallelism::None());
 
     for (const auto& neighbor : nearest_neighbors)
     {
@@ -507,23 +510,23 @@ GraphType BuildRoadMap(
 /// Update edge distances in a roadmap.
 /// @param roadmap existing roadmap to update.
 /// @param edge_validity_check_fn edge validity checking function. If
-/// use_parallel is true, this must be thread-safe.
+/// parallelism is enabled, this must be thread-safe.
 /// @param distance_fn distance function for state-to-state distance. If
-/// use_parallel is true, this must be thread-safe.
-/// @param use_parallel use parallel operations when possible.
+/// parallelism is enabled, this must be thread-safe.
+/// @param parallelism control if/how parallel operations should be performed.
 template<typename T, typename GraphType>
 inline void UpdateRoadMapEdges(
     GraphType& roadmap,
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const std::function<double(const T&, const T&)>& distance_fn,
-    const bool use_parallel = true)
+    const openmp_helpers::DegreeOfParallelism& parallelism)
 {
   if (roadmap.CheckGraphLinkage() == false)
   {
     throw std::invalid_argument("Provided roadmap has invalid linkage");
   }
 
-  CRU_OMP_PARALLEL_FOR_IF(use_parallel)
+  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
   for (int64_t current_node_index = 0; current_node_index < roadmap.Size();
        current_node_index++)
   {
@@ -588,12 +591,12 @@ inline simple_astar_search::AstarResult<T, Container> ExtractSolution(
 /// @param goals multiple goal states.
 /// @param roadmap existing roadmap.
 /// @param distance_fn distance function for state-to-state distance. If
-/// use_parallel is true, this must be thread-safe.
+/// parallelism is enabled, this must be thread-safe.
 /// @param edge_validity_check_fn edge validity checking function. If
-/// use_parallel is true, this must be thread-safe.
+/// parallelism is enabled, this must be thread-safe.
 /// @param K number of K neighboring states in the roadmap to attempt to connect
 /// the new state to.
-/// @param use_parallel use parallel operations when possible.
+/// @param parallelism control if/how parallel operations should be performed.
 /// @param connection_is_symmetric are distance and edge validity symmetric
 /// (i.e. distance_fn(a, b) == distance_fn(b, a) and
 /// edge_validity_check_fn(a, b) == edge_validity_check_fn(b, a))? Asymmetric
@@ -616,7 +619,7 @@ LazyQueryPathAndAddNodes(
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const int64_t K,
-    const bool use_parallel = true,
+    const openmp_helpers::DegreeOfParallelism& parallelism,
     const bool connection_is_symmetric = true,
     const bool add_duplicate_states = false,
     const bool limit_astar_pqueue_duplicates = true)
@@ -637,7 +640,7 @@ LazyQueryPathAndAddNodes(
     const T& start = starts.at(start_idx);
     start_node_indices.at(start_idx) = AddNodeToRoadmap<T, GraphType>(
         start, NNDistanceDirection::NEW_STATE_TO_ROADMAP, roadmap, distance_fn,
-        edge_validity_check_fn, K, pre_starts_size, use_parallel,
+        edge_validity_check_fn, K, pre_starts_size, parallelism,
         connection_is_symmetric, add_duplicate_states);
   }
   // Add the goal nodes to the roadmap
@@ -648,7 +651,7 @@ LazyQueryPathAndAddNodes(
     const T& goal = goals.at(goal_idx);
     goal_node_indices.at(goal_idx) = AddNodeToRoadmap<T, GraphType>(
         goal, NNDistanceDirection::ROADMAP_TO_NEW_STATE, roadmap, distance_fn,
-        edge_validity_check_fn, K, pre_goals_size, use_parallel,
+        edge_validity_check_fn, K, pre_goals_size, parallelism,
         connection_is_symmetric, add_duplicate_states);
   }
   // Call graph A*
@@ -667,12 +670,12 @@ LazyQueryPathAndAddNodes(
 /// @param goals multiple goal states.
 /// @param roadmap existing roadmap.
 /// @param distance_fn distance function for state-to-state distance. If
-/// use_parallel is true, this must be thread-safe.
+/// parallelism is enabled, this must be thread-safe.
 /// @param edge_validity_check_fn edge validity checking function. If
-/// use_parallel is true, this must be thread-safe.
+/// parallelism is enabled, this must be thread-safe.
 /// @param K number of K neighboring states in the roadmap to attempt to connect
 /// the new state to.
-/// @param use_parallel use parallel operations when possible.
+/// @param parallelism control if/how parallel operations should be performed.
 /// @param connection_is_symmetric are distance and edge validity symmetric
 /// (i.e. distance_fn(a, b) == distance_fn(b, a) and
 /// edge_validity_check_fn(a, b) == edge_validity_check_fn(b, a))? Asymmetric
@@ -695,7 +698,7 @@ QueryPathAndAddNodes(
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const int64_t K,
-    const bool use_parallel = true,
+    const openmp_helpers::DegreeOfParallelism& parallelism,
     const bool connection_is_symmetric = true,
     const bool add_duplicate_states = false,
     const bool limit_astar_pqueue_duplicates = true)
@@ -716,7 +719,7 @@ QueryPathAndAddNodes(
     const T& start = starts.at(start_idx);
     start_node_indices.at(start_idx) = AddNodeToRoadmap<T, GraphType>(
         start, NNDistanceDirection::NEW_STATE_TO_ROADMAP, roadmap, distance_fn,
-        edge_validity_check_fn, K, pre_starts_size, use_parallel,
+        edge_validity_check_fn, K, pre_starts_size, parallelism,
         connection_is_symmetric, add_duplicate_states);
   }
   // Add the goal nodes to the roadmap
@@ -727,7 +730,7 @@ QueryPathAndAddNodes(
     const T& goal = goals.at(goal_idx);
     goal_node_indices.at(goal_idx) = AddNodeToRoadmap<T, GraphType>(
         goal, NNDistanceDirection::ROADMAP_TO_NEW_STATE, roadmap, distance_fn,
-        edge_validity_check_fn, K, pre_goals_size, use_parallel,
+        edge_validity_check_fn, K, pre_goals_size, parallelism,
         connection_is_symmetric, add_duplicate_states);
   }
   const auto astar_result =
@@ -749,12 +752,12 @@ QueryPathAndAddNodes(
 /// @param goals multiple goal states.
 /// @param roadmap existing roadmap.
 /// @param distance_fn distance function for state-to-state distance. If
-/// use_parallel is true, this must be thread-safe.
+/// parallelism is enabled, this must be thread-safe.
 /// @param edge_validity_check_fn edge validity checking function. If
-/// use_parallel is true, this must be thread-safe.
+/// parallelism is enabled, this must be thread-safe.
 /// @param K number of K neighboring states in the roadmap to attempt to connect
 /// the new state to.
-/// @param use_parallel use parallel operations when possible.
+/// @param parallelism control if/how parallel operations should be performed.
 /// @param connection_is_symmetric are distance and edge validity symmetric
 /// (i.e. distance_fn(a, b) == distance_fn(b, a) and
 /// edge_validity_check_fn(a, b) == edge_validity_check_fn(b, a))? Asymmetric
@@ -777,7 +780,7 @@ LazyQueryPath(
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const int64_t K,
-    const bool use_parallel = true,
+    const openmp_helpers::DegreeOfParallelism& parallelism,
     const bool connection_is_symmetric = true,
     const bool add_duplicate_states = false,
     const bool limit_astar_pqueue_duplicates = true,
@@ -789,7 +792,7 @@ LazyQueryPath(
     OverlaidType overlaid_roadmap(roadmap);
     return LazyQueryPathAndAddNodes<T, Container, OverlaidType>(
         starts, goals, overlaid_roadmap, distance_fn, edge_validity_check_fn, K,
-        use_parallel, connection_is_symmetric, add_duplicate_states,
+        parallelism, connection_is_symmetric, add_duplicate_states,
         limit_astar_pqueue_duplicates);
   }
   else
@@ -797,7 +800,7 @@ LazyQueryPath(
     auto working_copy = roadmap;
     return LazyQueryPathAndAddNodes<T, Container, GraphType>(
        starts, goals, working_copy, distance_fn, edge_validity_check_fn, K,
-       use_parallel, connection_is_symmetric, add_duplicate_states,
+       parallelism, connection_is_symmetric, add_duplicate_states,
        limit_astar_pqueue_duplicates);
   }
 }
@@ -808,12 +811,12 @@ LazyQueryPath(
 /// @param goals multiple goal states.
 /// @param roadmap existing roadmap.
 /// @param distance_fn distance function for state-to-state distance. If
-/// use_parallel is true, this must be thread-safe.
+/// parallelism is enabled, this must be thread-safe.
 /// @param edge_validity_check_fn edge validity checking function. If
-/// use_parallel is true, this must be thread-safe.
+/// parallelism is enabled, this must be thread-safe.
 /// @param K number of K neighboring states in the roadmap to attempt to connect
 /// the new state to.
-/// @param use_parallel use parallel operations when possible.
+/// @param parallelism control if/how parallel operations should be performed.
 /// @param connection_is_symmetric are distance and edge validity symmetric
 /// (i.e. distance_fn(a, b) == distance_fn(b, a) and
 /// edge_validity_check_fn(a, b) == edge_validity_check_fn(b, a))? Asymmetric
@@ -836,7 +839,7 @@ QueryPath(
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const int64_t K,
-    const bool use_parallel = true,
+    const openmp_helpers::DegreeOfParallelism& parallelism,
     const bool connection_is_symmetric = true,
     const bool add_duplicate_states = false,
     const bool limit_astar_pqueue_duplicates = true,
@@ -848,7 +851,7 @@ QueryPath(
     OverlaidType overlaid_roadmap(roadmap);
     return QueryPathAndAddNodes<T, Container, OverlaidType>(
         starts, goals, overlaid_roadmap, distance_fn, edge_validity_check_fn, K,
-        use_parallel, connection_is_symmetric, add_duplicate_states,
+        parallelism, connection_is_symmetric, add_duplicate_states,
         limit_astar_pqueue_duplicates);
   }
   else
@@ -856,7 +859,7 @@ QueryPath(
     auto working_copy = roadmap;
     return QueryPathAndAddNodes<T, Container, GraphType>(
         starts, goals, working_copy, distance_fn, edge_validity_check_fn, K,
-        use_parallel, connection_is_symmetric, add_duplicate_states,
+        parallelism, connection_is_symmetric, add_duplicate_states,
         limit_astar_pqueue_duplicates);
   }
 }

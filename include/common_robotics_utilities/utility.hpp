@@ -4,6 +4,7 @@
 #include <cstdlib>
 #include <functional>
 #include <future>
+#include <stdexcept>
 #include <string>
 #include <map>
 #include <set>
@@ -20,6 +21,57 @@ namespace common_robotics_utilities
 {
 namespace utility
 {
+/// Given a range defined by @param range_start and @param range_end and the
+/// total number of threads given by @param num_threads, calculates the start
+/// and end of the range to assign to thread @param thread_num.
+inline std::pair<int64_t, int64_t> CalcThreadRangeStartAndEnd(
+    const int64_t range_start, const int64_t range_end,
+    const int64_t num_threads, const int64_t thread_num)
+{
+  if (range_end < range_start)
+  {
+    throw std::invalid_argument("range_end < range_start");
+  }
+  if (num_threads < 1)
+  {
+    throw std::invalid_argument("num_threads < 1");
+  }
+  if (thread_num < 0 || thread_num >= num_threads)
+  {
+    throw std::invalid_argument("thread_num not in [0, num_threads)");
+  }
+
+  // Every thread gets at least floor(range_size / num_threads) work, and the
+  // remainder is distributed across the first range_size % num_threads as one
+  // additional element each. Note that starting with per-thread range of
+  // ceil(range_size / num_threads) will not leave enough work for all
+  // threads.
+  const int64_t range_size = range_end - range_start;
+  const int64_t quotient = range_size / num_threads;
+  const int64_t remainder = range_size % num_threads;
+
+  const int64_t nominal_range = quotient;
+  const int64_t remainder_range = nominal_range + 1;
+
+  if (thread_num < remainder)
+  {
+    const int64_t thread_range = remainder_range;
+    const int64_t thread_range_start =
+        range_start + (thread_num * remainder_range);
+    const int64_t thread_range_end = thread_range_start + thread_range;
+    return std::make_pair(thread_range_start, thread_range_end);
+  }
+  else
+  {
+    const int64_t thread_range = nominal_range;
+    const int64_t thread_range_start =
+        range_start + (remainder * remainder_range) +
+            ((thread_num - remainder) * nominal_range);
+    const int64_t thread_range_end = thread_range_start + thread_range;
+    return std::make_pair(thread_range_start, thread_range_end);
+  }
+}
+
 /// Check if the provided std::future is ready. Note that future.wait_for() (or
 /// future.wait_until()) are the only ways to check the status of a future
 /// without waiting for it to complete first.

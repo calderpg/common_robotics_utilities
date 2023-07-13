@@ -10,6 +10,7 @@
 #include <vector>
 
 #include <common_robotics_utilities/openmp_helpers.hpp>
+#include <common_robotics_utilities/utility.hpp>
 
 namespace common_robotics_utilities
 {
@@ -157,38 +158,7 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
   else
   {
     // Per-thread work calculation common to both range_size <= K and full case.
-    const size_t num_threads = static_cast<size_t>(parallelism.GetNumThreads());
-
-    // Every thread gets at least floor(range_size / num_threads) work, and the
-    // remainder is distributed across the first range_size % num_threads as one
-    // additional element each. Note that starting with per-thread range of
-    // ceil(range_size / num_threads) will not leave enough work for all
-    // threads.
-    const size_t quotient = range_size / num_threads;
-    const size_t remainder = range_size % num_threads;
-
-    const size_t nominal_range = quotient;
-    const size_t remainder_range = nominal_range + 1;
-
-    const auto calc_thread_range_start_end = [&](const size_t thread_num)
-    {
-      if (thread_num < remainder)
-      {
-        const size_t thread_range = remainder_range;
-        const size_t thread_range_start = thread_num * remainder_range;
-        const size_t thread_range_end = thread_range_start + thread_range;
-        return std::make_pair(thread_range_start, thread_range_end);
-      }
-      else
-      {
-        const size_t thread_range = nominal_range;
-        const size_t thread_range_start =
-            (remainder * remainder_range) +
-                ((thread_num - remainder) * nominal_range);
-        const size_t thread_range_end = thread_range_start + thread_range;
-        return std::make_pair(thread_range_start, thread_range_end);
-      }
-    };
+    const int64_t num_threads = parallelism.GetNumThreads();
 
     // Easy case where we only need to compute distance for each element.
     if (range_size <= static_cast<size_t>(K))
@@ -196,13 +166,14 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
       std::vector<IndexAndDistance> k_nearests(range_size);
 
       // Helper lambda for each thread's work.
-      const auto per_thread_work = [&](const size_t thread_num)
+      const auto per_thread_work = [&](const int64_t thread_num)
       {
-        const auto thread_range_start_end =
-            calc_thread_range_start_end(thread_num);
+        const auto thread_range_start_end = utility::CalcThreadRangeStartAndEnd(
+            static_cast<int64_t>(range_start), static_cast<int64_t>(range_end),
+            num_threads, thread_num);
 
-        for (size_t index = thread_range_start_end.first;
-             index < thread_range_start_end.second;
+        for (size_t index = static_cast<size_t>(thread_range_start_end.first);
+             index < static_cast<size_t>(thread_range_start_end.second);
              index++)
         {
           const Item& item = items[index];
@@ -216,7 +187,7 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
       if (openmp_helpers::IsOmpEnabledInBuild())
       {
         CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
-        for (size_t thread_num = 0; thread_num < num_threads; thread_num++)
+        for (int64_t thread_num = 0; thread_num < num_threads; thread_num++)
         {
           per_thread_work(thread_num);
         }
@@ -225,7 +196,7 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
       {
         // Dispatch worker threads.
         std::vector<std::future<void>> workers;
-        for (size_t thread_num = 0; thread_num < num_threads; thread_num++)
+        for (int64_t thread_num = 0; thread_num < num_threads; thread_num++)
         {
           workers.emplace_back(
               std::async(std::launch::async, per_thread_work, thread_num));
@@ -251,15 +222,17 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
           per_thread_nearests(num_threads);
 
       // Helper lambda for each thread's work.
-      const auto per_thread_work = [&](const size_t thread_num)
+      const auto per_thread_work = [&](const int64_t thread_num)
       {
-        const auto thread_range_start_end =
-            calc_thread_range_start_end(thread_num);
+        const auto thread_range_start_end = utility::CalcThreadRangeStartAndEnd(
+            static_cast<int64_t>(range_start), static_cast<int64_t>(range_end),
+            num_threads, thread_num);
 
         per_thread_nearests[thread_num] =
             GetKNearestNeighborsInRangeSerial<Item, Value, Container>(
-                items, thread_range_start_end.first,
-                thread_range_start_end.second, current, distance_fn, K);
+                items, static_cast<size_t>(thread_range_start_end.first),
+                static_cast<size_t>(thread_range_start_end.second), current,
+                distance_fn, K);
       };
 
       // Find the K nearest for each thread. Use OpenMP if available, if not
@@ -267,7 +240,7 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
       if (openmp_helpers::IsOmpEnabledInBuild())
       {
         CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
-        for (size_t thread_num = 0; thread_num < num_threads; thread_num++)
+        for (int64_t thread_num = 0; thread_num < num_threads; thread_num++)
         {
           per_thread_work(thread_num);
         }
@@ -276,7 +249,7 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
       {
         // Dispatch worker threads.
         std::vector<std::future<void>> workers;
-        for (size_t thread_num = 0; thread_num < num_threads; thread_num++)
+        for (int64_t thread_num = 0; thread_num < num_threads; thread_num++)
         {
           workers.emplace_back(
               std::async(std::launch::async, per_thread_work, thread_num));

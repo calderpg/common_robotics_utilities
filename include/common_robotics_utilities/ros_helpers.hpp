@@ -4,6 +4,8 @@
 #include <type_traits>
 #include <vector>
 
+#include <common_robotics_utilities/cru_namespace.hpp>
+
 #if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
 #include <rosidl_runtime_cpp/traits.hpp>
 // On pre-Humble distributions, a single message header is included to ensure
@@ -47,6 +49,7 @@ operator<<(ostream& os, const T& message)
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace ros_helpers
 {
 #if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
@@ -79,4 +82,5 @@ inline void SetMessageTimestamps(
 }
 
 }  // namespace ros_helpers
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

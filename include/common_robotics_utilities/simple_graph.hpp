@@ -9,6 +9,7 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/cru_namespace.hpp>
 #include <common_robotics_utilities/openmp_helpers.hpp>
 #include <common_robotics_utilities/print.hpp>
 #include <common_robotics_utilities/serialization.hpp>
@@ -16,6 +17,7 @@
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace simple_graph
 {
 /// Directed weighted graph edge.
@@ -984,5 +986,6 @@ inline std::ostream& operator<< (
   return stream;
 }
 }  // namespace simple_graph
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities
 

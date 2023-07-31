@@ -3,6 +3,7 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/cru_namespace.hpp>
 #include <common_robotics_utilities/math.hpp>
 
 #if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
@@ -19,6 +20,7 @@
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace ros_conversions
 {
 
@@ -116,4 +118,5 @@ std::vector<GeometryPose> VectorIsometry3dToVectorGeometryPose(
 std::vector<GeometryTransform> VectorIsometry3dToVectorGeometryTransform(
     const common_robotics_utilities::math::VectorIsometry3d& vector_eigen);
 }  // namespace ros_conversions
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

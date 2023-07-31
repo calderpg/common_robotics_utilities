@@ -8,11 +8,13 @@
 #include <stdexcept>
 #include <vector>
 
+#include <common_robotics_utilities/cru_namespace.hpp>
 #include <common_robotics_utilities/math.hpp>
 #include <common_robotics_utilities/utility.hpp>
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace path_processing
 {
 template<typename Configuration, typename Container=std::vector<Configuration>>
@@ -334,4 +336,5 @@ inline Container ResamplePath(
   return resampled_path;
 }
 }  // namespace path_processing
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

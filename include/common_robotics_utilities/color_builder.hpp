@@ -3,10 +3,12 @@
 #include <cmath>
 #include <cstdint>
 
+#include <common_robotics_utilities/cru_namespace.hpp>
 #include <common_robotics_utilities/utility.hpp>
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace color_builder
 {
 /// Convert @param hexval color channel to float.
@@ -304,4 +306,5 @@ inline ColorType LookupUniqueColor(const uint32_t color_code,
   }
 }
 }  // namespace color_builder
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

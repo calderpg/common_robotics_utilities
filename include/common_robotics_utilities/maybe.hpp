@@ -4,9 +4,11 @@
 #include <type_traits>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/cru_namespace.hpp>
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace internal
 {
 /// Helper type for OwningMaybe<T> that stores one of two values without
@@ -246,4 +248,5 @@ public:
 
   explicit operator bool() const { return HasValue(); }
 };
-}
+CRU_NAMESPACE_END
+}  // namespace common_robotics_utilities

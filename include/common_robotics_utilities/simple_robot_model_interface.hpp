@@ -3,10 +3,12 @@
 #include <string>
 #include <Eigen/Geometry>
 
+#include <common_robotics_utilities/cru_namespace.hpp>
 #include <common_robotics_utilities/math.hpp>
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace simple_robot_model_interface
 {
 /// This is basically the absolute minimal robot model interface needed to do
@@ -116,4 +118,5 @@ public:
       const Eigen::Vector4d& link_relative_point) const = 0;
 };
 }  // namespace simple_robot_model_interface
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

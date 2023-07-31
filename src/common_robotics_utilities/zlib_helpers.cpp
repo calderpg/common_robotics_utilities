@@ -11,6 +11,7 @@
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace zlib_helpers
 {
 std::vector<uint8_t> DecompressBytes(const std::vector<uint8_t>& compressed)
@@ -160,4 +161,5 @@ void CompressAndWriteToFile(
   output_file.close();
 }
 } // namespace zlib_helpers
+CRU_NAMESPACE_END
 } // namespace common_robotics_utilities

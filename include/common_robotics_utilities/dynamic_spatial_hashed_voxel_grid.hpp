@@ -9,6 +9,7 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/cru_namespace.hpp>
 #include <common_robotics_utilities/maybe.hpp>
 #include <common_robotics_utilities/serialization.hpp>
 #include <common_robotics_utilities/utility.hpp>
@@ -16,6 +17,7 @@
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace voxel_grid
 {
 class ChunkRegion
@@ -1134,6 +1136,7 @@ public:
       : DynamicSpatialHashedVoxelGridBase<T, BackingStore>() {}
 };
 }  // namespace voxel_grid
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities
 
 namespace std

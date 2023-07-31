@@ -3,9 +3,11 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/cru_namespace.hpp>
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace conversions
 {
 Eigen::Quaterniond QuaternionFromRPY(const double R,
@@ -76,4 +78,5 @@ Eigen::Quaterniond StdVectorDoubleToEigenQuaterniond(
 std::vector<double> EigenQuaterniondToStdVectorDouble(
     const Eigen::Quaterniond& quat);
 }  // namespace conversions
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

@@ -5,9 +5,11 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/cru_namespace.hpp>
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace time_optimal_trajectory_parametrization
 {
 /// Stores a position+velocity+time point in a trajectory.
@@ -67,4 +69,5 @@ std::unique_ptr<PositionVelocityTrajectoryInterface> ParametrizePathTOTP(
     const Eigen::VectorXd& max_acceleration,
     const double max_deviation = 0.0, const double timestep = 0.001);
 }  // namespace time_optimal_trajectory_parametrization
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

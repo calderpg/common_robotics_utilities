@@ -13,6 +13,7 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/cru_namespace.hpp>
 #include <common_robotics_utilities/maybe.hpp>
 #include <common_robotics_utilities/serialization.hpp>
 #include <common_robotics_utilities/simple_knearest_neighbors.hpp>
@@ -20,6 +21,7 @@
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace simple_rrt_planner
 {
 /// Basic templated tree node for use in RRT planners. Node stores a templated
@@ -1949,4 +1951,5 @@ MakeKinematicBiRRTConnectPropagationFunction(
   return forward_propagation_fn;
 }
 }  // namespace simple_rrt_planner
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

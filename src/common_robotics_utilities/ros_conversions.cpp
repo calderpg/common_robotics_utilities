@@ -7,6 +7,7 @@
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace ros_conversions
 {
 Eigen::Vector3d GeometryPointToEigenVector3d(
@@ -298,4 +299,5 @@ std::vector<GeometryTransform> VectorIsometry3dToVectorGeometryTransform(
   return vector_geom;
 }
 }  // namespace ros_conversions
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

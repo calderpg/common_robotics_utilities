@@ -8,6 +8,7 @@
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace serialization
 {
 constexpr uint64_t SerializedSizeVector2d()
@@ -255,4 +256,5 @@ Deserialized<Eigen::Isometry3d> DeserializeIsometry3d(
   return MakeDeserialized(temp_value, SerializedSizeIsometry3d());
 }
 }  // namespace serialization
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

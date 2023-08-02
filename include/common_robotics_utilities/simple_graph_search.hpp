@@ -10,12 +10,14 @@
 #include <utility>
 #include <vector>
 
+#include <common_robotics_utilities/cru_namespace.hpp>
 #include <common_robotics_utilities/simple_astar_search.hpp>
 #include <common_robotics_utilities/simple_graph.hpp>
 #include <common_robotics_utilities/utility.hpp>
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace simple_graph_search
 {
 /// Wrapper class to store the results of performing Dijkstra's search on a
@@ -587,4 +589,5 @@ inline AstarIndexResult PerformAstarSearch(
       distance_function, heuristic_function, limit_pqueue_duplicates);
 }
 }  // namespace simple_graph_search
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

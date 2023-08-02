@@ -7,10 +7,12 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/cru_namespace.hpp>
 #include <common_robotics_utilities/openmp_helpers.hpp>
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 /// Compute Hausdorff distance between two distributions.
 /// "The Hausdorff distance is the longest distance you can be forced to travel
 /// by an adversary who chooses a point in one of the two sets, from where you
@@ -299,4 +301,5 @@ inline double ComputeDistance(
   }
 }
 }  // namespace simple_hausdorff_distance
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

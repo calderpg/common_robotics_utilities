@@ -9,8 +9,11 @@
 #include <omp.h>
 #endif
 
+#include <common_robotics_utilities/cru_namespace.hpp>
+
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace openmp_helpers
 {
 /// Returns true if OpenMP is enabled in the build, false otherwise.
@@ -221,6 +224,7 @@ private:
 };
 
 }  // namespace openmp_helpers
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities
 
 /// Macro to stringify tokens for the purposes of the below macros.

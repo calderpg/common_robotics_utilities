@@ -5,9 +5,11 @@
 #include <random>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/cru_namespace.hpp>
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace gaussian_distributions
 {
 /// See https://people.sc.fsu.edu/~jburkardt/presentations/truncated_normal.pdf
@@ -435,4 +437,5 @@ public:
   }
 };
 }  // namespace gaussian_distributions
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

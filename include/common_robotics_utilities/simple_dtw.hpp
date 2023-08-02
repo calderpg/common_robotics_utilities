@@ -7,9 +7,11 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/cru_namespace.hpp>
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace simple_dtw
 {
 template<typename FirstDatatype, typename SecondDatatype,
@@ -128,4 +130,5 @@ inline double EvaluateWarpingCost(
       first_sequence, second_sequence, distance_fn);
 }
 }  // namespace simple_dtw
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

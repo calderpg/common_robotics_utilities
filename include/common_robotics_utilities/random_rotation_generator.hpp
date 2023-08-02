@@ -6,9 +6,11 @@
 #include <random>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/cru_namespace.hpp>
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace random_rotation_generator
 {
 /// Generator for uniform random quaternions and Euler angles.
@@ -88,4 +90,5 @@ public:
   }
 };
 }  // namespace random_rotation_generator
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

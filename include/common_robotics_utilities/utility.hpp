@@ -13,12 +13,14 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/cru_namespace.hpp>
 
 // Macro to disable unused parameter compiler warnings
 #define CRU_UNUSED(x) (void)(x)
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace utility
 {
 /// Given a range defined by @param range_start and @param range_end and the
@@ -101,6 +103,7 @@ inline void hash_combine(std::size_t& seed, const T& v, Rest... rest)
   hash_combine(seed, rest...);
 }
 }  // namespace utility
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities
 
 // Macro to construct std::hash<type> specializations for simple types that
@@ -130,6 +133,7 @@ inline void hash_combine(std::size_t& seed, const T& v, Rest... rest)
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace utility
 {
 /// Signature of a basic logging function.
@@ -555,4 +559,5 @@ inline MapLike MakeFromKeysAndValues(
   }
 }
 }  // namespace utility
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

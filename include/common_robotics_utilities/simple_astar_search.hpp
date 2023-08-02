@@ -11,10 +11,12 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/cru_namespace.hpp>
 #include <common_robotics_utilities/maybe.hpp>
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace simple_astar_search
 {
 /// Wrapper for P-Queue elements used in A* search. Contains the unique node_id,
@@ -521,4 +523,5 @@ inline AstarResult<T, Container> PerformAstarSearch(
       limit_pqueue_duplicates, hasher, equaler);
 }
 }  // namespace simple_astar_search
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

@@ -10,12 +10,14 @@
 #include <unordered_map>
 #include <vector>
 
+#include <common_robotics_utilities/cru_namespace.hpp>
 #include <common_robotics_utilities/openmp_helpers.hpp>
 #include <common_robotics_utilities/simple_knearest_neighbors.hpp>
 #include <common_robotics_utilities/utility.hpp>
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 /// Simple implementation of K-means clustering.
 namespace simple_kmeans_clustering
 {
@@ -325,4 +327,5 @@ std::vector<int32_t> Cluster(
       prng_seed, do_preliminary_clustering, parallelism, logging_fn);
 }
 }  // namespace simple_kmeans_clustering
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

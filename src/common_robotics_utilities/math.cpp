@@ -5,6 +5,7 @@
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace math
 {
 bool Equal3d(const Eigen::Vector3d& v1, const Eigen::Vector3d& v2)
@@ -1030,4 +1031,5 @@ Hyperplane FitPlaneToPoints(const std::vector<Eigen::VectorXd>& points)
   return Hyperplane(centroid, normal_vector);
 }
 }  // namespace math
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

@@ -9,9 +9,11 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/cru_namespace.hpp>
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace serialization
 {
 template<typename T>
@@ -1114,4 +1116,5 @@ inline Deserialized<SetLike> DeserializeNetworkSetLike(
   return MakeDeserialized(deserialized, bytes_read);
 }
 }  // namespace serialization
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

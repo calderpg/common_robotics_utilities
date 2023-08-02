@@ -51,6 +51,7 @@
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace time_optimal_trajectory_parametrization
 {
 namespace {
@@ -1192,4 +1193,5 @@ std::unique_ptr<PositionVelocityTrajectoryInterface> ParametrizePathTOTP(
           path, max_velocity, max_acceleration, max_deviation, timestep));
 }
 }  // namespace time_optimal_trajectory_parametrization
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

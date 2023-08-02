@@ -6,6 +6,7 @@
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace conversions
 {
 Eigen::Quaterniond QuaternionFromRPY(const double R,
@@ -210,4 +211,5 @@ std::vector<double> EigenQuaterniondToStdVectorDouble(
   return std::vector<double>{quat.x(), quat.y(), quat.z(), quat.w()};
 }
 }  // namespace conversions
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

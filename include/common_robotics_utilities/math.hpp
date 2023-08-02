@@ -6,10 +6,12 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/cru_namespace.hpp>
 #include <common_robotics_utilities/openmp_helpers.hpp>
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace math
 {
 ///////////////////////////////////////////////////////////////
@@ -662,4 +664,5 @@ public:
 
 Hyperplane FitPlaneToPoints(const std::vector<Eigen::VectorXd>& points);
 }  // namespace math
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

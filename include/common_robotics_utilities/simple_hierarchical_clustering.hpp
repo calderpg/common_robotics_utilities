@@ -9,11 +9,13 @@
 #include <vector>
 
 #include <Eigen/Geometry>
+#include <common_robotics_utilities/cru_namespace.hpp>
 #include <common_robotics_utilities/math.hpp>
 #include <common_robotics_utilities/openmp_helpers.hpp>
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 /// Implementation of hierarchical clustering, in both Single-link and
 /// Complete-link forms. Unlike some implementations, this does not produce the
 /// dendrogram of clusters - it only returns the accumulated clusters up to the
@@ -706,4 +708,5 @@ ClusteringResult<DataType, Container> Cluster(
       data, distance_matrix, max_cluster_distance, strategy, parallelism);
 }
 }  // namespace simple_hierarchical_clustering
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

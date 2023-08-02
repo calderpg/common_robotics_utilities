@@ -9,11 +9,13 @@
 #include <utility>
 #include <vector>
 
+#include <common_robotics_utilities/cru_namespace.hpp>
 #include <common_robotics_utilities/openmp_helpers.hpp>
 #include <common_robotics_utilities/utility.hpp>
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace simple_knearest_neighbors
 {
 /// Type to wrap an index and its corresponding distance.
@@ -346,4 +348,5 @@ inline std::vector<IndexAndDistance> GetKNearestNeighbors(
       items, 0, items.size(), current, distance_fn, K, parallelism);
 }
 }  // namespace simple_knearest_neighbors
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

@@ -7,6 +7,7 @@
 
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace base64_helpers
 {
 /// Implementations derived from post at http://stackoverflow.com/a/41094722
@@ -111,4 +112,5 @@ std::string Encode(const std::vector<uint8_t>& binary)
   return encoded;
 }
 }  // namespace base64_helpers
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

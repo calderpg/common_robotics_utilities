@@ -5,8 +5,11 @@
 #include <cstdint>
 #include <limits>
 
+#include <common_robotics_utilities/cru_namespace.hpp>
+
 namespace common_robotics_utilities
 {
+CRU_NAMESPACE_BEGIN
 namespace simple_prngs
 {
 /// Implementation of the "Split-Mix 64" PRNG.
@@ -191,4 +194,5 @@ public:
   }
 };
 }  // namespace simple_prngs
+CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities

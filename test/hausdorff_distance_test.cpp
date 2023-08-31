@@ -12,11 +12,11 @@ namespace common_robotics_utilities
 namespace
 {
 class HausdorffDistanceTestSuite
-    : public testing::TestWithParam<openmp_helpers::DegreeOfParallelism> {};
+    : public testing::TestWithParam<parallelism::DegreeOfParallelism> {};
 
 TEST_P(HausdorffDistanceTestSuite, Test)
 {
-  const openmp_helpers::DegreeOfParallelism parallelism = GetParam();
+  const parallelism::DegreeOfParallelism parallelism = GetParam();
   std::cout << "# of threads = " << parallelism.GetNumThreads() << std::endl;
 
   const std::vector<double> d1 = {1.5, 2.5, 3.5, 4.5, 5.5};
@@ -116,11 +116,11 @@ TEST_P(HausdorffDistanceTestSuite, Test)
 
 INSTANTIATE_TEST_SUITE_P(
     SerialHausdorffDistanceTest, HausdorffDistanceTestSuite,
-    testing::Values(openmp_helpers::DegreeOfParallelism::None()));
+    testing::Values(parallelism::DegreeOfParallelism::None()));
 
 INSTANTIATE_TEST_SUITE_P(
     ParallelHausdorffDistanceTest, HausdorffDistanceTestSuite,
-    testing::Values(openmp_helpers::DegreeOfParallelism::FromOmp()));
+    testing::Values(parallelism::DegreeOfParallelism::FromOmp()));
 }  // namespace
 }  // namespace common_robotics_utilities
 

@@ -11,7 +11,7 @@
 #include <vector>
 
 #include <common_robotics_utilities/cru_namespace.hpp>
-#include <common_robotics_utilities/openmp_helpers.hpp>
+#include <common_robotics_utilities/parallelism.hpp>
 #include <common_robotics_utilities/simple_knearest_neighbors.hpp>
 #include <common_robotics_utilities/utility.hpp>
 
@@ -30,7 +30,7 @@ template<typename DataType, typename Container=std::vector<DataType>>
 std::vector<int32_t> PerformSingleClusteringIteration(
     const Container& data, const Container& current_cluster_centers,
     const std::function<double(const DataType&, const DataType&)>& distance_fn,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   std::vector<int32_t> new_cluster_labels(data.size());
 
@@ -62,7 +62,7 @@ Container ComputeClusterCentersWeighted(
     const std::function<DataType(
         const Container&, const std::vector<double>&)>& weighted_average_fn,
     const int32_t num_clusters,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   if (data.size() == cluster_labels.size())
   {
@@ -142,7 +142,7 @@ std::vector<int32_t> ClusterWeighted(
         weighted_average_fn,
     const int32_t num_clusters, const int64_t prng_seed,
     const bool do_preliminary_clustering,
-    const openmp_helpers::DegreeOfParallelism& parallelism,
+    const parallelism::DegreeOfParallelism& parallelism,
     const utility::LoggingFunction& logging_fn = {})
 {
   if (data.empty())
@@ -309,7 +309,7 @@ std::vector<int32_t> Cluster(
     const std::function<DataType(const Container&)>& average_fn,
     const int32_t num_clusters, const int64_t prng_seed,
     const bool do_preliminary_clustering,
-    const openmp_helpers::DegreeOfParallelism& parallelism,
+    const parallelism::DegreeOfParallelism& parallelism,
     const utility::LoggingFunction& logging_fn = {})
 {
   // Make a dummy set of uniform weights

@@ -10,8 +10,7 @@
 #include <vector>
 
 #include <common_robotics_utilities/cru_namespace.hpp>
-#include <common_robotics_utilities/openmp_helpers.hpp>
-#include <common_robotics_utilities/utility.hpp>
+#include <common_robotics_utilities/parallelism.hpp>
 
 namespace common_robotics_utilities
 {
@@ -135,7 +134,7 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
     const Container& items, const size_t range_start, const size_t range_end,
     const Value& current,
     const std::function<double(const Item&, const Value&)>& distance_fn,
-    const int64_t K, const openmp_helpers::DegreeOfParallelism& parallelism)
+    const int64_t K, const parallelism::DegreeOfParallelism& parallelism)
 {
   if (range_end < range_start)
   {
@@ -168,14 +167,11 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
       std::vector<IndexAndDistance> k_nearests(range_size);
 
       // Helper lambda for each thread's work.
-      const auto per_thread_work = [&](const int64_t thread_num)
+      const auto per_thread_work = [&](
+          const parallelism::ThreadWorkRange& work_range)
       {
-        const auto thread_range_start_end = utility::CalcThreadRangeStartAndEnd(
-            static_cast<int64_t>(range_start), static_cast<int64_t>(range_end),
-            num_threads, thread_num);
-
-        for (size_t index = static_cast<size_t>(thread_range_start_end.first);
-             index < static_cast<size_t>(thread_range_start_end.second);
+        for (size_t index = static_cast<size_t>(work_range.GetRangeStart());
+             index < static_cast<size_t>(work_range.GetRangeEnd());
              index++)
         {
           const Item& item = items[index];
@@ -184,33 +180,11 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
         }
       };
 
-      // Find the K nearest for each thread. Use OpenMP if available, if not
-      // fall back to manual dispatch via std::async.
-      if (openmp_helpers::IsOmpEnabledInBuild())
-      {
-        CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
-        for (int64_t thread_num = 0; thread_num < num_threads; thread_num++)
-        {
-          per_thread_work(thread_num);
-        }
-      }
-      else
-      {
-        // Dispatch worker threads.
-        std::vector<std::future<void>> workers;
-        for (int64_t thread_num = 0; thread_num < num_threads; thread_num++)
-        {
-          workers.emplace_back(
-              std::async(std::launch::async, per_thread_work, thread_num));
-        }
-
-        // Wait for worker threads to complete. This also rethrows any exception
-        // thrown in a worker thread.
-        for (auto& worker : workers)
-        {
-          worker.get();
-        }
-      }
+      // Dispatch, preferably using OpenMP if available, std::async otherwise.
+      parallelism::StaticParallelForLoop(
+          parallelism, static_cast<int64_t>(range_start),
+          static_cast<int64_t>(range_end), per_thread_work,
+          parallelism::ParallelForBackend::BEST_AVAILABLE);
 
       return k_nearests;
     }
@@ -224,46 +198,21 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
           per_thread_nearests(num_threads);
 
       // Helper lambda for each thread's work.
-      const auto per_thread_work = [&](const int64_t thread_num)
+      const auto per_thread_work = [&](
+          const parallelism::ThreadWorkRange& work_range)
       {
-        const auto thread_range_start_end = utility::CalcThreadRangeStartAndEnd(
-            static_cast<int64_t>(range_start), static_cast<int64_t>(range_end),
-            num_threads, thread_num);
-
-        per_thread_nearests[thread_num] =
+        per_thread_nearests[work_range.GetThreadNum()] =
             GetKNearestNeighborsInRangeSerial<Item, Value, Container>(
-                items, static_cast<size_t>(thread_range_start_end.first),
-                static_cast<size_t>(thread_range_start_end.second), current,
+                items, static_cast<size_t>(work_range.GetRangeStart()),
+                static_cast<size_t>(work_range.GetRangeEnd()), current,
                 distance_fn, K);
       };
 
-      // Find the K nearest for each thread. Use OpenMP if available, if not
-      // fall back to manual dispatch via std::async.
-      if (openmp_helpers::IsOmpEnabledInBuild())
-      {
-        CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
-        for (int64_t thread_num = 0; thread_num < num_threads; thread_num++)
-        {
-          per_thread_work(thread_num);
-        }
-      }
-      else
-      {
-        // Dispatch worker threads.
-        std::vector<std::future<void>> workers;
-        for (int64_t thread_num = 0; thread_num < num_threads; thread_num++)
-        {
-          workers.emplace_back(
-              std::async(std::launch::async, per_thread_work, thread_num));
-        }
-
-        // Wait for worker threads to complete. This also rethrows any exception
-        // thrown in a worker thread.
-        for (auto& worker : workers)
-        {
-          worker.get();
-        }
-      }
+      // Dispatch, preferably using OpenMP if available, std::async otherwise.
+      parallelism::StaticParallelForLoop(
+          parallelism, static_cast<int64_t>(range_start),
+          static_cast<int64_t>(range_end), per_thread_work,
+          parallelism::ParallelForBackend::BEST_AVAILABLE);
 
       // Merge the per-thread K-nearest together.
       // Uses an O((K * num_threads) * log(K)) approach.
@@ -306,7 +255,7 @@ template<typename Item, typename Value, typename Container=std::vector<Item>>
 inline std::vector<IndexAndDistance> GetKNearestNeighborsParallel(
     const Container& items, const Value& current,
     const std::function<double(const Item&, const Value&)>& distance_fn,
-    const int64_t K, const openmp_helpers::DegreeOfParallelism& parallelism)
+    const int64_t K, const parallelism::DegreeOfParallelism& parallelism)
 {
   return GetKNearestNeighborsInRangeParallel<Item, Value, Container>(
       items, 0, items.size(), current, distance_fn, K, parallelism);
@@ -321,7 +270,7 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRange(
     const Container& items, const size_t range_start, const size_t range_end,
     const Value& current,
     const std::function<double(const Item&, const Value&)>& distance_fn,
-    const int64_t K, const openmp_helpers::DegreeOfParallelism& parallelism)
+    const int64_t K, const parallelism::DegreeOfParallelism& parallelism)
 {
   if (parallelism.IsParallel())
   {
@@ -342,7 +291,7 @@ template<typename Item, typename Value, typename Container=std::vector<Item>>
 inline std::vector<IndexAndDistance> GetKNearestNeighbors(
     const Container& items, const Value& current,
     const std::function<double(const Item&, const Value&)>& distance_fn,
-    const int64_t K, const openmp_helpers::DegreeOfParallelism& parallelism)
+    const int64_t K, const parallelism::DegreeOfParallelism& parallelism)
 {
   return GetKNearestNeighborsInRange<Item, Value, Container>(
       items, 0, items.size(), current, distance_fn, K, parallelism);

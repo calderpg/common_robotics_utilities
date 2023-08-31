@@ -11,7 +11,7 @@
 #include <Eigen/Geometry>
 #include <common_robotics_utilities/cru_namespace.hpp>
 #include <common_robotics_utilities/math.hpp>
-#include <common_robotics_utilities/openmp_helpers.hpp>
+#include <common_robotics_utilities/parallelism.hpp>
 
 namespace common_robotics_utilities
 {
@@ -122,7 +122,7 @@ inline ClosestPair GetClosestClustersParallel(
     const Eigen::MatrixXd& distance_matrix,
     const std::vector<std::vector<int64_t>>& clusters,
     const ClusterStrategy strategy,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   std::vector<ClosestPair> per_thread_closest_clusters(
       static_cast<size_t>(parallelism.GetNumThreads()), ClosestPair());
@@ -253,7 +253,7 @@ inline ClosestPair GetClosestClusters(
     const Eigen::MatrixXd& distance_matrix,
     const std::vector<std::vector<int64_t>>& clusters,
     const ClusterStrategy strategy,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   if (parallelism.IsParallel())
   {
@@ -276,7 +276,7 @@ inline ClosestPair GetClosestValueToOtherParallel(
     const Eigen::MatrixXd& distance_matrix,
     const std::vector<std::vector<int64_t>>& clusters,
     const ClusterStrategy strategy,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   std::vector<ClosestPair> per_thread_closest_value_other(
       static_cast<size_t>(parallelism.GetNumThreads()), ClosestPair());
@@ -434,7 +434,7 @@ inline ClosestPair GetClosestValueToOther(
     const Eigen::MatrixXd& distance_matrix,
     const std::vector<std::vector<int64_t>>& clusters,
     const ClusterStrategy strategy,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   if (parallelism.IsParallel())
   {
@@ -459,7 +459,7 @@ inline ClosestPair GetClosestPair(
     const Eigen::MatrixXd& distance_matrix,
     const std::vector<std::vector<int64_t>>& clusters,
     const ClusterStrategy strategy,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   const ClosestPair closest_value_to_other = GetClosestValueToOther(
       datapoint_mask, distance_matrix, clusters, strategy, parallelism);
@@ -520,7 +520,7 @@ using IndexClusteringResult = ClusteringResult<int64_t, std::vector<int64_t>>;
 inline IndexClusteringResult IndexClusterWithDistanceMatrix(
     const Eigen::MatrixXd& distance_matrix, const double max_cluster_distance,
     const ClusterStrategy strategy,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   if (distance_matrix.rows() != distance_matrix.cols())
   {
@@ -650,7 +650,7 @@ template<typename DataType, typename Container=std::vector<DataType>>
 ClusteringResult<DataType, Container> ClusterWithDistanceMatrix(
     const Container& data, const Eigen::MatrixXd& distance_matrix,
     const double max_cluster_distance, const ClusterStrategy strategy,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   // Safety check the input
   if (data.empty())
@@ -680,7 +680,7 @@ IndexClusteringResult IndexCluster(
     const Container& data,
     const std::function<double(const DataType&, const DataType&)>& distance_fn,
     const double max_cluster_distance, const ClusterStrategy strategy,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   const Eigen::MatrixXd distance_matrix
       = math::BuildPairwiseDistanceMatrix<DataType, Container>(
@@ -699,7 +699,7 @@ ClusteringResult<DataType, Container> Cluster(
     const Container& data,
     const std::function<double(const DataType&, const DataType&)>& distance_fn,
     const double max_cluster_distance, const ClusterStrategy strategy,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   const Eigen::MatrixXd distance_matrix
       = math::BuildPairwiseDistanceMatrix<DataType, Container>(

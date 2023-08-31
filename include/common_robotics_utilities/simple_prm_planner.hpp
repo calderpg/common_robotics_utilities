@@ -11,7 +11,7 @@
 
 #include <common_robotics_utilities/cru_namespace.hpp>
 #include <common_robotics_utilities/maybe.hpp>
-#include <common_robotics_utilities/openmp_helpers.hpp>
+#include <common_robotics_utilities/parallelism.hpp>
 #include <common_robotics_utilities/simple_graph.hpp>
 #include <common_robotics_utilities/simple_graph_search.hpp>
 #include <common_robotics_utilities/simple_knearest_neighbors.hpp>
@@ -60,7 +60,7 @@ inline int64_t AddNodeToRoadmap(
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const int64_t K,
     const int64_t max_node_index_for_knn,
-    const openmp_helpers::DegreeOfParallelism& parallelism,
+    const parallelism::DegreeOfParallelism& parallelism,
     const bool connection_is_symmetric,
     const bool add_duplicate_states)
 {
@@ -222,7 +222,7 @@ inline std::map<std::string, double> GrowRoadMap(
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const std::function<bool(const int64_t)>& termination_check_fn,
     const int64_t K,
-    const openmp_helpers::DegreeOfParallelism& parallelism,
+    const parallelism::DegreeOfParallelism& parallelism,
     const bool connection_is_symmetric = true,
     const bool add_duplicate_states = false)
 {
@@ -300,7 +300,7 @@ GraphType BuildRoadMap(
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const int64_t K,
     const int32_t max_valid_sample_tries,
-    const openmp_helpers::DegreeOfParallelism& parallelism,
+    const parallelism::DegreeOfParallelism& parallelism,
     const bool use_parallel_sampling = true,
     const bool connection_is_symmetric = true,
     const bool add_duplicate_states = false)
@@ -368,7 +368,7 @@ GraphType BuildRoadMap(
   // Sample roadmap_size valid configurations. This can only be parallelized if
   // add_duplicate_states is true, since the check for duplicate states would
   // be a race condition otherwise, and if parallelization is generally enabled.
-  auto sampling_parallelism = openmp_helpers::DegreeOfParallelism::None();
+  auto sampling_parallelism = parallelism::DegreeOfParallelism::None();
   if (use_parallel_sampling && add_duplicate_states)
   {
     sampling_parallelism = parallelism;
@@ -415,7 +415,7 @@ GraphType BuildRoadMap(
         simple_knearest_neighbors::GetKNearestNeighbors(
             simple_graph::GraphKNNAdapter<GraphType>(roadmap), state,
             roadmap_to_state_distance_fn, K + 1,
-            openmp_helpers::DegreeOfParallelism::None());
+            parallelism::DegreeOfParallelism::None());
 
     for (const auto& neighbor : nearest_neighbors)
     {
@@ -521,7 +521,7 @@ inline void UpdateRoadMapEdges(
     GraphType& roadmap,
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const std::function<double(const T&, const T&)>& distance_fn,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   if (roadmap.CheckGraphLinkage() == false)
   {
@@ -621,7 +621,7 @@ LazyQueryPathAndAddNodes(
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const int64_t K,
-    const openmp_helpers::DegreeOfParallelism& parallelism,
+    const parallelism::DegreeOfParallelism& parallelism,
     const bool connection_is_symmetric = true,
     const bool add_duplicate_states = false,
     const bool limit_astar_pqueue_duplicates = true)
@@ -700,7 +700,7 @@ QueryPathAndAddNodes(
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const int64_t K,
-    const openmp_helpers::DegreeOfParallelism& parallelism,
+    const parallelism::DegreeOfParallelism& parallelism,
     const bool connection_is_symmetric = true,
     const bool add_duplicate_states = false,
     const bool limit_astar_pqueue_duplicates = true)
@@ -782,7 +782,7 @@ LazyQueryPath(
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const int64_t K,
-    const openmp_helpers::DegreeOfParallelism& parallelism,
+    const parallelism::DegreeOfParallelism& parallelism,
     const bool connection_is_symmetric = true,
     const bool add_duplicate_states = false,
     const bool limit_astar_pqueue_duplicates = true,
@@ -841,7 +841,7 @@ QueryPath(
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
     const int64_t K,
-    const openmp_helpers::DegreeOfParallelism& parallelism,
+    const parallelism::DegreeOfParallelism& parallelism,
     const bool connection_is_symmetric = true,
     const bool add_duplicate_states = false,
     const bool limit_astar_pqueue_duplicates = true,

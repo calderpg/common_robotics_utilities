@@ -1612,7 +1612,7 @@ RRTNearestNeighborFunction<StateType, TreeType, SampleType>
 MakeLinearRRTNearestNeighborsFunction(
     const std::function<double(const StateType&,
                                const SampleType&)>& distance_fn,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   RRTNearestNeighborFunction<StateType, TreeType, SampleType>
       nearest_neighbors_function = [=] (
@@ -1652,7 +1652,7 @@ RRTNearestNeighborFunction<StateType, TreeType, StateType>
 MakeKinematicLinearRRTNearestNeighborsFunction(
     const std::function<double(const StateType&,
                                const StateType&)>& distance_fn,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   return MakeLinearRRTNearestNeighborsFunction<StateType, TreeType, StateType>(
       distance_fn, parallelism);
@@ -1669,7 +1669,7 @@ BiRRTNearestNeighborFunction<StateType, TreeType>
 MakeKinematicLinearBiRRTNearestNeighborsFunction(
     const std::function<double(const StateType&,
                                const StateType&)>& distance_fn,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   BiRRTNearestNeighborFunction<StateType, TreeType> nearest_neighbors_function
       = [=] (

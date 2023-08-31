@@ -10,7 +10,7 @@
 
 #include <Eigen/Geometry>
 #include <common_robotics_utilities/cru_namespace.hpp>
-#include <common_robotics_utilities/openmp_helpers.hpp>
+#include <common_robotics_utilities/parallelism.hpp>
 #include <common_robotics_utilities/print.hpp>
 #include <common_robotics_utilities/serialization.hpp>
 #include <common_robotics_utilities/utility.hpp>
@@ -426,7 +426,7 @@ template<typename InputGraphType, typename OutputGraphType=InputGraphType>
 OutputGraphType PruneGraph(
     const InputGraphType& graph,
     const std::unordered_set<int64_t>& nodes_to_prune,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   // By making a sorted copy of the indices in nodes_to_prune, the two
   // for-loops that update edge to/from indices can terminate early once the
@@ -664,7 +664,7 @@ public:
 
   GraphType MakePrunedCopy(
       const std::unordered_set<int64_t>& nodes_to_prune,
-      const openmp_helpers::DegreeOfParallelism& parallelism) const
+      const parallelism::DegreeOfParallelism& parallelism) const
   {
     return PruneGraph<GraphType, GraphType>(
         *this, nodes_to_prune, parallelism);

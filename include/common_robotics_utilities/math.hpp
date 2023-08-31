@@ -7,7 +7,7 @@
 
 #include <Eigen/Geometry>
 #include <common_robotics_utilities/cru_namespace.hpp>
-#include <common_robotics_utilities/openmp_helpers.hpp>
+#include <common_robotics_utilities/parallelism.hpp>
 
 namespace common_robotics_utilities
 {
@@ -533,7 +533,7 @@ template<typename DataType, typename Container=std::vector<DataType>>
 Eigen::MatrixXd BuildPairwiseDistanceMatrix(
     const Container& data,
     const std::function<double(const DataType&, const DataType&)>& distance_fn,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   Eigen::MatrixXd distance_matrix(data.size(), data.size());
 
@@ -569,7 +569,7 @@ Eigen::MatrixXd BuildPairwiseDistanceMatrix(
     const FirstContainer& data1, const SecondContainer& data2,
     const std::function<double(const FirstDataType&,
                                const SecondDataType&)>& distance_fn,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   Eigen::MatrixXd distance_matrix(data1.size(), data2.size());
 

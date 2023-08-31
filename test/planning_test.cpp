@@ -279,11 +279,11 @@ Waypoint SampleWaypoint(
 }
 
 class PlanningTestSuite
-    : public testing::TestWithParam<openmp_helpers::DegreeOfParallelism> {};
+    : public testing::TestWithParam<parallelism::DegreeOfParallelism> {};
 
 TEST_P(PlanningTestSuite, Test)
 {
-  const openmp_helpers::DegreeOfParallelism parallelism = GetParam();
+  const parallelism::DegreeOfParallelism parallelism = GetParam();
   std::cout << "# of threads = " << parallelism.GetNumThreads() << std::endl;
 
   const std::string test_env_raw = "####################"
@@ -799,7 +799,7 @@ TEST_P(PlanningTestSuite, Test)
 
 INSTANTIATE_TEST_SUITE_P(
     SerialPlanningTest, PlanningTestSuite,
-    testing::Values(openmp_helpers::DegreeOfParallelism::None()));
+    testing::Values(parallelism::DegreeOfParallelism::None()));
 
 // For fallback testing on platforms with no OpenMP support, specify 2 threads.
 int32_t GetNumThreads()
@@ -816,7 +816,7 @@ int32_t GetNumThreads()
 
 INSTANTIATE_TEST_SUITE_P(
     ParallelPlanningTest, PlanningTestSuite,
-    testing::Values(openmp_helpers::DegreeOfParallelism(GetNumThreads())));
+    testing::Values(parallelism::DegreeOfParallelism(GetNumThreads())));
 }  // namespace
 }  // namespace common_robotics_utilities
 

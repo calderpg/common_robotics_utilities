@@ -10,7 +10,7 @@
 #include <common_robotics_utilities/simple_hierarchical_clustering.hpp>
 #include <common_robotics_utilities/simple_kmeans_clustering.hpp>
 
-using common_robotics_utilities::openmp_helpers::DegreeOfParallelism;
+using common_robotics_utilities::parallelism::DegreeOfParallelism;
 using PointVector = common_robotics_utilities::math::VectorVector4d;
 using IndexClusteringResult
     = common_robotics_utilities::simple_hierarchical_clustering

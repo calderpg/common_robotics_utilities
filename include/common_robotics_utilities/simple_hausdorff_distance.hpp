@@ -8,7 +8,7 @@
 
 #include <Eigen/Geometry>
 #include <common_robotics_utilities/cru_namespace.hpp>
-#include <common_robotics_utilities/openmp_helpers.hpp>
+#include <common_robotics_utilities/parallelism.hpp>
 
 namespace common_robotics_utilities
 {
@@ -37,7 +37,7 @@ inline double ComputeDistanceParallel(
     const SecondContainer& second_distribution,
     const std::function<double(const FirstDatatype&,
                                const SecondDatatype&)>& distance_fn,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   if (first_distribution.empty())
   {
@@ -138,7 +138,7 @@ inline double ComputeDistanceParallel(
     const FirstContainer& first_distribution,
     const SecondContainer& second_distribution,
     const Eigen::MatrixXd& distance_matrix,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   if (first_distribution.empty())
   {
@@ -252,7 +252,7 @@ inline double ComputeDistance(
     const SecondContainer& second_distribution,
     const std::function<double(const FirstDatatype&,
                                const SecondDatatype&)>& distance_fn,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   if (parallelism.IsParallel())
   {
@@ -284,7 +284,7 @@ inline double ComputeDistance(
     const FirstContainer& first_distribution,
     const SecondContainer& second_distribution,
     const Eigen::MatrixXd& distance_matrix,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   if (parallelism.IsParallel())
   {

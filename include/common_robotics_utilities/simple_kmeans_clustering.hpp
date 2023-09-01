@@ -34,15 +34,24 @@ std::vector<int32_t> PerformSingleClusteringIteration(
 {
   std::vector<int32_t> new_cluster_labels(data.size());
 
-  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
-  for (size_t idx = 0; idx < data.size(); idx++)
+  const auto per_thread_work = [&](
+      const parallelism::ThreadWorkRange& work_range)
   {
-    const DataType& datapoint = data.at(idx);
-    const int64_t closest_cluster_index
-        = simple_knearest_neighbors::GetKNearestNeighborsSerial(
-            current_cluster_centers, datapoint, distance_fn, 1).at(0).Index();
-    new_cluster_labels.at(idx) = static_cast<int32_t>(closest_cluster_index);
+    for (size_t idx = static_cast<size_t>(work_range.GetRangeStart());
+         idx < static_cast<size_t>(work_range.GetRangeEnd());
+         idx++)
+    {
+      const DataType& datapoint = data.at(idx);
+      const int64_t closest_cluster_index
+          = simple_knearest_neighbors::GetKNearestNeighborsSerial(
+              current_cluster_centers, datapoint, distance_fn, 1).at(0).Index();
+      new_cluster_labels.at(idx) = static_cast<int32_t>(closest_cluster_index);
+    }
   };
+
+  parallelism::StaticParallelForLoop(
+      parallelism, 0, static_cast<int64_t>(data.size()),
+      per_thread_work, parallelism::ParallelForBackend::BEST_AVAILABLE);
 
   return new_cluster_labels;
 }
@@ -84,15 +93,24 @@ Container ComputeClusterCentersWeighted(
     // Compute the center of each cluster
     Container cluster_centers(static_cast<size_t>(num_clusters));
 
-    CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
-    for (size_t cluster = 0; cluster < clustered_data.size(); cluster++)
+    const auto per_thread_work = [&](
+        const parallelism::ThreadWorkRange& work_range)
     {
-      const Container& cluster_data = clustered_data.at(cluster);
-      const std::vector<double>& cluster_data_weights
-          = clustered_data_weights.at(cluster);
-      cluster_centers.at(cluster)
-          = weighted_average_fn(cluster_data, cluster_data_weights);
+      for (size_t cluster = static_cast<size_t>(work_range.GetRangeStart());
+           cluster < static_cast<size_t>(work_range.GetRangeEnd());
+           cluster++)
+      {
+        const Container& cluster_data = clustered_data.at(cluster);
+        const std::vector<double>& cluster_data_weights
+            = clustered_data_weights.at(cluster);
+        cluster_centers.at(cluster)
+            = weighted_average_fn(cluster_data, cluster_data_weights);
+      }
     };
+
+    parallelism::StaticParallelForLoop(
+        parallelism, 0, static_cast<int64_t>(clustered_data.size()),
+        per_thread_work, parallelism::ParallelForBackend::BEST_AVAILABLE);
 
     return cluster_centers;
   }

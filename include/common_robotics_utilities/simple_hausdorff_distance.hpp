@@ -51,26 +51,36 @@ inline double ComputeDistanceParallel(
   // Make per-thread storage
   std::vector<double> per_thread_storage(
       static_cast<size_t>(parallelism.GetNumThreads()), 0.0);
-  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
-  for (size_t idx = 0; idx < first_distribution.size(); idx++)
+
+  const auto per_thread_work = [&](
+    const parallelism::ThreadWorkRange& work_range)
   {
-    const FirstDatatype& first = first_distribution[idx];
-    double minimum_distance = std::numeric_limits<double>::infinity();
-    for (size_t jdx = 0; jdx < second_distribution.size(); jdx++)
+    for (size_t idx = static_cast<size_t>(work_range.GetRangeStart());
+         idx < static_cast<size_t>(work_range.GetRangeEnd());
+         idx++)
     {
-      const SecondDatatype& second = second_distribution[jdx];
-      const double current_distance = distance_fn(first, second);
-      if (current_distance < minimum_distance)
+      const FirstDatatype& first = first_distribution[idx];
+      double minimum_distance = std::numeric_limits<double>::infinity();
+      for (size_t jdx = 0; jdx < second_distribution.size(); jdx++)
       {
-        minimum_distance = current_distance;
+        const SecondDatatype& second = second_distribution[jdx];
+        const double current_distance = distance_fn(first, second);
+        if (current_distance < minimum_distance)
+        {
+          minimum_distance = current_distance;
+        }
+      }
+      if (minimum_distance > per_thread_storage.at(work_range.GetThreadNum()))
+      {
+        per_thread_storage.at(work_range.GetThreadNum()) = minimum_distance;
       }
     }
-    const auto current_thread_id = openmp_helpers::GetContextOmpThreadNum();
-    if (minimum_distance > per_thread_storage.at(current_thread_id))
-    {
-      per_thread_storage.at(current_thread_id) = minimum_distance;
-    }
-  }
+  };
+
+  parallelism::StaticParallelForLoop(
+      parallelism, 0, static_cast<int64_t>(first_distribution.size()),
+      per_thread_work, parallelism::ParallelForBackend::BEST_AVAILABLE);
+
   double maximum_minimum_distance = 0.0;
   for (const double& temp_minimum_distance : per_thread_storage)
   {
@@ -79,6 +89,7 @@ inline double ComputeDistanceParallel(
       maximum_minimum_distance = temp_minimum_distance;
     }
   }
+
   return maximum_minimum_distance;
 }
 
@@ -103,6 +114,7 @@ inline double ComputeDistanceSerial(
   {
     throw std::invalid_argument("second_distribution is empty");
   }
+
   double maximum_minimum_distance = 0.0;
   for (size_t idx = 0; idx < first_distribution.size(); idx++)
   {
@@ -122,6 +134,7 @@ inline double ComputeDistanceSerial(
       maximum_minimum_distance = minimum_distance;
     }
   }
+
   return maximum_minimum_distance;
 }
 
@@ -158,24 +171,34 @@ inline double ComputeDistanceParallel(
   // Make per-thread storage
   std::vector<double> per_thread_storage(
       static_cast<size_t>(parallelism.GetNumThreads()), 0.0);
-  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
-  for (size_t idx = 0; idx < first_distribution.size(); idx++)
+
+  const auto per_thread_work = [&](
+    const parallelism::ThreadWorkRange& work_range)
   {
-    double minimum_distance = std::numeric_limits<double>::infinity();
-    for (size_t jdx = 0; jdx < second_distribution.size(); jdx++)
+    for (size_t idx = static_cast<size_t>(work_range.GetRangeStart());
+         idx < static_cast<size_t>(work_range.GetRangeEnd());
+         idx++)
     {
-      const double current_distance = distance_matrix(idx, jdx);
-      if (current_distance < minimum_distance)
+      double minimum_distance = std::numeric_limits<double>::infinity();
+      for (size_t jdx = 0; jdx < second_distribution.size(); jdx++)
       {
-        minimum_distance = current_distance;
+        const double current_distance = distance_matrix(idx, jdx);
+        if (current_distance < minimum_distance)
+        {
+          minimum_distance = current_distance;
+        }
+      }
+      if (minimum_distance > per_thread_storage.at(work_range.GetThreadNum()))
+      {
+        per_thread_storage.at(work_range.GetThreadNum()) = minimum_distance;
       }
     }
-    const auto current_thread_id = openmp_helpers::GetContextOmpThreadNum();
-    if (minimum_distance > per_thread_storage.at(current_thread_id))
-    {
-      per_thread_storage.at(current_thread_id) = minimum_distance;
-    }
-  }
+  };
+
+  parallelism::StaticParallelForLoop(
+      parallelism, 0, static_cast<int64_t>(first_distribution.size()),
+      per_thread_work, parallelism::ParallelForBackend::BEST_AVAILABLE);
+
   double maximum_minimum_distance = 0.0;
   for (const double& temp_minimum_distance : per_thread_storage)
   {
@@ -184,6 +207,7 @@ inline double ComputeDistanceParallel(
       maximum_minimum_distance = temp_minimum_distance;
     }
   }
+
   return maximum_minimum_distance;
 }
 
@@ -213,6 +237,7 @@ inline double ComputeDistanceSerial(
   {
     throw std::invalid_argument("distance_matrix is the wrong size");
   }
+
   double maximum_minimum_distance = 0.0;
   for (size_t idx = 0; idx < first_distribution.size(); idx++)
   {
@@ -232,6 +257,7 @@ inline double ComputeDistanceSerial(
       maximum_minimum_distance = minimum_distance;
     }
   }
+
   return maximum_minimum_distance;
 }
 }  // namespace internal

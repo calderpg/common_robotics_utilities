@@ -322,8 +322,8 @@ TEST_P(PlanningTestSuite, Test)
       = {Waypoint(1, 1), Waypoint(18, 18), Waypoint(7, 13), Waypoint(9, 5)};
 
   // Bind helper functions used by multiple planners
-  const std::function<bool(const Waypoint&)> check_state_validity_fn
-      = [&] (const Waypoint& waypoint)
+  const std::function<bool(const int32_t, const Waypoint&)>
+      check_state_validity_fn = [&] (const int32_t, const Waypoint& waypoint)
   {
     return CheckWaypointCollisionFree(test_env, waypoint);
   };
@@ -337,7 +337,23 @@ TEST_P(PlanningTestSuite, Test)
             CheckEdgeCollisionFree(test_env, end, start, 0.5));
   };
 
+  const std::function<bool(const int32_t, const Waypoint&, const Waypoint&)>
+      prm_check_edge_validity_fn = [&] (
+          const int32_t, const Waypoint& start, const Waypoint& end)
+  {
+    // We check both forward and backward because rounding in the waypoint
+    // interpolation can create edges that are valid in only one direction.
+    return (CheckEdgeCollisionFree(test_env, start, end, 0.5) &&
+            CheckEdgeCollisionFree(test_env, end, start, 0.5));
+  };
+
   const std::function<Waypoint(void)> state_sampling_fn = [&] (void)
+  {
+    return SampleWaypoint(test_env, uniform_unit_real_fn);
+  };
+
+  const std::function<Waypoint(const int32_t)> prm_state_sampling_fn =
+      [&] (const int32_t)
   {
     return SampleWaypoint(test_env, uniform_unit_real_fn);
   };
@@ -444,13 +460,13 @@ TEST_P(PlanningTestSuite, Test)
   };
   simple_graph::Graph<Waypoint> grown_roadmap;
   simple_prm_planner::GrowRoadMap<Waypoint>(
-      grown_roadmap, state_sampling_fn, WaypointDistance,
-      check_state_validity_fn, check_edge_validity_fn,
+      grown_roadmap, prm_state_sampling_fn, WaypointDistance,
+      check_state_validity_fn, prm_check_edge_validity_fn,
       grown_roadmap_termination_fn, K, parallelism, true, false);
   ASSERT_TRUE(grown_roadmap.CheckGraphLinkage());
   std::cout << "Roadmap grown" << std::endl;
   simple_prm_planner::UpdateRoadMapEdges<Waypoint>(
-      grown_roadmap, check_edge_validity_fn, WaypointDistance, parallelism);
+      grown_roadmap, prm_check_edge_validity_fn, WaypointDistance, parallelism);
   ASSERT_TRUE(grown_roadmap.CheckGraphLinkage());
   std::cout << "Roadmap (grown) updated" << std::endl;
 
@@ -458,13 +474,13 @@ TEST_P(PlanningTestSuite, Test)
   const int64_t built_roadmap_size = 100;
   simple_graph::Graph<Waypoint> built_roadmap =
       simple_prm_planner::BuildRoadMap<Waypoint, simple_graph::Graph<Waypoint>>(
-      built_roadmap_size, state_sampling_fn, WaypointDistance,
-      check_state_validity_fn, check_edge_validity_fn, K, 100, parallelism,
+      built_roadmap_size, prm_state_sampling_fn, WaypointDistance,
+      check_state_validity_fn, prm_check_edge_validity_fn, K, 100, parallelism,
       true, false, false);
   ASSERT_TRUE(built_roadmap.CheckGraphLinkage());
   std::cout << "Roadmap built" << std::endl;
   simple_prm_planner::UpdateRoadMapEdges<Waypoint>(
-      built_roadmap, check_edge_validity_fn, WaypointDistance, parallelism);
+      built_roadmap, prm_check_edge_validity_fn, WaypointDistance, parallelism);
   ASSERT_TRUE(built_roadmap.CheckGraphLinkage());
   std::cout << "Roadmap (built) updated" << std::endl;
 
@@ -592,7 +608,7 @@ TEST_P(PlanningTestSuite, Test)
         const auto grown_path =
             simple_prm_planner::QueryPath<Waypoint, WaypointVector>(
                 {start}, {goal}, loaded_grown_roadmap, WaypointDistance,
-                check_edge_validity_fn, K, parallelism, true, false, true)
+                prm_check_edge_validity_fn, K, parallelism, true, false, true)
                 .Path();
         check_plan(test_env, {start}, {goal}, grown_path);
 
@@ -602,7 +618,7 @@ TEST_P(PlanningTestSuite, Test)
         const auto lazy_grown_path =
             simple_prm_planner::LazyQueryPath<Waypoint, WaypointVector>(
                 {start}, {goal}, loaded_grown_roadmap, WaypointDistance,
-                check_edge_validity_fn, K, parallelism, true, false, true)
+                prm_check_edge_validity_fn, K, parallelism, true, false, true)
                 .Path();
         check_plan(test_env, {start}, {goal}, lazy_grown_path);
 
@@ -612,7 +628,7 @@ TEST_P(PlanningTestSuite, Test)
         const auto built_path =
             simple_prm_planner::QueryPath<Waypoint, WaypointVector>(
                 {start}, {goal}, loaded_built_roadmap, WaypointDistance,
-                check_edge_validity_fn, K, parallelism, true, false, true)
+                prm_check_edge_validity_fn, K, parallelism, true, false, true)
                 .Path();
         check_plan(test_env, {start}, {goal}, built_path);
 
@@ -622,7 +638,7 @@ TEST_P(PlanningTestSuite, Test)
         const auto lazy_built_path =
             simple_prm_planner::LazyQueryPath<Waypoint, WaypointVector>(
                 {start}, {goal}, loaded_built_roadmap, WaypointDistance,
-                check_edge_validity_fn, K, parallelism, true, false, true)
+                prm_check_edge_validity_fn, K, parallelism, true, false, true)
                 .Path();
         check_plan(test_env, {start}, {goal}, lazy_built_path);
 
@@ -729,13 +745,13 @@ TEST_P(PlanningTestSuite, Test)
             << " to " << print::Print(goals) << ")" << std::endl;
   const auto grown_multi_path = simple_prm_planner::QueryPath<Waypoint>(
       starts, goals, loaded_grown_roadmap, WaypointDistance,
-      check_edge_validity_fn, K, parallelism, true, false, true).Path();
+      prm_check_edge_validity_fn, K, parallelism, true, false, true).Path();
   check_plan(test_env, starts, goals, grown_multi_path);
   std::cout << "Multi start/goal PRM (built) Path (" << print::Print(starts)
             << " to " << print::Print(goals) << ")" << std::endl;
   const auto built_multi_path = simple_prm_planner::QueryPath<Waypoint>(
       starts, goals, loaded_built_roadmap, WaypointDistance,
-      check_edge_validity_fn, K, parallelism, true, false, true).Path();
+      prm_check_edge_validity_fn, K, parallelism, true, false, true).Path();
   check_plan(test_env, starts, goals, built_multi_path);
 
   // Plan with multi-start/multi-goal BiRRT-Connect

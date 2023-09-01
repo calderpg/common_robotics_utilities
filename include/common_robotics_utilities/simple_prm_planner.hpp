@@ -57,7 +57,8 @@ inline int64_t AddNodeToRoadmap(
     const NNDistanceDirection nn_distance_direction,
     GraphType& roadmap,
     const std::function<double(const T&, const T&)>& distance_fn,
-    const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
+    const std::function<bool(const int32_t, const T&, const T&)>&
+        edge_validity_check_fn,
     const int64_t K,
     const int64_t max_node_index_for_knn,
     const parallelism::DegreeOfParallelism& parallelism,
@@ -111,56 +112,65 @@ inline int64_t AddNodeToRoadmap(
   std::vector<std::pair<double, double>> nearest_neighbors_distances(
       nearest_neighbors.size());
 
-  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
-  for (size_t idx = 0; idx < nearest_neighbors.size(); idx++)
+  const auto per_thread_work = [&](
+      const parallelism::ThreadWorkRange& work_range)
   {
-    const auto& nearest_neighbor = nearest_neighbors.at(idx);
-    const int64_t nearest_neighbor_index = nearest_neighbor.Index();
-    const double graph_to_node_distance = nearest_neighbor.Distance();
-    const T& nearest_neighbor_state
-        = roadmap.GetNodeImmutable(nearest_neighbor_index).GetValueImmutable();
-    const bool graph_to_node_edge_validity
-        = edge_validity_check_fn(nearest_neighbor_state, state);
-    if (graph_to_node_edge_validity && connection_is_symmetric)
+    for (size_t idx = static_cast<size_t>(work_range.GetRangeStart());
+         idx < static_cast<size_t>(work_range.GetRangeEnd());
+         idx++)
     {
-      // Distance is symmetric and the edge is valid
-      nearest_neighbors_distances.at(idx)
-          = std::make_pair(graph_to_node_distance,
-                           graph_to_node_distance);
-    }
-    else if (!connection_is_symmetric)
-    {
-      const bool node_to_graph_edge_validity
-          = edge_validity_check_fn(state, nearest_neighbor_state);
-      const double node_to_graph_distance
-          = distance_fn(state,
-                        roadmap.GetNodeImmutable(nearest_neighbor_index)
-                            .GetValueImmutable());
-      // We use -1 as a signaling value of an infeasible edge
-      const double real_graph_to_node_distance
-          = (graph_to_node_edge_validity) ? graph_to_node_distance : -1.0;
-      const double real_node_to_graph_distance
-          = (node_to_graph_edge_validity) ? node_to_graph_distance : -1.0;
-      // Set the distance values depending on direction
-      if (nn_distance_direction == NNDistanceDirection::ROADMAP_TO_NEW_STATE)
+      const auto& nearest_neighbor = nearest_neighbors.at(idx);
+      const int64_t nearest_neighbor_index = nearest_neighbor.Index();
+      const double graph_to_node_distance = nearest_neighbor.Distance();
+      const T& nearest_neighbor_state = roadmap.GetNodeImmutable(
+          nearest_neighbor_index).GetValueImmutable();
+      const bool graph_to_node_edge_validity = edge_validity_check_fn(
+          work_range.GetThreadNum(),nearest_neighbor_state, state);
+      if (graph_to_node_edge_validity && connection_is_symmetric)
       {
+        // Distance is symmetric and the edge is valid
         nearest_neighbors_distances.at(idx)
-            = std::make_pair(real_graph_to_node_distance,
-                             real_node_to_graph_distance);
+            = std::make_pair(graph_to_node_distance,
+                             graph_to_node_distance);
+      }
+      else if (!connection_is_symmetric)
+      {
+        const bool node_to_graph_edge_validity = edge_validity_check_fn(
+            work_range.GetThreadNum(), state, nearest_neighbor_state);
+        const double node_to_graph_distance
+            = distance_fn(state,
+                          roadmap.GetNodeImmutable(nearest_neighbor_index)
+                              .GetValueImmutable());
+        // We use -1 as a signaling value of an infeasible edge
+        const double real_graph_to_node_distance
+            = (graph_to_node_edge_validity) ? graph_to_node_distance : -1.0;
+        const double real_node_to_graph_distance
+            = (node_to_graph_edge_validity) ? node_to_graph_distance : -1.0;
+        // Set the distance values depending on direction
+        if (nn_distance_direction == NNDistanceDirection::ROADMAP_TO_NEW_STATE)
+        {
+          nearest_neighbors_distances.at(idx)
+              = std::make_pair(real_graph_to_node_distance,
+                               real_node_to_graph_distance);
+        }
+        else
+        {
+          nearest_neighbors_distances.at(idx)
+              = std::make_pair(real_node_to_graph_distance,
+                               real_graph_to_node_distance);
+        }
       }
       else
       {
-        nearest_neighbors_distances.at(idx)
-            = std::make_pair(real_node_to_graph_distance,
-                             real_graph_to_node_distance);
+        // Distance is symmetric, but the edge is not valid!
+        nearest_neighbors_distances.at(idx) = std::make_pair(-1.0, -1.0);
       }
     }
-    else
-    {
-      // Distance is symmetric, but the edge is not valid!
-      nearest_neighbors_distances.at(idx) = std::make_pair(-1.0, -1.0);
-    }
   };
+
+  parallelism::StaticParallelForLoop(
+      parallelism, 0, static_cast<int64_t>(nearest_neighbors.size()),
+      per_thread_work, parallelism::ParallelForBackend::BEST_AVAILABLE);
 
   // THIS MUST BE SERIAL - add edges to roadmap
   for (size_t idx = 0; idx < nearest_neighbors.size(); idx++)
@@ -216,10 +226,11 @@ inline int64_t AddNodeToRoadmap(
 template<typename T, typename GraphType>
 inline std::map<std::string, double> GrowRoadMap(
     GraphType& roadmap,
-    const std::function<T(void)>& sampling_fn,
+    const std::function<T(const int32_t)>& sampling_fn,
     const std::function<double(const T&, const T&)>& distance_fn,
-    const std::function<bool(const T&)>& state_validity_check_fn,
-    const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
+    const std::function<bool(const int32_t, const T&)>& state_validity_check_fn,
+    const std::function<bool(const int32_t, const T&, const T&)>&
+        edge_validity_check_fn,
     const std::function<bool(const int64_t)>& termination_check_fn,
     const int64_t K,
     const parallelism::DegreeOfParallelism& parallelism,
@@ -236,9 +247,9 @@ inline std::map<std::string, double> GrowRoadMap(
       = std::chrono::steady_clock::now();
   while (!termination_check_fn(roadmap.Size()))
   {
-    const T random_state = sampling_fn();
+    const T random_state = sampling_fn(0);
     statistics["total_samples"] += 1.0;
-    if (state_validity_check_fn(random_state))
+    if (state_validity_check_fn(0, random_state))
     {
       const int64_t pre_size = roadmap.Size();
       AddNodeToRoadmap<T, GraphType>(
@@ -294,10 +305,11 @@ inline std::map<std::string, double> GrowRoadMap(
 template<typename T, typename GraphType>
 GraphType BuildRoadMap(
     const int64_t roadmap_size,
-    const std::function<T(void)>& sampling_fn,
+    const std::function<T(const int32_t)>& sampling_fn,
     const std::function<double(const T&, const T&)>& distance_fn,
-    const std::function<bool(const T&)>& state_validity_check_fn,
-    const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
+    const std::function<bool(const int32_t, const T&)>& state_validity_check_fn,
+    const std::function<bool(const int32_t, const T&, const T&)>&
+        edge_validity_check_fn,
     const int64_t K,
     const int32_t max_valid_sample_tries,
     const parallelism::DegreeOfParallelism& parallelism,
@@ -338,14 +350,14 @@ GraphType BuildRoadMap(
   // Define a helper function to sample valid states, or record that sampling
   // failed. This method can't throw, as throwing inside an OpenMP loop is not
   // recoverable.
-  const std::function<OwningMaybe<T>(void)> valid_sample_fn = [&](void)
+  const auto valid_sample_fn = [&](const int32_t thread_num)
   {
     int32_t tries = 0;
     while (tries < max_valid_sample_tries)
     {
       tries++;
-      const T sample = sampling_fn();
-      const bool state_valid = state_validity_check_fn(sample);
+      const T sample = sampling_fn(thread_num);
+      const bool state_valid = state_validity_check_fn(thread_num, sample);
       if (state_valid && add_duplicate_states)
       {
         return OwningMaybe<T>(sample);
@@ -374,11 +386,20 @@ GraphType BuildRoadMap(
     sampling_parallelism = parallelism;
   }
 
-  CRU_OMP_PARALLEL_FOR_DEGREE(sampling_parallelism)
-  for (size_t index = 0; index < roadmap_states.size(); index++)
+  const auto sampling_thread_work = [&](
+      const parallelism::ThreadWorkRange& work_range)
   {
-    roadmap_states.at(index) = valid_sample_fn();
-  }
+    for (size_t index = static_cast<size_t>(work_range.GetRangeStart());
+         index < static_cast<size_t>(work_range.GetRangeEnd());
+         index++)
+    {
+      roadmap_states.at(index) = valid_sample_fn(work_range.GetThreadNum());
+    }
+  };
+
+  parallelism::StaticParallelForLoop(
+      sampling_parallelism, 0, static_cast<int64_t>(roadmap_states.size()),
+      sampling_thread_work, parallelism::ParallelForBackend::BEST_AVAILABLE);
 
   // Populate the roadmap from the sampled valid configurations.
   GraphType roadmap(roadmap_size);
@@ -404,52 +425,62 @@ GraphType BuildRoadMap(
 
   // Perform edge validity and distance checks for all nodes, optionally in
   // parallel.
-  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
-  for (int64_t node_index = 0; node_index < roadmap.Size(); node_index++)
+  const auto connection_thread_work = [&](
+      const parallelism::ThreadWorkRange& work_range)
   {
-    auto& node = roadmap.GetNodeMutable(node_index);
-    const T& state = node.GetValueImmutable();
-
-    // Find K+1 nearest neighbors, since KNN will find the current node too.
-    const auto nearest_neighbors =
-        simple_knearest_neighbors::GetKNearestNeighbors(
-            simple_graph::GraphKNNAdapter<GraphType>(roadmap), state,
-            roadmap_to_state_distance_fn, K + 1,
-            parallelism::DegreeOfParallelism::None());
-
-    for (const auto& neighbor : nearest_neighbors)
+    for (int64_t node_index = work_range.GetRangeStart();
+         node_index < work_range.GetRangeEnd();
+         node_index++)
     {
-      const int64_t other_node_index = neighbor.Index();
-      // Don't try to connect the node to itself.
-      if (other_node_index != node_index)
+      auto& node = roadmap.GetNodeMutable(node_index);
+      const T& state = node.GetValueImmutable();
+
+      // Find K+1 nearest neighbors, since KNN will find the current node too.
+      const auto nearest_neighbors =
+          simple_knearest_neighbors::GetKNearestNeighbors(
+              simple_graph::GraphKNNAdapter<GraphType>(roadmap), state,
+              roadmap_to_state_distance_fn, K + 1,
+              parallelism::DegreeOfParallelism::None());
+
+      for (const auto& neighbor : nearest_neighbors)
       {
-        const T& other_state =
-            roadmap.GetNodeImmutable(other_node_index).GetValueImmutable();
-        const bool other_state_to_state_valid =
-            edge_validity_check_fn(other_state, state);
+        const int64_t other_node_index = neighbor.Index();
+        // Don't try to connect the node to itself.
+        if (other_node_index != node_index)
+        {
+          const T& other_state =
+              roadmap.GetNodeImmutable(other_node_index).GetValueImmutable();
+          const bool other_state_to_state_valid = edge_validity_check_fn(
+              work_range.GetThreadNum(), other_state, state);
 
-        if (other_state_to_state_valid)
-        {
-          const double distance = neighbor.Distance();
-          node.AddInEdge(typename GraphType::EdgeType(
-              other_node_index, node_index, distance));
-        }
+          if (other_state_to_state_valid)
+          {
+            const double distance = neighbor.Distance();
+            node.AddInEdge(typename GraphType::EdgeType(
+                other_node_index, node_index, distance));
+          }
 
-        if (connection_is_symmetric && other_state_to_state_valid)
-        {
-          const double distance = neighbor.Distance();
-          node.AddOutEdge(typename GraphType::EdgeType(
-              node_index, other_node_index, distance));
-        }
-        else if (edge_validity_check_fn(state, other_state))
-        {
-          const double distance = distance_fn(state, other_state);
-          node.AddOutEdge(typename GraphType::EdgeType(
-              node_index, other_node_index, distance));
+          if (connection_is_symmetric && other_state_to_state_valid)
+          {
+            const double distance = neighbor.Distance();
+            node.AddOutEdge(typename GraphType::EdgeType(
+                node_index, other_node_index, distance));
+          }
+          else if (edge_validity_check_fn(
+                       work_range.GetThreadNum(), state, other_state))
+          {
+            const double distance = distance_fn(state, other_state);
+            node.AddOutEdge(typename GraphType::EdgeType(
+                node_index, other_node_index, distance));
+          }
         }
       }
     }
-  }
+  };
+
+  parallelism::StaticParallelForLoop(
+      parallelism, 0, roadmap.Size(), connection_thread_work,
+      parallelism::ParallelForBackend::BEST_AVAILABLE);
 
   // Helpers for checking if an edge is present in another node.
   const auto has_in_edge_from = [](
@@ -519,7 +550,8 @@ GraphType BuildRoadMap(
 template<typename T, typename GraphType>
 inline void UpdateRoadMapEdges(
     GraphType& roadmap,
-    const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
+    const std::function<bool(const int32_t, const T&, const T&)>&
+        edge_validity_check_fn,
     const std::function<double(const T&, const T&)>& distance_fn,
     const parallelism::DegreeOfParallelism& parallelism)
 {
@@ -528,35 +560,45 @@ inline void UpdateRoadMapEdges(
     throw std::invalid_argument("Provided roadmap has invalid linkage");
   }
 
-  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
-  for (int64_t current_node_index = 0; current_node_index < roadmap.Size();
-       current_node_index++)
+  const auto per_thread_work = [&](
+      const parallelism::ThreadWorkRange& work_range)
   {
-    auto& current_node = roadmap.GetNodeMutable(current_node_index);
-    auto& current_node_out_edges = current_node.GetOutEdgesMutable();
-    for (auto& current_out_edge : current_node_out_edges)
+    for (int64_t current_node_index = work_range.GetRangeStart();
+         current_node_index < work_range.GetRangeEnd();
+         current_node_index++)
     {
-      const int64_t other_node_idx = current_out_edge.GetToIndex();
-      auto& other_node = roadmap.GetNodeMutable(other_node_idx);
-      auto& other_node_in_edges = other_node.GetInEdgesMutable();
-      const double updated_weight
-          = (edge_validity_check_fn(current_node.GetValueImmutable(),
-                                    other_node.GetValueImmutable()))
-            ? distance_fn(current_node.GetValueImmutable(),
-                          other_node.GetValueImmutable())
-            : std::numeric_limits<double>::infinity();
-      // Update our out edge
-      current_out_edge.SetWeight(updated_weight);
-      // Update the other node's in edges
-      for (auto& other_in_edge : other_node_in_edges)
+      auto& current_node = roadmap.GetNodeMutable(current_node_index);
+      auto& current_node_out_edges = current_node.GetOutEdgesMutable();
+      for (auto& current_out_edge : current_node_out_edges)
       {
-        if (other_in_edge.GetFromIndex() == current_node_index)
+        const int64_t other_node_idx = current_out_edge.GetToIndex();
+        auto& other_node = roadmap.GetNodeMutable(other_node_idx);
+        auto& other_node_in_edges = other_node.GetInEdgesMutable();
+        const double updated_weight
+            = (edge_validity_check_fn(
+                  work_range.GetThreadNum(),
+                  current_node.GetValueImmutable(),
+                  other_node.GetValueImmutable()))
+              ? distance_fn(current_node.GetValueImmutable(),
+                            other_node.GetValueImmutable())
+              : std::numeric_limits<double>::infinity();
+        // Update our out edge
+        current_out_edge.SetWeight(updated_weight);
+        // Update the other node's in edges
+        for (auto& other_in_edge : other_node_in_edges)
         {
-          other_in_edge.SetWeight(updated_weight);
+          if (other_in_edge.GetFromIndex() == current_node_index)
+          {
+            other_in_edge.SetWeight(updated_weight);
+          }
         }
       }
     }
   };
+
+  parallelism::StaticParallelForLoop(
+      parallelism, 0, roadmap.Size(), per_thread_work,
+      parallelism::ParallelForBackend::BEST_AVAILABLE);
 }
 
 /// Extracts the solution path from the roadmap.
@@ -619,7 +661,8 @@ LazyQueryPathAndAddNodes(
     const Container& goals,
     GraphType& roadmap,
     const std::function<double(const T&, const T&)>& distance_fn,
-    const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
+    const std::function<bool(const int32_t, const T&, const T&)>&
+        edge_validity_check_fn,
     const int64_t K,
     const parallelism::DegreeOfParallelism& parallelism,
     const bool connection_is_symmetric = true,
@@ -657,10 +700,15 @@ LazyQueryPathAndAddNodes(
         connection_is_symmetric, add_duplicate_states);
   }
   // Call graph A*
+  const std::function<bool(const T&, const T&)> astar_edge_validity_check_fn
+      = [&](const T& from, const T& to)
+  {
+    return edge_validity_check_fn(0, from, to);
+  };
   const auto astar_result =
       simple_graph_search::PerformLazyAstarSearch<T, GraphType>(
           roadmap, start_node_indices, goal_node_indices,
-          edge_validity_check_fn, distance_fn, distance_fn,
+          astar_edge_validity_check_fn, distance_fn, distance_fn,
           limit_astar_pqueue_duplicates);
   // Convert the solution path from A* provided as indices into real states
   return ExtractSolution<T, Container, GraphType>(roadmap, astar_result);
@@ -698,7 +746,8 @@ QueryPathAndAddNodes(
     const Container& goals,
     GraphType& roadmap,
     const std::function<double(const T&, const T&)>& distance_fn,
-    const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
+    const std::function<bool(const int32_t, const T&, const T&)>&
+        edge_validity_check_fn,
     const int64_t K,
     const parallelism::DegreeOfParallelism& parallelism,
     const bool connection_is_symmetric = true,
@@ -780,7 +829,8 @@ LazyQueryPath(
     const Container& goals,
     const GraphType& roadmap,
     const std::function<double(const T&, const T&)>& distance_fn,
-    const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
+    const std::function<bool(const int32_t, const T&, const T&)>&
+        edge_validity_check_fn,
     const int64_t K,
     const parallelism::DegreeOfParallelism& parallelism,
     const bool connection_is_symmetric = true,
@@ -839,7 +889,8 @@ QueryPath(
     const Container& goals,
     const GraphType& roadmap,
     const std::function<double(const T&, const T&)>& distance_fn,
-    const std::function<bool(const T&, const T&)>& edge_validity_check_fn,
+    const std::function<bool(const int32_t, const T&, const T&)>&
+        edge_validity_check_fn,
     const int64_t K,
     const parallelism::DegreeOfParallelism& parallelism,
     const bool connection_is_symmetric = true,

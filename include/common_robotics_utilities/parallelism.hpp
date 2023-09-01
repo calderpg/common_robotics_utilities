@@ -154,6 +154,14 @@ void StaticParallelForLoop(
     return;
   }
 
+  // If serial execution is specified, do that directly.
+  if (!parallelism.IsParallel())
+  {
+    const ThreadWorkRange full_range(range_start, range_end, 0);
+    functor(full_range);
+    return;
+  }
+
   // If there are fewer elements than the specified number of threads, don't
   // dispatch unnecessary threads.
   const int32_t real_num_threads = static_cast<int32_t>(std::min(
@@ -178,7 +186,7 @@ void StaticParallelForLoop(
 #endif
     for (int32_t thread_num = 0; thread_num < real_num_threads; thread_num++)
     {
-      thread_work(thread_num);
+      thread_work(openmp_helpers::GetContextOmpThreadNum());
     }
   }
   else
@@ -217,6 +225,14 @@ void DynamicParallelForLoop(
   const int64_t total_range = range_end - range_start;
   if (total_range == 0)
   {
+    return;
+  }
+
+  // If serial execution is specified, do that directly.
+  if (!parallelism.IsParallel())
+  {
+    const ThreadWorkRange full_range(range_start, range_end, 0);
+    functor(full_range);
     return;
   }
 
@@ -314,14 +330,3 @@ void DynamicParallelForLoop(
 }  // namespace openmp_helpers
 CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities
-
-/// Macro to stringify tokens for the purposes of the below macros.
-#define CRU_MACRO_STRINGIFY(s) #s
-
-/// Macros to declare OpenMP parallel for loops, handling conditionals as well
-/// as the case of OpenMP being disabled entirely.
-#if defined(_OPENMP)
-#define CRU_OMP_PARALLEL_FOR_DEGREE(degree) _Pragma(CRU_MACRO_STRINGIFY(omp parallel for num_threads((degree).GetNumThreads())))
-#else
-#define CRU_OMP_PARALLEL_FOR_DEGREE(degree) (void)(degree);
-#endif

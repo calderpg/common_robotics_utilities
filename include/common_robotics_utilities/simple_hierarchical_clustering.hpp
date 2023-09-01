@@ -126,56 +126,65 @@ inline ClosestPair GetClosestClustersParallel(
 {
   std::vector<ClosestPair> per_thread_closest_clusters(
       static_cast<size_t>(parallelism.GetNumThreads()), ClosestPair());
-  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
-  for (size_t first_cluster_idx = 0; first_cluster_idx < clusters.size();
-       first_cluster_idx++)
+
+  const auto per_thread_work = [&](
+      const parallelism::ThreadWorkRange& work_range)
   {
-    // Skip empty clusters
-    const std::vector<int64_t>& first_cluster = clusters.at(first_cluster_idx);
-    if (first_cluster.size() > 0)
+    for (size_t first_idx = static_cast<size_t>(work_range.GetRangeStart());
+         first_idx < static_cast<size_t>(work_range.GetRangeEnd());
+         first_idx++)
     {
-      // Only compare against remaining clusters
-      for (size_t second_cluster_idx = first_cluster_idx + 1;
-           second_cluster_idx < clusters.size();
-           second_cluster_idx++)
+      // Skip empty clusters
+      const std::vector<int64_t>& first_cluster = clusters.at(first_idx);
+      if (first_cluster.size() > 0)
       {
-        // Skip empty clusters
-        const std::vector<int64_t>& second_cluster
-            = clusters.at(second_cluster_idx);
-        if (second_cluster.size() > 0)
+        // Only compare against remaining clusters
+        for (size_t second_idx = first_idx + 1;
+             second_idx < clusters.size();
+             second_idx++)
         {
-          // Compute cluster-cluster distance
-          double minimum_distance = std::numeric_limits<double>::infinity();
-          double maximum_distance = 0.0;
-          for (const int64_t& cluster1_index : first_cluster)
+          // Skip empty clusters
+          const std::vector<int64_t>& second_cluster = clusters.at(second_idx);
+          if (second_cluster.size() > 0)
           {
-            for (const int64_t& cluster2_index : second_cluster)
+            // Compute cluster-cluster distance
+            double minimum_distance = std::numeric_limits<double>::infinity();
+            double maximum_distance = 0.0;
+            for (const int64_t& cluster1_index : first_cluster)
             {
-              const double distance = distance_matrix(
-                  static_cast<ssize_t>(cluster1_index),
-                  static_cast<ssize_t>(cluster2_index));
-              minimum_distance = std::min(minimum_distance, distance);
-              maximum_distance = std::max(maximum_distance, distance);
+              for (const int64_t& cluster2_index : second_cluster)
+              {
+                const double distance = distance_matrix(
+                    static_cast<ssize_t>(cluster1_index),
+                    static_cast<ssize_t>(cluster2_index));
+                minimum_distance = std::min(minimum_distance, distance);
+                maximum_distance = std::max(maximum_distance, distance);
+              }
             }
-          }
-          const double cluster_distance
-              = (strategy == ClusterStrategy::COMPLETE_LINK) ? maximum_distance
-                                                             : minimum_distance;
-          const size_t thread_num =
-              static_cast<size_t>(openmp_helpers::GetContextOmpThreadNum());
-          const double current_closest_distance
-              = per_thread_closest_clusters.at(thread_num).Distance();
-          if (cluster_distance < current_closest_distance)
-          {
-            per_thread_closest_clusters.at(thread_num)
-                = ClosestPair(Item(first_cluster_idx, true),
-                              Item(second_cluster_idx, true),
-                              cluster_distance);
+            const double cluster_distance
+                = (strategy == ClusterStrategy::COMPLETE_LINK)
+                    ? maximum_distance : minimum_distance;
+            const size_t thread_num =
+                static_cast<size_t>(work_range.GetThreadNum());
+            const double current_closest_distance
+                = per_thread_closest_clusters.at(thread_num).Distance();
+            if (cluster_distance < current_closest_distance)
+            {
+              per_thread_closest_clusters.at(thread_num)
+                  = ClosestPair(Item(first_idx, true),
+                                Item(second_idx, true),
+                                cluster_distance);
+            }
           }
         }
       }
     }
-  }
+  };
+
+  parallelism::StaticParallelForLoop(
+      parallelism, 0, static_cast<int64_t>(clusters.size()),
+      per_thread_work, parallelism::ParallelForBackend::BEST_AVAILABLE);
+
   ClosestPair closest_clusters;
   for (const ClosestPair& per_thread_closest_cluster_pair
        : per_thread_closest_clusters)
@@ -186,6 +195,7 @@ inline ClosestPair GetClosestClustersParallel(
       closest_clusters = per_thread_closest_cluster_pair;
     }
   }
+
   return closest_clusters;
 }
 
@@ -280,69 +290,81 @@ inline ClosestPair GetClosestValueToOtherParallel(
 {
   std::vector<ClosestPair> per_thread_closest_value_other(
       static_cast<size_t>(parallelism.GetNumThreads()), ClosestPair());
-  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
-  for (size_t value_idx = 0; value_idx < datapoint_mask.size(); value_idx++)
+
+  const auto per_thread_work = [&](
+      const parallelism::ThreadWorkRange& work_range)
   {
-    // Make sure we're not already clustered
-    if (datapoint_mask.at(value_idx) == 0x00)
+    for (size_t value_idx = static_cast<size_t>(work_range.GetRangeStart());
+         value_idx < static_cast<size_t>(work_range.GetRangeEnd());
+         value_idx++)
     {
-      const size_t thread_num =
-          static_cast<size_t>(openmp_helpers::GetContextOmpThreadNum());
-      // Check against other values
-      for (size_t other_value_idx = value_idx + 1;
-           other_value_idx < datapoint_mask.size(); other_value_idx++)
+      // Make sure we're not already clustered
+      if (datapoint_mask.at(value_idx) == 0x00)
       {
-        // Make sure it's not already clustered
-        if (datapoint_mask.at(other_value_idx) == 0x00)
+        const size_t thread_num =
+            static_cast<size_t>(work_range.GetThreadNum());
+        // Check against other values
+        for (size_t other_value_idx = value_idx + 1;
+             other_value_idx < datapoint_mask.size(); other_value_idx++)
         {
-          const double distance = distance_matrix(
-              static_cast<ssize_t>(value_idx),
-              static_cast<ssize_t>(other_value_idx));
-          const double current_closest_distance
-              = per_thread_closest_value_other.at(thread_num).Distance();
-          if (distance < current_closest_distance)
-          {
-            per_thread_closest_value_other.at(thread_num)
-                = ClosestPair(Item(value_idx, false),
-                              Item(other_value_idx, false),
-                              distance);
-          }
-        }
-      }
-      // Check against clusters
-      for (size_t cluster_idx = 0; cluster_idx < clusters.size(); cluster_idx++)
-      {
-        const std::vector<int64_t>& cluster = clusters.at(cluster_idx);
-        // Skip empty clusters
-        if (cluster.size() > 0)
-        {
-          // Compute cluster-cluster distance
-          double minimum_distance = std::numeric_limits<double>::infinity();
-          double maximum_distance = 0.0;
-          for (const int64_t& cluster_element_idx : cluster)
+          // Make sure it's not already clustered
+          if (datapoint_mask.at(other_value_idx) == 0x00)
           {
             const double distance = distance_matrix(
                 static_cast<ssize_t>(value_idx),
-                static_cast<ssize_t>(cluster_element_idx));
-            minimum_distance = std::min(minimum_distance, distance);
-            maximum_distance = std::max(maximum_distance, distance);
+                static_cast<ssize_t>(other_value_idx));
+            const double current_closest_distance
+                = per_thread_closest_value_other.at(thread_num).Distance();
+            if (distance < current_closest_distance)
+            {
+              per_thread_closest_value_other.at(thread_num)
+                  = ClosestPair(Item(value_idx, false),
+                                Item(other_value_idx, false),
+                                distance);
+            }
           }
-          const double cluster_distance
-              = (strategy == ClusterStrategy::COMPLETE_LINK) ? maximum_distance
-                                                             : minimum_distance;
-          const double current_closest_distance
-              = per_thread_closest_value_other.at(thread_num).Distance();
-          if (cluster_distance < current_closest_distance)
+        }
+        // Check against clusters
+        for (size_t cluster_idx = 0; cluster_idx < clusters.size();
+             cluster_idx++)
+        {
+          const std::vector<int64_t>& cluster = clusters.at(cluster_idx);
+          // Skip empty clusters
+          if (cluster.size() > 0)
           {
-            per_thread_closest_value_other.at(thread_num)
-                = ClosestPair(Item(value_idx, false),
-                              Item(cluster_idx, true),
-                              cluster_distance);
+            // Compute cluster-cluster distance
+            double minimum_distance = std::numeric_limits<double>::infinity();
+            double maximum_distance = 0.0;
+            for (const int64_t& cluster_element_idx : cluster)
+            {
+              const double distance = distance_matrix(
+                  static_cast<ssize_t>(value_idx),
+                  static_cast<ssize_t>(cluster_element_idx));
+              minimum_distance = std::min(minimum_distance, distance);
+              maximum_distance = std::max(maximum_distance, distance);
+            }
+            const double cluster_distance
+                = (strategy == ClusterStrategy::COMPLETE_LINK)
+                    ? maximum_distance : minimum_distance;
+            const double current_closest_distance
+                = per_thread_closest_value_other.at(thread_num).Distance();
+            if (cluster_distance < current_closest_distance)
+            {
+              per_thread_closest_value_other.at(thread_num)
+                  = ClosestPair(Item(value_idx, false),
+                                Item(cluster_idx, true),
+                                cluster_distance);
+            }
           }
         }
       }
     }
-  }
+  };
+
+  parallelism::StaticParallelForLoop(
+      parallelism, 0, static_cast<int64_t>(datapoint_mask.size()),
+      per_thread_work, parallelism::ParallelForBackend::BEST_AVAILABLE);
+
   ClosestPair closest_value_other;
   for (const ClosestPair& value_other : per_thread_closest_value_other)
   {
@@ -351,6 +373,7 @@ inline ClosestPair GetClosestValueToOtherParallel(
       closest_value_other = value_other;
     }
   }
+
   return closest_value_other;
 }
 

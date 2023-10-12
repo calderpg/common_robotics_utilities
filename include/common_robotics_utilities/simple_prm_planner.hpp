@@ -27,6 +27,15 @@ namespace simple_prm_planner
 /// function correctly.
 enum class NNDistanceDirection {ROADMAP_TO_NEW_STATE, NEW_STATE_TO_ROADMAP};
 
+template<typename T, typename GraphType>
+using GraphKNNFunction =
+    std::function<std::vector<simple_knearest_neighbors::IndexAndDistance>(
+        const GraphType&,  // Roadmap
+        const int64_t,  // K
+        const NNDistanceDirection,  // Which direction should KNN be performed?
+        const int64_t,  // Maximum node index in the roadmap to consider
+        const T&);  // Query state
+
 /// Attempt to add a single state as a new node to the roadmap.
 /// @param state new state to add.
 /// @param roadmap existing roadmap.
@@ -56,6 +65,7 @@ inline int64_t AddNodeToRoadmap(
     const T& state,
     const NNDistanceDirection nn_distance_direction,
     GraphType& roadmap,
+    const GraphKNNFunction& graph_knn_fn,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const int32_t, const T&, const T&)>&
         edge_validity_check_fn,
@@ -85,12 +95,14 @@ inline int64_t AddNodeToRoadmap(
     };
   }
 
-  // Call KNN with the distance function.
-  const auto nearest_neighbors =
       simple_knearest_neighbors::GetKNearestNeighbors(
           simple_graph::GraphKNNAdapter<GraphType>(
               roadmap, max_node_index_for_knn),
           state, graph_distance_fn, K, parallelism);
+
+  // Call graph KNN
+  const auto nearest_neighbors = graph_knn_fn(
+      roadmap, K, nn_distance_direction, max_node_index_for_knn, state);
 
   // Check if we already have this state in the roadmap
   // (and we don't want to add duplicates)
@@ -227,6 +239,7 @@ template<typename T, typename GraphType>
 inline std::map<std::string, double> GrowRoadMap(
     GraphType& roadmap,
     const std::function<T(const int32_t)>& sampling_fn,
+    const GraphKNNFunction& graph_knn_fn,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const int32_t, const T&)>& state_validity_check_fn,
     const std::function<bool(const int32_t, const T&, const T&)>&
@@ -254,8 +267,8 @@ inline std::map<std::string, double> GrowRoadMap(
       const int64_t pre_size = roadmap.Size();
       AddNodeToRoadmap<T, GraphType>(
           random_state, NNDistanceDirection::ROADMAP_TO_NEW_STATE, roadmap,
-          distance_fn, edge_validity_check_fn, K, pre_size, parallelism,
-          connection_is_symmetric, add_duplicate_states);
+          graph_knn_fn, distance_fn, edge_validity_check_fn, K, pre_size,
+          parallelism, connection_is_symmetric, add_duplicate_states);
       const int64_t post_size = roadmap.Size();
       if (post_size > pre_size)
       {
@@ -306,6 +319,7 @@ template<typename T, typename GraphType>
 GraphType BuildRoadMap(
     const int64_t roadmap_size,
     const std::function<T(const int32_t)>& sampling_fn,
+    const GraphKNNFunction& graph_knn_fn,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const int32_t, const T&)>& state_validity_check_fn,
     const std::function<bool(const int32_t, const T&, const T&)>&
@@ -660,6 +674,7 @@ LazyQueryPathAndAddNodes(
     const Container& starts,
     const Container& goals,
     GraphType& roadmap,
+    const GraphKNNFunction& graph_knn_fn,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const int32_t, const T&, const T&)>&
         edge_validity_check_fn,
@@ -677,6 +692,7 @@ LazyQueryPathAndAddNodes(
   {
     throw std::runtime_error("goals is empty");
   }
+
   // Add the start nodes to the roadmap
   const int64_t pre_starts_size = roadmap.Size();
   std::vector<int64_t> start_node_indices(starts.size());
@@ -684,10 +700,11 @@ LazyQueryPathAndAddNodes(
   {
     const T& start = starts.at(start_idx);
     start_node_indices.at(start_idx) = AddNodeToRoadmap<T, GraphType>(
-        start, NNDistanceDirection::NEW_STATE_TO_ROADMAP, roadmap, distance_fn,
-        edge_validity_check_fn, K, pre_starts_size, parallelism,
+        start, NNDistanceDirection::NEW_STATE_TO_ROADMAP, roadmap, graph_knn_fn,
+        distance_fn, edge_validity_check_fn, K, pre_starts_size, parallelism,
         connection_is_symmetric, add_duplicate_states);
   }
+
   // Add the goal nodes to the roadmap
   const int64_t pre_goals_size = roadmap.Size();
   std::vector<int64_t> goal_node_indices(goals.size());
@@ -695,10 +712,11 @@ LazyQueryPathAndAddNodes(
   {
     const T& goal = goals.at(goal_idx);
     goal_node_indices.at(goal_idx) = AddNodeToRoadmap<T, GraphType>(
-        goal, NNDistanceDirection::ROADMAP_TO_NEW_STATE, roadmap, distance_fn,
-        edge_validity_check_fn, K, pre_goals_size, parallelism,
+        goal, NNDistanceDirection::ROADMAP_TO_NEW_STATE, roadmap, graph_knn_fn,
+        distance_fn, edge_validity_check_fn, K, pre_goals_size, parallelism,
         connection_is_symmetric, add_duplicate_states);
   }
+
   // Call graph A*
   const std::function<bool(const T&, const T&)> astar_edge_validity_check_fn
       = [&](const T& from, const T& to)
@@ -710,6 +728,7 @@ LazyQueryPathAndAddNodes(
           roadmap, start_node_indices, goal_node_indices,
           astar_edge_validity_check_fn, distance_fn, distance_fn,
           limit_astar_pqueue_duplicates);
+
   // Convert the solution path from A* provided as indices into real states
   return ExtractSolution<T, Container, GraphType>(roadmap, astar_result);
 }
@@ -745,6 +764,7 @@ QueryPathAndAddNodes(
     const Container& starts,
     const Container& goals,
     GraphType& roadmap,
+    const GraphKNNFunction& graph_knn_fn,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const int32_t, const T&, const T&)>&
         edge_validity_check_fn,
@@ -762,6 +782,7 @@ QueryPathAndAddNodes(
   {
     throw std::runtime_error("goals is empty");
   }
+
   // Add the start nodes to the roadmap
   const int64_t pre_starts_size = roadmap.Size();
   std::vector<int64_t> start_node_indices(starts.size());
@@ -769,10 +790,11 @@ QueryPathAndAddNodes(
   {
     const T& start = starts.at(start_idx);
     start_node_indices.at(start_idx) = AddNodeToRoadmap<T, GraphType>(
-        start, NNDistanceDirection::NEW_STATE_TO_ROADMAP, roadmap, distance_fn,
-        edge_validity_check_fn, K, pre_starts_size, parallelism,
+        start, NNDistanceDirection::NEW_STATE_TO_ROADMAP, roadmap, graph_knn_fn,
+        distance_fn, edge_validity_check_fn, K, pre_starts_size, parallelism,
         connection_is_symmetric, add_duplicate_states);
   }
+
   // Add the goal nodes to the roadmap
   const int64_t pre_goals_size = roadmap.Size();
   std::vector<int64_t> goal_node_indices(goals.size());
@@ -780,14 +802,17 @@ QueryPathAndAddNodes(
   {
     const T& goal = goals.at(goal_idx);
     goal_node_indices.at(goal_idx) = AddNodeToRoadmap<T, GraphType>(
-        goal, NNDistanceDirection::ROADMAP_TO_NEW_STATE, roadmap, distance_fn,
-        edge_validity_check_fn, K, pre_goals_size, parallelism,
+        goal, NNDistanceDirection::ROADMAP_TO_NEW_STATE, roadmap, graph_knn_fn,
+        distance_fn, edge_validity_check_fn, K, pre_goals_size, parallelism,
         connection_is_symmetric, add_duplicate_states);
   }
+
+  // Call graph A*
   const auto astar_result =
       simple_graph_search::PerformAstarSearch<T, GraphType>(
           roadmap, start_node_indices, goal_node_indices, distance_fn,
           limit_astar_pqueue_duplicates);
+
   // Convert the solution path from A* provided as indices into real states
   return ExtractSolution<T, Container, GraphType>(roadmap, astar_result);
 }
@@ -828,6 +853,7 @@ LazyQueryPath(
     const Container& starts,
     const Container& goals,
     const GraphType& roadmap,
+    const GraphKNNFunction& graph_knn_fn,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const int32_t, const T&, const T&)>&
         edge_validity_check_fn,
@@ -843,17 +869,17 @@ LazyQueryPath(
     using OverlaidType = simple_graph::NonOwningGraphOverlay<T, GraphType>;
     OverlaidType overlaid_roadmap(roadmap);
     return LazyQueryPathAndAddNodes<T, Container, OverlaidType>(
-        starts, goals, overlaid_roadmap, distance_fn, edge_validity_check_fn, K,
-        parallelism, connection_is_symmetric, add_duplicate_states,
-        limit_astar_pqueue_duplicates);
+        starts, goals, overlaid_roadmap, graph_knn_fn, distance_fn,
+        edge_validity_check_fn, K, parallelism, connection_is_symmetric,
+        add_duplicate_states, limit_astar_pqueue_duplicates);
   }
   else
   {
     auto working_copy = roadmap;
     return LazyQueryPathAndAddNodes<T, Container, GraphType>(
-       starts, goals, working_copy, distance_fn, edge_validity_check_fn, K,
-       parallelism, connection_is_symmetric, add_duplicate_states,
-       limit_astar_pqueue_duplicates);
+        starts, goals, working_copy, graph_knn_fn, distance_fn,
+        edge_validity_check_fn, K, parallelism, connection_is_symmetric,
+        add_duplicate_states, limit_astar_pqueue_duplicates);
   }
 }
 
@@ -888,6 +914,7 @@ QueryPath(
     const Container& starts,
     const Container& goals,
     const GraphType& roadmap,
+    const GraphKNNFunction& graph_knn_fn,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const int32_t, const T&, const T&)>&
         edge_validity_check_fn,
@@ -903,17 +930,17 @@ QueryPath(
     using OverlaidType = simple_graph::NonOwningGraphOverlay<T, GraphType>;
     OverlaidType overlaid_roadmap(roadmap);
     return QueryPathAndAddNodes<T, Container, OverlaidType>(
-        starts, goals, overlaid_roadmap, distance_fn, edge_validity_check_fn, K,
-        parallelism, connection_is_symmetric, add_duplicate_states,
-        limit_astar_pqueue_duplicates);
+        starts, goals, overlaid_roadmap, graph_knn_fn, distance_fn,
+        edge_validity_check_fn, K, parallelism, connection_is_symmetric,
+        add_duplicate_states, limit_astar_pqueue_duplicates);
   }
   else
   {
     auto working_copy = roadmap;
     return QueryPathAndAddNodes<T, Container, GraphType>(
-        starts, goals, working_copy, distance_fn, edge_validity_check_fn, K,
-        parallelism, connection_is_symmetric, add_duplicate_states,
-        limit_astar_pqueue_duplicates);
+        starts, goals, working_copy, graph_knn_fn, distance_fn,
+        edge_validity_check_fn, K, parallelism, connection_is_symmetric,
+        add_duplicate_states, limit_astar_pqueue_duplicates);
   }
 }
 }  // namespace simple_prm_planner

@@ -358,6 +358,15 @@ TEST_P(PlanningTestSuite, Test)
     return SampleWaypoint(test_env, uniform_unit_real_fn);
   };
 
+  const simple_prm_planner::LinearGraphKNNProvider
+      <Waypoint, simple_graph::Graph<Waypoint>>
+          prm_knn_provider(WaypointDistance, parallelism);
+
+  const simple_prm_planner::LinearGraphKNNProvider
+      <Waypoint, simple_graph::Graph<Waypoint>>
+          build_roadmap_knn_provider(
+              WaypointDistance, parallelism::DegreeOfParallelism::None());
+
   // Functions to check planning results
   const std::function<void(const WaypointVector&)> check_path =
       [&] (const WaypointVector& path)
@@ -460,7 +469,7 @@ TEST_P(PlanningTestSuite, Test)
   };
   simple_graph::Graph<Waypoint> grown_roadmap;
   simple_prm_planner::GrowRoadMap<Waypoint>(
-      grown_roadmap, prm_state_sampling_fn, WaypointDistance,
+      grown_roadmap, prm_state_sampling_fn, prm_knn_provider, WaypointDistance,
       check_state_validity_fn, prm_check_edge_validity_fn,
       grown_roadmap_termination_fn, K, parallelism, true, false);
   ASSERT_TRUE(grown_roadmap.CheckGraphLinkage());
@@ -474,9 +483,9 @@ TEST_P(PlanningTestSuite, Test)
   const int64_t built_roadmap_size = 100;
   simple_graph::Graph<Waypoint> built_roadmap =
       simple_prm_planner::BuildRoadMap<Waypoint, simple_graph::Graph<Waypoint>>(
-      built_roadmap_size, prm_state_sampling_fn, WaypointDistance,
-      check_state_validity_fn, prm_check_edge_validity_fn, K, 100, parallelism,
-      true, false, false);
+      built_roadmap_size, prm_state_sampling_fn, build_roadmap_knn_provider,
+      WaypointDistance, check_state_validity_fn, prm_check_edge_validity_fn, K,
+      100, parallelism, true, false, false);
   ASSERT_TRUE(built_roadmap.CheckGraphLinkage());
   std::cout << "Roadmap built" << std::endl;
   simple_prm_planner::UpdateRoadMapEdges<Waypoint>(
@@ -607,9 +616,9 @@ TEST_P(PlanningTestSuite, Test)
                   << print::Print(goal) << ")" << std::endl;
         const auto grown_path =
             simple_prm_planner::QueryPath<Waypoint, WaypointVector>(
-                {start}, {goal}, loaded_grown_roadmap, WaypointDistance,
-                prm_check_edge_validity_fn, K, parallelism, true, false, true)
-                .Path();
+                {start}, {goal}, loaded_grown_roadmap, prm_knn_provider,
+                WaypointDistance, prm_check_edge_validity_fn, K, parallelism,
+                true, false, true).Path();
         check_plan(test_env, {start}, {goal}, grown_path);
 
         // Plan with Lazy-PRM (grown)
@@ -617,9 +626,9 @@ TEST_P(PlanningTestSuite, Test)
                   << print::Print(goal) << ")" << std::endl;
         const auto lazy_grown_path =
             simple_prm_planner::LazyQueryPath<Waypoint, WaypointVector>(
-                {start}, {goal}, loaded_grown_roadmap, WaypointDistance,
-                prm_check_edge_validity_fn, K, parallelism, true, false, true)
-                .Path();
+                {start}, {goal}, loaded_grown_roadmap, prm_knn_provider,
+                WaypointDistance, prm_check_edge_validity_fn, K, parallelism,
+                true, false, true).Path();
         check_plan(test_env, {start}, {goal}, lazy_grown_path);
 
         // Plan with PRM (built)
@@ -627,9 +636,9 @@ TEST_P(PlanningTestSuite, Test)
                   << print::Print(goal) << ")" << std::endl;
         const auto built_path =
             simple_prm_planner::QueryPath<Waypoint, WaypointVector>(
-                {start}, {goal}, loaded_built_roadmap, WaypointDistance,
-                prm_check_edge_validity_fn, K, parallelism, true, false, true)
-                .Path();
+                {start}, {goal}, loaded_built_roadmap, prm_knn_provider,
+                WaypointDistance, prm_check_edge_validity_fn, K, parallelism,
+                true, false, true).Path();
         check_plan(test_env, {start}, {goal}, built_path);
 
         // Plan with Lazy-PRM (built)
@@ -637,9 +646,9 @@ TEST_P(PlanningTestSuite, Test)
                   << print::Print(goal) << ")" << std::endl;
         const auto lazy_built_path =
             simple_prm_planner::LazyQueryPath<Waypoint, WaypointVector>(
-                {start}, {goal}, loaded_built_roadmap, WaypointDistance,
-                prm_check_edge_validity_fn, K, parallelism, true, false, true)
-                .Path();
+                {start}, {goal}, loaded_built_roadmap, prm_knn_provider,
+                WaypointDistance, prm_check_edge_validity_fn, K, parallelism,
+                true, false, true).Path();
         check_plan(test_env, {start}, {goal}, lazy_built_path);
 
         // Plan with A*
@@ -744,13 +753,13 @@ TEST_P(PlanningTestSuite, Test)
   std::cout << "Multi start/goal PRM (grown) Path (" << print::Print(starts)
             << " to " << print::Print(goals) << ")" << std::endl;
   const auto grown_multi_path = simple_prm_planner::QueryPath<Waypoint>(
-      starts, goals, loaded_grown_roadmap, WaypointDistance,
+      starts, goals, loaded_grown_roadmap, prm_knn_provider, WaypointDistance,
       prm_check_edge_validity_fn, K, parallelism, true, false, true).Path();
   check_plan(test_env, starts, goals, grown_multi_path);
   std::cout << "Multi start/goal PRM (built) Path (" << print::Print(starts)
             << " to " << print::Print(goals) << ")" << std::endl;
   const auto built_multi_path = simple_prm_planner::QueryPath<Waypoint>(
-      starts, goals, loaded_built_roadmap, WaypointDistance,
+      starts, goals, loaded_built_roadmap, prm_knn_provider, WaypointDistance,
       prm_check_edge_validity_fn, K, parallelism, true, false, true).Path();
   check_plan(test_env, starts, goals, built_multi_path);
 

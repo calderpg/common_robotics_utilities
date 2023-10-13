@@ -27,18 +27,172 @@ namespace simple_prm_planner
 /// function correctly.
 enum class NNDistanceDirection {ROADMAP_TO_NEW_STATE, NEW_STATE_TO_ROADMAP};
 
+/// Base type for performing graph KNN queries.
 template<typename T, typename GraphType>
-using GraphKNNFunction =
-    std::function<std::vector<simple_knearest_neighbors::IndexAndDistance>(
-        const GraphType&,  // Roadmap
-        const int64_t,  // K
-        const NNDistanceDirection,  // Which direction should KNN be performed?
-        const int64_t,  // Maximum node index in the roadmap to consider
-        const T&);  // Query state
+class GraphKNNProvider
+{
+public:
+  virtual ~GraphKNNProvider() = default;
+
+  /// Returns the index and distance for the K nearest nodes in the roadmap.
+  /// @param roadmap roadmap.
+  /// @param state query state.
+  /// @param K number of K nearest neighbors to find.
+  /// @param nn_distance_direction direction of distance to use in KNN.
+  /// @param max_node_index_for_knn maximum node index to use for KNN.
+  /// Note: KNN implementations must not return neighbors outside the range
+  /// [0, min(roadmap_size, max_node)) and this method will throw if invalid
+  /// indices are returned.
+  std::vector<simple_knearest_neighbors::IndexAndDistance> GetKNearestNeighbors(
+      const GraphType& roadmap, const T& state, const int64_t K,
+      const NNDistanceDirection nn_distance_direction,
+      const int64_t max_node_index_for_knn) const
+  {
+    const auto nearest_neighbors = DoGetKNearestNeighbors(
+        roadmap, state, K, nn_distance_direction, max_node_index_for_knn);
+    SanityCheckKNNResults(
+        nearest_neighbors, roadmap.Size(), max_node_index_for_knn);
+    return nearest_neighbors;
+  }
+
+  /// Returns the index and distance for the K nearest nodes in the roadmap.
+  /// @param overlaid_roadmap overlaid roadmap.
+  /// @param state query state.
+  /// @param K number of K nearest neighbors to find.
+  /// @param nn_distance_direction direction of distance to use in KNN.
+  /// @param max_node_index_for_knn maximum node index to use for KNN.
+  /// Note: KNN implementations must not return neighbors outside the range
+  /// [0, min(roadmap_size, max_node)) and this method will throw if invalid
+  /// indices are returned.
+  std::vector<simple_knearest_neighbors::IndexAndDistance> GetKNearestNeighbors(
+      const simple_graph::NonOwningGraphOverlay<T, GraphType>& overlaid_roadmap,
+      const T& state, const int64_t K,
+      const NNDistanceDirection nn_distance_direction,
+      const int64_t max_node_index_for_knn) const
+  {
+    const auto nearest_neighbors = DoGetKNearestNeighbors(
+        overlaid_roadmap, state, K, nn_distance_direction,
+        max_node_index_for_knn);
+    SanityCheckKNNResults(
+        nearest_neighbors, overlaid_roadmap.Size(), max_node_index_for_knn);
+    return nearest_neighbors;
+  }
+
+protected:
+  virtual std::vector<simple_knearest_neighbors::IndexAndDistance>
+  DoGetKNearestNeighbors(
+      const GraphType& roadmap, const T& state, const int64_t K,
+      const NNDistanceDirection nn_distance_direction,
+      const int64_t max_node_index_for_knn) const = 0;
+
+  virtual std::vector<simple_knearest_neighbors::IndexAndDistance>
+  DoGetKNearestNeighbors(
+      const simple_graph::NonOwningGraphOverlay<T, GraphType>& overlaid_roadmap,
+      const T& state, const int64_t K,
+      const NNDistanceDirection nn_distance_direction,
+      const int64_t max_node_index_for_knn) const = 0;
+
+private:
+  void SanityCheckKNNResults(
+      const std::vector<simple_knearest_neighbors::IndexAndDistance>&
+          nearest_neighbors,
+      const int64_t roadmap_size, const int64_t max_node_index_for_knn) const
+  {
+    for (const auto& neighbor : nearest_neighbors)
+    {
+      if (neighbor.Index() >= roadmap_size ||
+          neighbor.Index() >= max_node_index_for_knn)
+      {
+        throw std::runtime_error(
+            "KNN returned neighbor index outside allowed range "
+            "[0, min(roadmap.Size(), max_node_index_for_knn))");
+      }
+    }
+  }
+};
+
+/// Implementation of graph KNN using (optionally-parallelized) linear KNN.
+template<typename T, typename GraphType>
+class LinearGraphKNNProvider final : public GraphKNNProvider<T, GraphType>
+{
+public:
+  LinearGraphKNNProvider(
+      const std::function<double(const T&, const T&)>& distance_fn,
+      const parallelism::DegreeOfParallelism& parallelism)
+      : distance_fn_(distance_fn), parallelism_(parallelism)
+  {
+    if (!distance_fn_)
+    {
+      throw std::invalid_argument("distance_fn is empty");
+    }
+  }
+
+private:
+  std::vector<simple_knearest_neighbors::IndexAndDistance>
+  DoGetKNearestNeighbors(
+      const GraphType& roadmap, const T& state, const int64_t K,
+      const NNDistanceDirection nn_distance_direction,
+      const int64_t max_node_index_for_knn) const final
+  {
+    return PerformLinearGraphKNN(
+        roadmap, state, K, nn_distance_direction, max_node_index_for_knn);
+  }
+
+  std::vector<simple_knearest_neighbors::IndexAndDistance>
+  DoGetKNearestNeighbors(
+      const simple_graph::NonOwningGraphOverlay<T, GraphType>& overlaid_roadmap,
+      const T& state, const int64_t K,
+      const NNDistanceDirection nn_distance_direction,
+      const int64_t max_node_index_for_knn) const final
+  {
+    return PerformLinearGraphKNN(
+        overlaid_roadmap, state, K, nn_distance_direction,
+        max_node_index_for_knn);
+  }
+
+  template<typename RealGraphType>
+  std::vector<simple_knearest_neighbors::IndexAndDistance>
+  PerformLinearGraphKNN(
+      const RealGraphType& roadmap,
+      const T& state, const int64_t K,
+      const NNDistanceDirection nn_distance_direction,
+      const int64_t max_node_index_for_knn) const
+  {
+    // Make the node->graph or graph->node distance function as needed
+    std::function<double(const typename RealGraphType::NodeType&, const T&)>
+        graph_distance_fn = nullptr;
+    if (nn_distance_direction == NNDistanceDirection::ROADMAP_TO_NEW_STATE)
+    {
+      graph_distance_fn = [&] (const typename RealGraphType::NodeType& node,
+                               const T& query_state)
+      {
+        return distance_fn_(node.GetValueImmutable(), query_state);
+      };
+    }
+    else
+    {
+      graph_distance_fn = [&] (const typename RealGraphType::NodeType& node,
+                               const T& query_state)
+      {
+        return distance_fn_(query_state, node.GetValueImmutable());
+      };
+    }
+
+    // Perform linear KNN
+    return simple_knearest_neighbors::GetKNearestNeighbors(
+        simple_graph::GraphKNNAdapter<RealGraphType>(
+            roadmap, max_node_index_for_knn),
+        state, graph_distance_fn, K, parallelism_);
+  }
+
+  const std::function<double(const T&, const T&)> distance_fn_;
+  const parallelism::DegreeOfParallelism parallelism_;
+};
 
 /// Attempt to add a single state as a new node to the roadmap.
 /// @param state new state to add.
 /// @param roadmap existing roadmap.
+/// @param graph_knn graph KNN provider for roadmap KNN queries.
 /// @param distance_fn distance function for state-to-state distance. If
 /// parallelism is enabled, this must be thread-safe.
 /// @param edge_validity_check_fn edge validity checking function. If
@@ -60,12 +214,12 @@ using GraphKNNFunction =
 /// @return the index of the newly-added node OR the index of an existing
 /// duplicate node in the roadmap. You can check which happended by querying the
 /// size of the roadmap before and after calling AddNodeToRoadmap.
-template<typename T, typename GraphType>
-inline int64_t AddNodeToRoadmap(
+template<typename T, typename GraphType, typename GraphKNNProviderType>
+int64_t AddNodeToRoadmap(
     const T& state,
     const NNDistanceDirection nn_distance_direction,
     GraphType& roadmap,
-    const GraphKNNFunction& graph_knn_fn,
+    const GraphKNNProviderType& graph_knn,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const int32_t, const T&, const T&)>&
         edge_validity_check_fn,
@@ -75,34 +229,9 @@ inline int64_t AddNodeToRoadmap(
     const bool connection_is_symmetric,
     const bool add_duplicate_states)
 {
-  // Make the node->graph or graph->node distance function as needed
-  std::function<double(const typename GraphType::NodeType&, const T&)>
-      graph_distance_fn = nullptr;
-  if (nn_distance_direction == NNDistanceDirection::ROADMAP_TO_NEW_STATE)
-  {
-    graph_distance_fn = [&] (const typename GraphType::NodeType& node,
-                             const T& query_state)
-    {
-      return distance_fn(node.GetValueImmutable(), query_state);
-    };
-  }
-  else
-  {
-    graph_distance_fn = [&] (const typename GraphType::NodeType& node,
-                             const T& query_state)
-    {
-      return distance_fn(query_state, node.GetValueImmutable());
-    };
-  }
-
-      simple_knearest_neighbors::GetKNearestNeighbors(
-          simple_graph::GraphKNNAdapter<GraphType>(
-              roadmap, max_node_index_for_knn),
-          state, graph_distance_fn, K, parallelism);
-
   // Call graph KNN
-  const auto nearest_neighbors = graph_knn_fn(
-      roadmap, K, nn_distance_direction, max_node_index_for_knn, state);
+  const auto nearest_neighbors = graph_knn.GetKNearestNeighbors(
+      roadmap, state, K, nn_distance_direction, max_node_index_for_knn);
 
   // Check if we already have this state in the roadmap
   // (and we don't want to add duplicates)
@@ -212,6 +341,7 @@ inline int64_t AddNodeToRoadmap(
 /// Attempt to grow a roadmap consisting of a graph of states.
 /// @param roadmap roadmap to grow. This may be empty to start with.
 /// @param sampling_fn function to sample new states.
+/// @param graph_knn graph KNN provider for roadmap KNN queries.
 /// @param distance_fn distance function for state-to-state distance. If
 /// parallelism is enabled, this must be thread-safe.
 /// @param state_validity_check function to check if a sampled state is valid.
@@ -235,11 +365,11 @@ inline int64_t AddNodeToRoadmap(
 /// state.
 /// @return statistics as a map<string, double> of useful statistics collected
 /// while growing the roadmap.
-template<typename T, typename GraphType>
-inline std::map<std::string, double> GrowRoadMap(
+template<typename T, typename GraphType, typename GraphKNNProviderType>
+std::map<std::string, double> GrowRoadMap(
     GraphType& roadmap,
     const std::function<T(const int32_t)>& sampling_fn,
-    const GraphKNNFunction& graph_knn_fn,
+    const GraphKNNProviderType& graph_knn,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const int32_t, const T&)>& state_validity_check_fn,
     const std::function<bool(const int32_t, const T&, const T&)>&
@@ -267,7 +397,7 @@ inline std::map<std::string, double> GrowRoadMap(
       const int64_t pre_size = roadmap.Size();
       AddNodeToRoadmap<T, GraphType>(
           random_state, NNDistanceDirection::ROADMAP_TO_NEW_STATE, roadmap,
-          graph_knn_fn, distance_fn, edge_validity_check_fn, K, pre_size,
+          graph_knn, distance_fn, edge_validity_check_fn, K, pre_size,
           parallelism, connection_is_symmetric, add_duplicate_states);
       const int64_t post_size = roadmap.Size();
       if (post_size > pre_size)
@@ -294,6 +424,9 @@ inline std::map<std::string, double> GrowRoadMap(
 /// Build a roadmap consisting of a graph of states.
 /// @param roadmap_size size of roadmap to build.
 /// @param sampling_fn function to sample new states.
+/// @param graph_knn graph KNN provider for roadmap KNN queries. Since the KNN
+/// provider will already be called in parallel, parallelism within the KNN
+/// provider should be avoided.
 /// @param distance_fn distance function for state-to-state distance. If
 /// parallelism is enabled, this must be thread-safe.
 /// @param state_validity_check function to check if a sampled state is valid.
@@ -315,11 +448,11 @@ inline std::map<std::string, double> GrowRoadMap(
 /// it is a duplicate of an existing state? A new state is considered a
 /// duplicate if one of the K neighboring states has distance zero from the
 /// state.
-template<typename T, typename GraphType>
+template<typename T, typename GraphType, typename GraphKNNProviderType>
 GraphType BuildRoadMap(
     const int64_t roadmap_size,
     const std::function<T(const int32_t)>& sampling_fn,
-    const GraphKNNFunction& graph_knn_fn,
+    const GraphKNNProviderType& graph_knn,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const int32_t, const T&)>& state_validity_check_fn,
     const std::function<bool(const int32_t, const T&, const T&)>&
@@ -429,14 +562,6 @@ GraphType BuildRoadMap(
     }
   }
 
-  // Distance function for KNN checks.
-  const std::function<double(const typename GraphType::NodeType&, const T&)>
-      roadmap_to_state_distance_fn = [&](
-          const typename GraphType::NodeType& node, const T& state)
-  {
-    return distance_fn(node.GetValueImmutable(), state);
-  };
-
   // Perform edge validity and distance checks for all nodes, optionally in
   // parallel.
   const auto connection_thread_work = [&](
@@ -450,11 +575,9 @@ GraphType BuildRoadMap(
       const T& state = node.GetValueImmutable();
 
       // Find K+1 nearest neighbors, since KNN will find the current node too.
-      const auto nearest_neighbors =
-          simple_knearest_neighbors::GetKNearestNeighbors(
-              simple_graph::GraphKNNAdapter<GraphType>(roadmap), state,
-              roadmap_to_state_distance_fn, K + 1,
-              parallelism::DegreeOfParallelism::None());
+      const auto nearest_neighbors = graph_knn.GetKNearestNeighbors(
+          roadmap, state, K + 1, NNDistanceDirection::ROADMAP_TO_NEW_STATE,
+          roadmap.Size());
 
       for (const auto& neighbor : nearest_neighbors)
       {
@@ -562,7 +685,7 @@ GraphType BuildRoadMap(
 /// parallelism is enabled, this must be thread-safe.
 /// @param parallelism control if/how parallel operations should be performed.
 template<typename T, typename GraphType>
-inline void UpdateRoadMapEdges(
+void UpdateRoadMapEdges(
     GraphType& roadmap,
     const std::function<bool(const int32_t, const T&, const T&)>&
         edge_validity_check_fn,
@@ -620,7 +743,7 @@ inline void UpdateRoadMapEdges(
 /// @param astar_index_solution A* planned path, in terms of node indices in the
 /// provided roadmap.
 template<typename T, typename Container, typename GraphType>
-inline simple_astar_search::AstarResult<T, Container> ExtractSolution(
+simple_astar_search::AstarResult<T, Container> ExtractSolution(
     const GraphType& roadmap,
     const simple_graph_search::AstarIndexResult& astar_index_solution)
 {
@@ -648,6 +771,7 @@ inline simple_astar_search::AstarResult<T, Container> ExtractSolution(
 /// @param starts multiple start states.
 /// @param goals multiple goal states.
 /// @param roadmap existing roadmap.
+/// @param graph_knn graph KNN provider for roadmap KNN queries.
 /// @param distance_fn distance function for state-to-state distance. If
 /// parallelism is enabled, this must be thread-safe.
 /// @param edge_validity_check_fn edge validity checking function. If
@@ -668,13 +792,13 @@ inline simple_astar_search::AstarResult<T, Container> ExtractSolution(
 /// duplicate states added to the A* pqueue?
 /// @return path + length of the best path from a single start to the goal.
 /// If no solution exists, path is empty and length is infinity.
-template<typename T, typename Container, typename GraphType>
-inline simple_astar_search::AstarResult<T, Container>
-LazyQueryPathAndAddNodes(
+template<typename T, typename Container, typename GraphType,
+         typename GraphKNNProviderType>
+simple_astar_search::AstarResult<T, Container> LazyQueryPathAndAddNodes(
     const Container& starts,
     const Container& goals,
     GraphType& roadmap,
-    const GraphKNNFunction& graph_knn_fn,
+    const GraphKNNProviderType& graph_knn,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const int32_t, const T&, const T&)>&
         edge_validity_check_fn,
@@ -700,7 +824,7 @@ LazyQueryPathAndAddNodes(
   {
     const T& start = starts.at(start_idx);
     start_node_indices.at(start_idx) = AddNodeToRoadmap<T, GraphType>(
-        start, NNDistanceDirection::NEW_STATE_TO_ROADMAP, roadmap, graph_knn_fn,
+        start, NNDistanceDirection::NEW_STATE_TO_ROADMAP, roadmap, graph_knn,
         distance_fn, edge_validity_check_fn, K, pre_starts_size, parallelism,
         connection_is_symmetric, add_duplicate_states);
   }
@@ -712,7 +836,7 @@ LazyQueryPathAndAddNodes(
   {
     const T& goal = goals.at(goal_idx);
     goal_node_indices.at(goal_idx) = AddNodeToRoadmap<T, GraphType>(
-        goal, NNDistanceDirection::ROADMAP_TO_NEW_STATE, roadmap, graph_knn_fn,
+        goal, NNDistanceDirection::ROADMAP_TO_NEW_STATE, roadmap, graph_knn,
         distance_fn, edge_validity_check_fn, K, pre_goals_size, parallelism,
         connection_is_symmetric, add_duplicate_states);
   }
@@ -738,6 +862,7 @@ LazyQueryPathAndAddNodes(
 /// @param starts multiple start states.
 /// @param goals multiple goal states.
 /// @param roadmap existing roadmap.
+/// @param graph_knn graph KNN provider for roadmap KNN queries.
 /// @param distance_fn distance function for state-to-state distance. If
 /// parallelism is enabled, this must be thread-safe.
 /// @param edge_validity_check_fn edge validity checking function. If
@@ -758,13 +883,13 @@ LazyQueryPathAndAddNodes(
 /// duplicate states added to the A* pqueue?
 /// @return path + length of the best path from a single start to the goal.
 /// If no solution exists, path is empty and length is infinity.
-template<typename T, typename Container, typename GraphType>
-inline simple_astar_search::AstarResult<T, Container>
-QueryPathAndAddNodes(
+template<typename T, typename Container, typename GraphType,
+         typename GraphKNNProviderType>
+simple_astar_search::AstarResult<T, Container> QueryPathAndAddNodes(
     const Container& starts,
     const Container& goals,
     GraphType& roadmap,
-    const GraphKNNFunction& graph_knn_fn,
+    const GraphKNNProviderType& graph_knn,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const int32_t, const T&, const T&)>&
         edge_validity_check_fn,
@@ -790,7 +915,7 @@ QueryPathAndAddNodes(
   {
     const T& start = starts.at(start_idx);
     start_node_indices.at(start_idx) = AddNodeToRoadmap<T, GraphType>(
-        start, NNDistanceDirection::NEW_STATE_TO_ROADMAP, roadmap, graph_knn_fn,
+        start, NNDistanceDirection::NEW_STATE_TO_ROADMAP, roadmap, graph_knn,
         distance_fn, edge_validity_check_fn, K, pre_starts_size, parallelism,
         connection_is_symmetric, add_duplicate_states);
   }
@@ -802,7 +927,7 @@ QueryPathAndAddNodes(
   {
     const T& goal = goals.at(goal_idx);
     goal_node_indices.at(goal_idx) = AddNodeToRoadmap<T, GraphType>(
-        goal, NNDistanceDirection::ROADMAP_TO_NEW_STATE, roadmap, graph_knn_fn,
+        goal, NNDistanceDirection::ROADMAP_TO_NEW_STATE, roadmap, graph_knn,
         distance_fn, edge_validity_check_fn, K, pre_goals_size, parallelism,
         connection_is_symmetric, add_duplicate_states);
   }
@@ -827,6 +952,7 @@ QueryPathAndAddNodes(
 /// @param starts multiple start states.
 /// @param goals multiple goal states.
 /// @param roadmap existing roadmap.
+/// @param graph_knn graph KNN provider for roadmap KNN queries.
 /// @param distance_fn distance function for state-to-state distance. If
 /// parallelism is enabled, this must be thread-safe.
 /// @param edge_validity_check_fn edge validity checking function. If
@@ -847,13 +973,13 @@ QueryPathAndAddNodes(
 /// duplicate states added to the A* pqueue?
 /// @return path + length of the best path from a single start to the goal.
 /// If no solution exists, path is empty and length is infinity.
-template<typename T, typename Container, typename GraphType>
-inline simple_astar_search::AstarResult<T, Container>
-LazyQueryPath(
+template<typename T, typename Container, typename GraphType,
+         typename GraphKNNProviderType>
+simple_astar_search::AstarResult<T, Container> LazyQueryPath(
     const Container& starts,
     const Container& goals,
     const GraphType& roadmap,
-    const GraphKNNFunction& graph_knn_fn,
+    const GraphKNNProviderType& graph_knn,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const int32_t, const T&, const T&)>&
         edge_validity_check_fn,
@@ -869,7 +995,7 @@ LazyQueryPath(
     using OverlaidType = simple_graph::NonOwningGraphOverlay<T, GraphType>;
     OverlaidType overlaid_roadmap(roadmap);
     return LazyQueryPathAndAddNodes<T, Container, OverlaidType>(
-        starts, goals, overlaid_roadmap, graph_knn_fn, distance_fn,
+        starts, goals, overlaid_roadmap, graph_knn, distance_fn,
         edge_validity_check_fn, K, parallelism, connection_is_symmetric,
         add_duplicate_states, limit_astar_pqueue_duplicates);
   }
@@ -877,7 +1003,7 @@ LazyQueryPath(
   {
     auto working_copy = roadmap;
     return LazyQueryPathAndAddNodes<T, Container, GraphType>(
-        starts, goals, working_copy, graph_knn_fn, distance_fn,
+        starts, goals, working_copy, graph_knn, distance_fn,
         edge_validity_check_fn, K, parallelism, connection_is_symmetric,
         add_duplicate_states, limit_astar_pqueue_duplicates);
   }
@@ -888,6 +1014,7 @@ LazyQueryPath(
 /// @param starts multiple start states.
 /// @param goals multiple goal states.
 /// @param roadmap existing roadmap.
+/// @param graph_knn graph KNN provider for roadmap KNN queries.
 /// @param distance_fn distance function for state-to-state distance. If
 /// parallelism is enabled, this must be thread-safe.
 /// @param edge_validity_check_fn edge validity checking function. If
@@ -908,13 +1035,13 @@ LazyQueryPath(
 /// duplicate states added to the A* pqueue?
 /// @return path + length of the best path from a single start to the goal.
 /// If no solution exists, path is empty and length is infinity.
-template<typename T, typename Container, typename GraphType>
-inline simple_astar_search::AstarResult<T, Container>
-QueryPath(
+template<typename T, typename Container, typename GraphType,
+         typename GraphKNNProviderType>
+simple_astar_search::AstarResult<T, Container> QueryPath(
     const Container& starts,
     const Container& goals,
     const GraphType& roadmap,
-    const GraphKNNFunction& graph_knn_fn,
+    const GraphKNNProviderType& graph_knn,
     const std::function<double(const T&, const T&)>& distance_fn,
     const std::function<bool(const int32_t, const T&, const T&)>&
         edge_validity_check_fn,
@@ -930,7 +1057,7 @@ QueryPath(
     using OverlaidType = simple_graph::NonOwningGraphOverlay<T, GraphType>;
     OverlaidType overlaid_roadmap(roadmap);
     return QueryPathAndAddNodes<T, Container, OverlaidType>(
-        starts, goals, overlaid_roadmap, graph_knn_fn, distance_fn,
+        starts, goals, overlaid_roadmap, graph_knn, distance_fn,
         edge_validity_check_fn, K, parallelism, connection_is_symmetric,
         add_duplicate_states, limit_astar_pqueue_duplicates);
   }
@@ -938,7 +1065,7 @@ QueryPath(
   {
     auto working_copy = roadmap;
     return QueryPathAndAddNodes<T, Container, GraphType>(
-        starts, goals, working_copy, graph_knn_fn, distance_fn,
+        starts, goals, working_copy, graph_knn, distance_fn,
         edge_validity_check_fn, K, parallelism, connection_is_symmetric,
         add_duplicate_states, limit_astar_pqueue_duplicates);
   }

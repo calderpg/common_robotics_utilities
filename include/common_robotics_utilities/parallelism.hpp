@@ -154,8 +154,9 @@ void StaticParallelForLoop(
     return;
   }
 
-  // If serial execution is specified, do that directly.
-  if (!parallelism.IsParallel())
+  // If serial execution is specified, or the total range is 1, perform all work
+  // in a single thread and work range.
+  if (!parallelism.IsParallel() || (total_range == 1))
   {
     const ThreadWorkRange full_range(range_start, range_end, 0);
     functor(full_range);

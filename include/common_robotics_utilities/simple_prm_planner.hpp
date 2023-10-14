@@ -79,6 +79,21 @@ public:
   }
 
 protected:
+  GraphKNNProvider() = default;
+
+  // Allow derived classes to copy/move/assign.
+  GraphKNNProvider(const GraphKNNProvider<T, GraphType>& other) = default;
+
+  GraphKNNProvider(GraphKNNProvider<T, GraphType>&& other) = default;
+
+  GraphKNNProvider<T, GraphType>& operator=(
+      const GraphKNNProvider<T, GraphType>& other) = default;
+
+  GraphKNNProvider<T, GraphType>& operator=(
+      GraphKNNProvider<T, GraphType>&& other) = default;
+
+  // Methods that derived classes must implement, see public API above for
+  // details on behavior.
   virtual std::vector<simple_knearest_neighbors::IndexAndDistance>
   DoGetKNearestNeighbors(
       const GraphType& roadmap, const T& state, const int64_t K,

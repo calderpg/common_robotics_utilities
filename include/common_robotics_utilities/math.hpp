@@ -7,7 +7,7 @@
 
 #include <Eigen/Geometry>
 #include <common_robotics_utilities/cru_namespace.hpp>
-#include <common_robotics_utilities/openmp_helpers.hpp>
+#include <common_robotics_utilities/parallelism.hpp>
 
 namespace common_robotics_utilities
 {
@@ -533,32 +533,42 @@ template<typename DataType, typename Container=std::vector<DataType>>
 Eigen::MatrixXd BuildPairwiseDistanceMatrix(
     const Container& data,
     const std::function<double(const DataType&, const DataType&)>& distance_fn,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   Eigen::MatrixXd distance_matrix(data.size(), data.size());
 
-  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
-  for (size_t idx = 0; idx < data.size(); idx++)
+  const auto per_thread_work = [&](
+      const parallelism::ThreadWorkRange& work_range)
   {
-    for (size_t jdx = idx; jdx < data.size(); jdx++)
+    for (size_t idx = static_cast<size_t>(work_range.GetRangeStart());
+         idx < static_cast<size_t>(work_range.GetRangeEnd());
+         idx++)
     {
-      if (idx != jdx)
+      for (size_t jdx = idx; jdx < data.size(); jdx++)
       {
-        const double distance = distance_fn(data[idx], data[jdx]);
-        distance_matrix(static_cast<ssize_t>(idx), static_cast<ssize_t>(jdx))
-            = distance;
-        distance_matrix(static_cast<ssize_t>(jdx), static_cast<ssize_t>(idx))
-            = distance;
-      }
-      else
-      {
-        distance_matrix(static_cast<ssize_t>(idx), static_cast<ssize_t>(jdx))
-            = 0.0;
-        distance_matrix(static_cast<ssize_t>(jdx), static_cast<ssize_t>(idx))
-            = 0.0;
+        if (idx != jdx)
+        {
+          const double distance = distance_fn(data[idx], data[jdx]);
+          distance_matrix(static_cast<ssize_t>(idx), static_cast<ssize_t>(jdx))
+              = distance;
+          distance_matrix(static_cast<ssize_t>(jdx), static_cast<ssize_t>(idx))
+              = distance;
+        }
+        else
+        {
+          distance_matrix(static_cast<ssize_t>(idx), static_cast<ssize_t>(jdx))
+              = 0.0;
+          distance_matrix(static_cast<ssize_t>(jdx), static_cast<ssize_t>(idx))
+              = 0.0;
+        }
       }
     }
-  }
+  };
+
+  parallelism::StaticParallelForLoop(
+      parallelism, 0, static_cast<int64_t>(data.size()), per_thread_work,
+      parallelism::ParallelForBackend::BEST_AVAILABLE);
+
   return distance_matrix;
 }
 
@@ -569,20 +579,31 @@ Eigen::MatrixXd BuildPairwiseDistanceMatrix(
     const FirstContainer& data1, const SecondContainer& data2,
     const std::function<double(const FirstDataType&,
                                const SecondDataType&)>& distance_fn,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   Eigen::MatrixXd distance_matrix(data1.size(), data2.size());
 
-  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
-  for (size_t idx = 0; idx < data1.size(); idx++)
+  const auto per_thread_work = [&](
+      const parallelism::ThreadWorkRange& work_range)
   {
-    for (size_t jdx = 0; jdx < data2.size(); jdx++)
+    for (size_t data1_index = static_cast<size_t>(work_range.GetRangeStart());
+         data1_index < static_cast<size_t>(work_range.GetRangeEnd());
+         data1_index++)
     {
-      const double distance = distance_fn(data1[idx], data2[jdx]);
-      distance_matrix(static_cast<ssize_t>(idx), static_cast<ssize_t>(jdx))
-          = distance;
+      for (size_t data2_index = 0; data2_index < data2.size(); data2_index++)
+      {
+        const double distance =
+            distance_fn(data1[data1_index], data2[data2_index]);
+        distance_matrix(static_cast<ssize_t>(data1_index),
+                        static_cast<ssize_t>(data2_index)) = distance;
+      }
     }
-  }
+  };
+
+  parallelism::StaticParallelForLoop(
+      parallelism, 0, static_cast<int64_t>(data1.size()), per_thread_work,
+      parallelism::ParallelForBackend::BEST_AVAILABLE);
+
   return distance_matrix;
 }
 

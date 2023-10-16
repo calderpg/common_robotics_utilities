@@ -11,7 +11,7 @@
 #include <vector>
 
 #include <common_robotics_utilities/cru_namespace.hpp>
-#include <common_robotics_utilities/openmp_helpers.hpp>
+#include <common_robotics_utilities/parallelism.hpp>
 #include <common_robotics_utilities/simple_knearest_neighbors.hpp>
 #include <common_robotics_utilities/utility.hpp>
 
@@ -30,19 +30,28 @@ template<typename DataType, typename Container=std::vector<DataType>>
 std::vector<int32_t> PerformSingleClusteringIteration(
     const Container& data, const Container& current_cluster_centers,
     const std::function<double(const DataType&, const DataType&)>& distance_fn,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   std::vector<int32_t> new_cluster_labels(data.size());
 
-  CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
-  for (size_t idx = 0; idx < data.size(); idx++)
+  const auto per_thread_work = [&](
+      const parallelism::ThreadWorkRange& work_range)
   {
-    const DataType& datapoint = data.at(idx);
-    const int64_t closest_cluster_index
-        = simple_knearest_neighbors::GetKNearestNeighborsSerial(
-            current_cluster_centers, datapoint, distance_fn, 1).at(0).Index();
-    new_cluster_labels.at(idx) = static_cast<int32_t>(closest_cluster_index);
+    for (size_t idx = static_cast<size_t>(work_range.GetRangeStart());
+         idx < static_cast<size_t>(work_range.GetRangeEnd());
+         idx++)
+    {
+      const DataType& datapoint = data.at(idx);
+      const int64_t closest_cluster_index
+          = simple_knearest_neighbors::GetKNearestNeighborsSerial(
+              current_cluster_centers, datapoint, distance_fn, 1).at(0).Index();
+      new_cluster_labels.at(idx) = static_cast<int32_t>(closest_cluster_index);
+    }
   };
+
+  parallelism::StaticParallelForLoop(
+      parallelism, 0, static_cast<int64_t>(data.size()),
+      per_thread_work, parallelism::ParallelForBackend::BEST_AVAILABLE);
 
   return new_cluster_labels;
 }
@@ -62,7 +71,7 @@ Container ComputeClusterCentersWeighted(
     const std::function<DataType(
         const Container&, const std::vector<double>&)>& weighted_average_fn,
     const int32_t num_clusters,
-    const openmp_helpers::DegreeOfParallelism& parallelism)
+    const parallelism::DegreeOfParallelism& parallelism)
 {
   if (data.size() == cluster_labels.size())
   {
@@ -84,15 +93,24 @@ Container ComputeClusterCentersWeighted(
     // Compute the center of each cluster
     Container cluster_centers(static_cast<size_t>(num_clusters));
 
-    CRU_OMP_PARALLEL_FOR_DEGREE(parallelism)
-    for (size_t cluster = 0; cluster < clustered_data.size(); cluster++)
+    const auto per_thread_work = [&](
+        const parallelism::ThreadWorkRange& work_range)
     {
-      const Container& cluster_data = clustered_data.at(cluster);
-      const std::vector<double>& cluster_data_weights
-          = clustered_data_weights.at(cluster);
-      cluster_centers.at(cluster)
-          = weighted_average_fn(cluster_data, cluster_data_weights);
+      for (size_t cluster = static_cast<size_t>(work_range.GetRangeStart());
+           cluster < static_cast<size_t>(work_range.GetRangeEnd());
+           cluster++)
+      {
+        const Container& cluster_data = clustered_data.at(cluster);
+        const std::vector<double>& cluster_data_weights
+            = clustered_data_weights.at(cluster);
+        cluster_centers.at(cluster)
+            = weighted_average_fn(cluster_data, cluster_data_weights);
+      }
     };
+
+    parallelism::StaticParallelForLoop(
+        parallelism, 0, static_cast<int64_t>(clustered_data.size()),
+        per_thread_work, parallelism::ParallelForBackend::BEST_AVAILABLE);
 
     return cluster_centers;
   }
@@ -142,7 +160,7 @@ std::vector<int32_t> ClusterWeighted(
         weighted_average_fn,
     const int32_t num_clusters, const int64_t prng_seed,
     const bool do_preliminary_clustering,
-    const openmp_helpers::DegreeOfParallelism& parallelism,
+    const parallelism::DegreeOfParallelism& parallelism,
     const utility::LoggingFunction& logging_fn = {})
 {
   if (data.empty())
@@ -309,7 +327,7 @@ std::vector<int32_t> Cluster(
     const std::function<DataType(const Container&)>& average_fn,
     const int32_t num_clusters, const int64_t prng_seed,
     const bool do_preliminary_clustering,
-    const openmp_helpers::DegreeOfParallelism& parallelism,
+    const parallelism::DegreeOfParallelism& parallelism,
     const utility::LoggingFunction& logging_fn = {})
 {
   // Make a dummy set of uniform weights

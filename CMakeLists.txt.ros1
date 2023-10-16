@@ -87,6 +87,7 @@ add_library(${PROJECT_NAME}
             include/${PROJECT_NAME}/math.hpp
             include/${PROJECT_NAME}/maybe.hpp
             include/${PROJECT_NAME}/openmp_helpers.hpp
+            include/${PROJECT_NAME}/parallelism.hpp
             include/${PROJECT_NAME}/path_processing.hpp
             include/${PROJECT_NAME}/print.hpp
             include/${PROJECT_NAME}/random_rotation_generator.hpp
@@ -138,6 +139,10 @@ if(CATKIN_ENABLE_TESTING)
     catkin_add_gtest(maybe_test test/maybe_test.cpp)
     add_dependencies(maybe_test ${PROJECT_NAME})
     target_link_libraries(maybe_test ${PROJECT_NAME})
+
+    catkin_add_gtest(parallelism_test test/parallelism_test.cpp)
+    add_dependencies(parallelism_test ${PROJECT_NAME})
+    target_link_libraries(parallelism_test ${PROJECT_NAME})
 
     catkin_add_gtest(planning_test test/planning_test.cpp)
     add_dependencies(planning_test ${PROJECT_NAME})

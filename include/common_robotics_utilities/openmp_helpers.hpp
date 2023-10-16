@@ -188,53 +188,6 @@ class DisableOmpWrapper : public ChangeOmpNumThreadsWrapper
 public:
   DisableOmpWrapper() : ChangeOmpNumThreadsWrapper(1) {}
 };
-
-/// Abstraction for level of parallelism to use, covering both OpenMP and
-/// std::thread-based parallelism.
-class DegreeOfParallelism
-{
-public:
-  static DegreeOfParallelism None() { return DegreeOfParallelism(1); }
-
-  static DegreeOfParallelism FromOmp()
-  { return DegreeOfParallelism(GetNumOmpThreads()); }
-
-  DegreeOfParallelism() : DegreeOfParallelism(1) {}
-
-  explicit DegreeOfParallelism(const int32_t num_threads)
-  {
-    if (num_threads >= 1)
-    {
-      num_threads_ = num_threads;
-    }
-    else
-    {
-      throw std::invalid_argument(
-          "Provided num_threads " + std::to_string(num_threads) +
-          " cannot be less than 1");
-    }
-  }
-
-  bool IsParallel() const { return num_threads_ > 1; }
-
-  int32_t GetNumThreads() const { return num_threads_; }
-
-private:
-  int32_t num_threads_ = 1;
-};
-
 }  // namespace openmp_helpers
 CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities
-
-/// Macro to stringify tokens for the purposes of the below macros.
-#define CRU_MACRO_STRINGIFY(s) #s
-
-/// Macros to declare OpenMP parallel for loops, handling conditionals as well
-/// as the case of OpenMP being disabled entirely.
-#if defined(_OPENMP)
-#define CRU_OMP_PARALLEL_FOR_DEGREE(degree) _Pragma(CRU_MACRO_STRINGIFY(omp parallel for if(degree.IsParallel()) num_threads(degree.GetNumThreads())))
-#else
-#define CRU_OMP_PARALLEL_FOR_DEGREE(degree) (void)(degree);
-#endif
-

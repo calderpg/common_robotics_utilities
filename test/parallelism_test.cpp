@@ -82,10 +82,10 @@ public:
     thread_set_.insert(thread_id);
   }
 
-  size_t NumThreads() const
+  std::set<int32_t> ThreadSet() const
   {
     std::lock_guard<std::mutex> lock(thread_set_mutex_);
-    return thread_set_.size();
+    return thread_set_;
   }
 
 private:
@@ -229,7 +229,11 @@ TEST_P(ParallelismTestSuite, StaticParallelForTest)
         trackers, parallelism, parallelism::ParallelForBackend::BEST_AVAILABLE);
     for (const auto& tracker : trackers)
     {
-      EXPECT_EQ(tracker.NumThreads(), 1u);
+      const std::set<int32_t> thread_set = tracker.ThreadSet();
+      EXPECT_EQ(thread_set.size(), 1u);
+      const int32_t thread_num = *thread_set.begin();
+      EXPECT_GE(thread_num, 0);
+      EXPECT_LT(thread_num, parallelism.GetNumThreads());
     }
   }
 
@@ -239,7 +243,11 @@ TEST_P(ParallelismTestSuite, StaticParallelForTest)
         trackers, parallelism, parallelism::ParallelForBackend::OPENMP);
     for (const auto& tracker : trackers)
     {
-      EXPECT_EQ(tracker.NumThreads(), 1u);
+      const std::set<int32_t> thread_set = tracker.ThreadSet();
+      EXPECT_EQ(thread_set.size(), 1u);
+      const int32_t thread_num = *thread_set.begin();
+      EXPECT_GE(thread_num, 0);
+      EXPECT_LT(thread_num, parallelism.GetNumThreads());
     }
   }
 
@@ -249,7 +257,11 @@ TEST_P(ParallelismTestSuite, StaticParallelForTest)
         trackers, parallelism, parallelism::ParallelForBackend::ASYNC);
     for (const auto& tracker : trackers)
     {
-      EXPECT_EQ(tracker.NumThreads(), 1u);
+      const std::set<int32_t> thread_set = tracker.ThreadSet();
+      EXPECT_EQ(thread_set.size(), 1u);
+      const int32_t thread_num = *thread_set.begin();
+      EXPECT_GE(thread_num, 0);
+      EXPECT_LT(thread_num, parallelism.GetNumThreads());
     }
   }
 }
@@ -265,7 +277,11 @@ TEST_P(ParallelismTestSuite, DynamicParallelForTest)
         trackers, parallelism, parallelism::ParallelForBackend::BEST_AVAILABLE);
     for (const auto& tracker : trackers)
     {
-      EXPECT_EQ(tracker.NumThreads(), 1u);
+      const std::set<int32_t> thread_set = tracker.ThreadSet();
+      EXPECT_EQ(thread_set.size(), 1u);
+      const int32_t thread_num = *thread_set.begin();
+      EXPECT_GE(thread_num, 0);
+      EXPECT_LT(thread_num, parallelism.GetNumThreads());
     }
   }
 
@@ -275,7 +291,11 @@ TEST_P(ParallelismTestSuite, DynamicParallelForTest)
         trackers, parallelism, parallelism::ParallelForBackend::OPENMP);
     for (const auto& tracker : trackers)
     {
-      EXPECT_EQ(tracker.NumThreads(), 1u);
+      const std::set<int32_t> thread_set = tracker.ThreadSet();
+      EXPECT_EQ(thread_set.size(), 1u);
+      const int32_t thread_num = *thread_set.begin();
+      EXPECT_GE(thread_num, 0);
+      EXPECT_LT(thread_num, parallelism.GetNumThreads());
     }
   }
 
@@ -285,7 +305,11 @@ TEST_P(ParallelismTestSuite, DynamicParallelForTest)
         trackers, parallelism, parallelism::ParallelForBackend::ASYNC);
     for (const auto& tracker : trackers)
     {
-      EXPECT_EQ(tracker.NumThreads(), 1u);
+      const std::set<int32_t> thread_set = tracker.ThreadSet();
+      EXPECT_EQ(thread_set.size(), 1u);
+      const int32_t thread_num = *thread_set.begin();
+      EXPECT_GE(thread_num, 0);
+      EXPECT_LT(thread_num, parallelism.GetNumThreads());
     }
   }
 }

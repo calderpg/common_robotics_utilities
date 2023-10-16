@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <deque>
 #include <future>
 #include <list>
 #include <stdexcept>
@@ -229,8 +230,9 @@ void DynamicParallelForLoop(
     return;
   }
 
-  // If serial execution is specified, do that directly.
-  if (!parallelism.IsParallel())
+  // If serial execution is specified, or the total range is 1, perform all work
+  // in a single thread and work range.
+  if (!parallelism.IsParallel() || (total_range == 1))
   {
     const ThreadWorkRange full_range(range_start, range_end, 0);
     functor(full_range);
@@ -258,14 +260,52 @@ void DynamicParallelForLoop(
   }
   else
   {
-    // Dispatch worker threads.
+    // Keep track of number of workers dispatched and those currently live.
     int64_t workers_dispatched = 0;
     size_t num_live_workers = 0;
+
+    // Helper class to keep track of which thread numbers are available.
+    class ThreadNumberKeeper
+    {
+    public:
+      explicit ThreadNumberKeeper(const int32_t num_threads)
+      {
+        for (int32_t thread_number = 0; thread_number < num_threads;
+             thread_number++)
+        {
+          ReturnThreadNumber(thread_number);
+        }
+      }
+
+      void ReturnThreadNumber(const int32_t thread_number)
+      {
+        thread_number_queue_.push_back(thread_number);
+      }
+
+      int32_t CheckoutThreadNumber()
+      {
+        if (thread_number_queue_.size() > 0)
+        {
+          const int32_t thread_number = thread_number_queue_.front();
+          thread_number_queue_.pop_front();
+          return thread_number;
+        }
+        else
+        {
+          throw std::runtime_error("No thread numbers are available");
+        }
+      }
+
+    private:
+      std::deque<int32_t> thread_number_queue_;
+    };
+
+    ThreadNumberKeeper thread_number_keeper(real_num_threads);
 
     std::mutex cv_mutex;
     std::condition_variable cv;
 
-    std::list<std::future<void>> active_workers;
+    std::list<std::future<int32_t>> active_workers;
 
     while (active_workers.size() > 0 || workers_dispatched < total_range)
     {
@@ -275,9 +315,11 @@ void DynamicParallelForLoop(
       {
         if (utility::IsFutureReady(*worker))
         {
-          // This call to future.get() is necessary to propagate any exception
-          // thrown during simulation execution.
-          worker->get();
+          // This call to future.get() will propagate any exception thrown by
+          // the worker.
+          const int32_t thread_number = worker->get();
+          // Mark the thread number as available.
+          thread_number_keeper.ReturnThreadNumber(thread_number);
           // Erase returns iterator to the next node in the list.
           worker = active_workers.erase(worker);
         }
@@ -299,18 +341,19 @@ void DynamicParallelForLoop(
         active_workers.emplace_back(std::async(
             std::launch::async,
             [&functor, &cv, &cv_mutex, &num_live_workers](
-                const int64_t index, const int32_t thread_num)
+                const int64_t index, const int32_t thread_number) -> int32_t
             {
-              const ThreadWorkRange work_range(index, index + 1, thread_num);
+              const ThreadWorkRange work_range(index, index + 1, thread_number);
               functor(work_range);
               {
                 std::lock_guard<std::mutex> lock(cv_mutex);
                 num_live_workers--;
               }
               cv.notify_all();
+              return thread_number;
             },
             workers_dispatched,
-            static_cast<int32_t>(active_workers.size())));
+            thread_number_keeper.CheckoutThreadNumber()));
         workers_dispatched++;
       }
 

@@ -14,6 +14,9 @@ namespace common_robotics_utilities
 {
 namespace parallelism_test
 {
+constexpr size_t kNumTrackers = 1000000;
+constexpr size_t kNumInts = 1000000;
+
 GTEST_TEST(ParallelismTest, CalcStaticThreadRangeStartAndEndTest)
 {
   // Parameter sanity testing
@@ -221,7 +224,7 @@ TEST_P(ParallelismTestSuite, StaticParallelForTest)
   std::cout << "# of threads = " << parallelism.GetNumThreads() << std::endl;
 
   {
-    std::vector<ThreadTracker> trackers(49);
+    std::vector<ThreadTracker> trackers(kNumTrackers);
     StaticParallelRecordThreads(
         trackers, parallelism, parallelism::ParallelForBackend::BEST_AVAILABLE);
     for (const auto& tracker : trackers)
@@ -231,7 +234,7 @@ TEST_P(ParallelismTestSuite, StaticParallelForTest)
   }
 
   {
-    std::vector<ThreadTracker> trackers(49);
+    std::vector<ThreadTracker> trackers(kNumTrackers);
     StaticParallelRecordThreads(
         trackers, parallelism, parallelism::ParallelForBackend::OPENMP);
     for (const auto& tracker : trackers)
@@ -241,7 +244,7 @@ TEST_P(ParallelismTestSuite, StaticParallelForTest)
   }
 
   {
-    std::vector<ThreadTracker> trackers(49);
+    std::vector<ThreadTracker> trackers(kNumTrackers);
     StaticParallelRecordThreads(
         trackers, parallelism, parallelism::ParallelForBackend::ASYNC);
     for (const auto& tracker : trackers)
@@ -257,7 +260,7 @@ TEST_P(ParallelismTestSuite, DynamicParallelForTest)
   std::cout << "# of threads = " << parallelism.GetNumThreads() << std::endl;
 
   {
-    std::vector<ThreadTracker> trackers(49);
+    std::vector<ThreadTracker> trackers(kNumTrackers);
     DynamicParallelRecordThreads(
         trackers, parallelism, parallelism::ParallelForBackend::BEST_AVAILABLE);
     for (const auto& tracker : trackers)
@@ -267,7 +270,7 @@ TEST_P(ParallelismTestSuite, DynamicParallelForTest)
   }
 
   {
-    std::vector<ThreadTracker> trackers(49);
+    std::vector<ThreadTracker> trackers(kNumTrackers);
     DynamicParallelRecordThreads(
         trackers, parallelism, parallelism::ParallelForBackend::OPENMP);
     for (const auto& tracker : trackers)
@@ -277,7 +280,7 @@ TEST_P(ParallelismTestSuite, DynamicParallelForTest)
   }
 
   {
-    std::vector<ThreadTracker> trackers(49);
+    std::vector<ThreadTracker> trackers(kNumTrackers);
     DynamicParallelRecordThreads(
         trackers, parallelism, parallelism::ParallelForBackend::ASYNC);
     for (const auto& tracker : trackers)
@@ -292,7 +295,7 @@ TEST_P(ParallelismTestSuite, StaticParallelForSumTest)
   const parallelism::DegreeOfParallelism parallelism = GetParam();
   std::cout << "# of threads = " << parallelism.GetNumThreads() << std::endl;
 
-  const auto elements = GenerateRandomInt64Sequence(1000000);
+  const auto elements = GenerateRandomInt64Sequence(kNumInts);
 
   int64_t serial_sum = 0;
   for (const int64_t value : elements)
@@ -318,7 +321,7 @@ TEST_P(ParallelismTestSuite, DynamicParallelForSumTest)
   const parallelism::DegreeOfParallelism parallelism = GetParam();
   std::cout << "# of threads = " << parallelism.GetNumThreads() << std::endl;
 
-  const auto elements = GenerateRandomInt64Sequence(1000000);
+  const auto elements = GenerateRandomInt64Sequence(kNumInts);
 
   int64_t serial_sum = 0;
   for (const int64_t value : elements)

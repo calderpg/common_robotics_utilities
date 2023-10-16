@@ -169,16 +169,6 @@ void StaticParallelForLoop(
   const int32_t real_num_threads = static_cast<int32_t>(std::min(
       static_cast<int64_t>(parallelism.GetNumThreads()), total_range));
 
-  const auto thread_work = [&](const int32_t thread_num)
-  {
-    const auto thread_range_start_end = CalcStaticThreadRangeStartAndEnd(
-        range_start, range_end, real_num_threads, thread_num);
-    const ThreadWorkRange work_range(
-        thread_range_start_end.first, thread_range_start_end.second,
-        thread_num);
-    functor(work_range);
-  };
-
   if (backend == ParallelForBackend::OPENMP ||
       (backend == ParallelForBackend::BEST_AVAILABLE &&
        openmp_helpers::IsOmpEnabledInBuild()))
@@ -188,11 +178,26 @@ void StaticParallelForLoop(
 #endif
     for (int32_t thread_num = 0; thread_num < real_num_threads; thread_num++)
     {
-      thread_work(openmp_helpers::GetContextOmpThreadNum());
+      const auto thread_range_start_end = CalcStaticThreadRangeStartAndEnd(
+          range_start, range_end, real_num_threads, thread_num);
+      const ThreadWorkRange work_range(
+          thread_range_start_end.first, thread_range_start_end.second,
+          openmp_helpers::GetContextOmpThreadNum());
+      functor(work_range);
     }
   }
   else
   {
+    const auto thread_work = [&](const int32_t thread_num)
+    {
+      const auto thread_range_start_end = CalcStaticThreadRangeStartAndEnd(
+          range_start, range_end, real_num_threads, thread_num);
+      const ThreadWorkRange work_range(
+          thread_range_start_end.first, thread_range_start_end.second,
+          thread_num);
+      functor(work_range);
+    };
+
     // Dispatch worker threads.
     std::vector<std::future<void>> workers;
     for (int64_t thread_num = 0; thread_num < real_num_threads; thread_num++)

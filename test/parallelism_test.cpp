@@ -12,7 +12,7 @@
 
 namespace common_robotics_utilities
 {
-namespace parallelism_test
+namespace
 {
 constexpr size_t kNumTrackers = 1000000;
 constexpr size_t kNumInts = 1000000;
@@ -386,7 +386,7 @@ int32_t GetNumThreads()
 INSTANTIATE_TEST_SUITE_P(
     ParallelParallelismTest, ParallelismTestSuite,
     testing::Values(parallelism::DegreeOfParallelism(GetNumThreads())));
-}  // namespace parallelism_test
+}  // namespace
 }  // namespace common_robotics_utilities
 
 int main(int argc, char** argv)

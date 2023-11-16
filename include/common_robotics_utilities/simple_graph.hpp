@@ -451,103 +451,97 @@ OutputGraphType PruneGraph(
   pruned_graph.ShrinkToFit();
 
   // Second, optionally parallel pass to update edges for the kept nodes
-  const auto per_thread_work = [&](
-      const parallelism::ThreadWorkRange& work_range)
+  const auto per_item_work = [&](const int32_t, const int64_t kept_node_index)
   {
-    for (int64_t kept_node_index = work_range.GetRangeStart();
-         kept_node_index < work_range.GetRangeEnd();
-         kept_node_index++)
+    typename OutputGraphType::NodeType& kept_graph_node =
+        pruned_graph.GetNodeMutable(kept_node_index);
+    // Make space for the updated in edges
+    std::vector<typename OutputGraphType::EdgeType> new_in_edges;
+    new_in_edges.reserve(kept_graph_node.GetInEdgesImmutable().size());
+    // Go through the in edges
+    for (const auto& in_edge : kept_graph_node.GetInEdgesImmutable())
     {
-      typename OutputGraphType::NodeType& kept_graph_node =
-          pruned_graph.GetNodeMutable(kept_node_index);
-      // Make space for the updated in edges
-      std::vector<typename OutputGraphType::EdgeType> new_in_edges;
-      new_in_edges.reserve(kept_graph_node.GetInEdgesImmutable().size());
-      // Go through the in edges
-      for (const auto& in_edge : kept_graph_node.GetInEdgesImmutable())
+      const int64_t original_from_index = in_edge.GetFromIndex();
+      // Only update edges we keep
+      if (nodes_to_prune.count(original_from_index) == 0)
       {
-        const int64_t original_from_index = in_edge.GetFromIndex();
-        // Only update edges we keep
-        if (nodes_to_prune.count(original_from_index) == 0)
+        // Make a copy of the existing edge
+        typename OutputGraphType::EdgeType new_in_edge = in_edge;
+        // Update the "to index" to our node's index
+        new_in_edge.SetToIndex(kept_node_index);
+        // Update the "from index" to account for pruned nodes
+        int64_t new_from_index = original_from_index;
+        for (const int64_t index_to_prune : vector_nodes_to_prune)
         {
-          // Make a copy of the existing edge
-          typename OutputGraphType::EdgeType new_in_edge = in_edge;
-          // Update the "to index" to our node's index
-          new_in_edge.SetToIndex(kept_node_index);
-          // Update the "from index" to account for pruned nodes
-          int64_t new_from_index = original_from_index;
-          for (const int64_t index_to_prune : vector_nodes_to_prune)
+          // For each pruned node before the "from node", decrement the index
+          if (index_to_prune < original_from_index)
           {
-            // For each pruned node before the "from node", decrement the index
-            if (index_to_prune < original_from_index)
-            {
-              new_from_index--;
-            }
-            // We can terminate early because we know the indices are sorted
-            else if (index_to_prune > original_from_index)
-            {
-              break;
-            }
-            else
-            {
-              throw std::runtime_error(
-                  "index_to_prune cannot equal original_from_index");
-            }
+            new_from_index--;
           }
-          new_in_edge.SetFromIndex(new_from_index);
-          // Copy the new edge
-          new_in_edges.push_back(new_in_edge);
-        }
-      }
-      new_in_edges.shrink_to_fit();
-      // Make space for the updated out edges
-      std::vector<typename OutputGraphType::EdgeType> new_out_edges;
-      new_out_edges.reserve(kept_graph_node.GetOutEdgesImmutable().size());
-      // Go through the out edges
-      for (const auto& out_edge : kept_graph_node.GetOutEdgesImmutable())
-      {
-        const int64_t original_to_index = out_edge.GetToIndex();
-        // Only update edges we keep
-        if (nodes_to_prune.count(original_to_index) == 0)
-        {
-          // Make a copy of the existing edge
-          typename OutputGraphType::EdgeType new_out_edge = out_edge;
-          // Update the "from index" to our node's index
-          new_out_edge.SetFromIndex(kept_node_index);
-          // Update the "from index" to account for pruned nodes
-          int64_t new_to_index = original_to_index;
-          for (const int64_t index_to_prune : vector_nodes_to_prune)
+          // We can terminate early because we know the indices are sorted
+          else if (index_to_prune > original_from_index)
           {
-            // For each pruned node before the "from node", decrement the index
-            if (index_to_prune < original_to_index)
-            {
-              new_to_index--;
-            }
-            // We can terminate early because we know the indices are sorted
-            else if (index_to_prune > original_to_index)
-            {
-              break;
-            }
-            else
-            {
-              throw std::runtime_error(
-                  "index_to_prune cannot equal original_to_index");
-            }
+            break;
           }
-          new_out_edge.SetToIndex(new_to_index);
-          // Copy the new edge
-          new_out_edges.push_back(new_out_edge);
+          else
+          {
+            throw std::runtime_error(
+                "index_to_prune cannot equal original_from_index");
+          }
         }
+        new_in_edge.SetFromIndex(new_from_index);
+        // Copy the new edge
+        new_in_edges.push_back(new_in_edge);
       }
-      new_out_edges.shrink_to_fit();
-      // Copy in the updated edges
-      kept_graph_node.SetInEdges(new_in_edges);
-      kept_graph_node.SetOutEdges(new_out_edges);
     }
+    new_in_edges.shrink_to_fit();
+    // Make space for the updated out edges
+    std::vector<typename OutputGraphType::EdgeType> new_out_edges;
+    new_out_edges.reserve(kept_graph_node.GetOutEdgesImmutable().size());
+    // Go through the out edges
+    for (const auto& out_edge : kept_graph_node.GetOutEdgesImmutable())
+    {
+      const int64_t original_to_index = out_edge.GetToIndex();
+      // Only update edges we keep
+      if (nodes_to_prune.count(original_to_index) == 0)
+      {
+        // Make a copy of the existing edge
+        typename OutputGraphType::EdgeType new_out_edge = out_edge;
+        // Update the "from index" to our node's index
+        new_out_edge.SetFromIndex(kept_node_index);
+        // Update the "from index" to account for pruned nodes
+        int64_t new_to_index = original_to_index;
+        for (const int64_t index_to_prune : vector_nodes_to_prune)
+        {
+          // For each pruned node before the "from node", decrement the index
+          if (index_to_prune < original_to_index)
+          {
+            new_to_index--;
+          }
+          // We can terminate early because we know the indices are sorted
+          else if (index_to_prune > original_to_index)
+          {
+            break;
+          }
+          else
+          {
+            throw std::runtime_error(
+                "index_to_prune cannot equal original_to_index");
+          }
+        }
+        new_out_edge.SetToIndex(new_to_index);
+        // Copy the new edge
+        new_out_edges.push_back(new_out_edge);
+      }
+    }
+    new_out_edges.shrink_to_fit();
+    // Copy in the updated edges
+    kept_graph_node.SetInEdges(new_in_edges);
+    kept_graph_node.SetOutEdges(new_out_edges);
   };
 
-  parallelism::StaticParallelForLoop(
-      parallelism, 0, pruned_graph.Size(), per_thread_work,
+  parallelism::StaticParallelForIndexLoop(
+      parallelism, 0, pruned_graph.Size(), per_item_work,
       parallelism::ParallelForBackend::BEST_AVAILABLE);
 
   return pruned_graph;

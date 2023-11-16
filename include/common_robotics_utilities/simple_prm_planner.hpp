@@ -268,65 +268,60 @@ int64_t AddNodeToRoadmap(
   std::vector<std::pair<double, double>> nearest_neighbors_distances(
       nearest_neighbors.size());
 
-  const auto per_thread_work = [&](
-      const parallelism::ThreadWorkRange& work_range)
+  const auto per_item_work = [&](const int32_t thread_num, const int64_t index)
   {
-    for (size_t idx = static_cast<size_t>(work_range.GetRangeStart());
-         idx < static_cast<size_t>(work_range.GetRangeEnd());
-         idx++)
+    const size_t idx = static_cast<size_t>(index);
+    const auto& nearest_neighbor = nearest_neighbors.at(idx);
+    const int64_t nearest_neighbor_index = nearest_neighbor.Index();
+    const double graph_to_node_distance = nearest_neighbor.Distance();
+    const T& nearest_neighbor_state = roadmap.GetNodeImmutable(
+        nearest_neighbor_index).GetValueImmutable();
+    const bool graph_to_node_edge_validity =
+        edge_validity_check_fn(thread_num, nearest_neighbor_state, state);
+    if (graph_to_node_edge_validity && connection_is_symmetric)
     {
-      const auto& nearest_neighbor = nearest_neighbors.at(idx);
-      const int64_t nearest_neighbor_index = nearest_neighbor.Index();
-      const double graph_to_node_distance = nearest_neighbor.Distance();
-      const T& nearest_neighbor_state = roadmap.GetNodeImmutable(
-          nearest_neighbor_index).GetValueImmutable();
-      const bool graph_to_node_edge_validity = edge_validity_check_fn(
-          work_range.GetThreadNum(),nearest_neighbor_state, state);
-      if (graph_to_node_edge_validity && connection_is_symmetric)
+      // Distance is symmetric and the edge is valid
+      nearest_neighbors_distances.at(idx)
+          = std::make_pair(graph_to_node_distance,
+                           graph_to_node_distance);
+    }
+    else if (!connection_is_symmetric)
+    {
+      const bool node_to_graph_edge_validity =
+          edge_validity_check_fn(thread_num, state, nearest_neighbor_state);
+      const double node_to_graph_distance
+          = distance_fn(state,
+                        roadmap.GetNodeImmutable(nearest_neighbor_index)
+                            .GetValueImmutable());
+      // We use -1 as a signaling value of an infeasible edge
+      const double real_graph_to_node_distance
+          = (graph_to_node_edge_validity) ? graph_to_node_distance : -1.0;
+      const double real_node_to_graph_distance
+          = (node_to_graph_edge_validity) ? node_to_graph_distance : -1.0;
+      // Set the distance values depending on direction
+      if (nn_distance_direction == NNDistanceDirection::ROADMAP_TO_NEW_STATE)
       {
-        // Distance is symmetric and the edge is valid
         nearest_neighbors_distances.at(idx)
-            = std::make_pair(graph_to_node_distance,
-                             graph_to_node_distance);
-      }
-      else if (!connection_is_symmetric)
-      {
-        const bool node_to_graph_edge_validity = edge_validity_check_fn(
-            work_range.GetThreadNum(), state, nearest_neighbor_state);
-        const double node_to_graph_distance
-            = distance_fn(state,
-                          roadmap.GetNodeImmutable(nearest_neighbor_index)
-                              .GetValueImmutable());
-        // We use -1 as a signaling value of an infeasible edge
-        const double real_graph_to_node_distance
-            = (graph_to_node_edge_validity) ? graph_to_node_distance : -1.0;
-        const double real_node_to_graph_distance
-            = (node_to_graph_edge_validity) ? node_to_graph_distance : -1.0;
-        // Set the distance values depending on direction
-        if (nn_distance_direction == NNDistanceDirection::ROADMAP_TO_NEW_STATE)
-        {
-          nearest_neighbors_distances.at(idx)
-              = std::make_pair(real_graph_to_node_distance,
-                               real_node_to_graph_distance);
-        }
-        else
-        {
-          nearest_neighbors_distances.at(idx)
-              = std::make_pair(real_node_to_graph_distance,
-                               real_graph_to_node_distance);
-        }
+            = std::make_pair(real_graph_to_node_distance,
+                             real_node_to_graph_distance);
       }
       else
       {
-        // Distance is symmetric, but the edge is not valid!
-        nearest_neighbors_distances.at(idx) = std::make_pair(-1.0, -1.0);
+        nearest_neighbors_distances.at(idx)
+            = std::make_pair(real_node_to_graph_distance,
+                             real_graph_to_node_distance);
       }
+    }
+    else
+    {
+      // Distance is symmetric, but the edge is not valid!
+      nearest_neighbors_distances.at(idx) = std::make_pair(-1.0, -1.0);
     }
   };
 
-  parallelism::StaticParallelForLoop(
+  parallelism::StaticParallelForIndexLoop(
       parallelism, 0, static_cast<int64_t>(nearest_neighbors.size()),
-      per_thread_work, parallelism::ParallelForBackend::BEST_AVAILABLE);
+      per_item_work, parallelism::ParallelForBackend::BEST_AVAILABLE);
 
   // THIS MUST BE SERIAL - add edges to roadmap
   for (size_t idx = 0; idx < nearest_neighbors.size(); idx++)
@@ -548,20 +543,15 @@ GraphType BuildRoadMap(
     sampling_parallelism = parallelism;
   }
 
-  const auto sampling_thread_work = [&](
-      const parallelism::ThreadWorkRange& work_range)
+  const auto sampling_item_work = [&](
+      const int32_t thread_num, const int64_t index)
   {
-    for (size_t index = static_cast<size_t>(work_range.GetRangeStart());
-         index < static_cast<size_t>(work_range.GetRangeEnd());
-         index++)
-    {
-      roadmap_states.at(index) = valid_sample_fn(work_range.GetThreadNum());
-    }
+    roadmap_states.at(static_cast<size_t>(index)) = valid_sample_fn(thread_num);
   };
 
-  parallelism::StaticParallelForLoop(
+  parallelism::StaticParallelForIndexLoop(
       sampling_parallelism, 0, static_cast<int64_t>(roadmap_states.size()),
-      sampling_thread_work, parallelism::ParallelForBackend::BEST_AVAILABLE);
+      sampling_item_work, parallelism::ParallelForBackend::BEST_AVAILABLE);
 
   // Populate the roadmap from the sampled valid configurations.
   GraphType roadmap(roadmap_size);
@@ -579,59 +569,53 @@ GraphType BuildRoadMap(
 
   // Perform edge validity and distance checks for all nodes, optionally in
   // parallel.
-  const auto connection_thread_work = [&](
-      const parallelism::ThreadWorkRange& work_range)
+  const auto connection_item_work = [&](
+      const int32_t thread_num, const int64_t node_index)
   {
-    for (int64_t node_index = work_range.GetRangeStart();
-         node_index < work_range.GetRangeEnd();
-         node_index++)
+    auto& node = roadmap.GetNodeMutable(node_index);
+    const T& state = node.GetValueImmutable();
+
+    // Find K+1 nearest neighbors, since KNN will find the current node too.
+    const auto nearest_neighbors = graph_knn.GetKNearestNeighbors(
+        roadmap, state, K + 1, NNDistanceDirection::ROADMAP_TO_NEW_STATE,
+        roadmap.Size());
+
+    for (const auto& neighbor : nearest_neighbors)
     {
-      auto& node = roadmap.GetNodeMutable(node_index);
-      const T& state = node.GetValueImmutable();
-
-      // Find K+1 nearest neighbors, since KNN will find the current node too.
-      const auto nearest_neighbors = graph_knn.GetKNearestNeighbors(
-          roadmap, state, K + 1, NNDistanceDirection::ROADMAP_TO_NEW_STATE,
-          roadmap.Size());
-
-      for (const auto& neighbor : nearest_neighbors)
+      const int64_t other_node_index = neighbor.Index();
+      // Don't try to connect the node to itself.
+      if (other_node_index != node_index)
       {
-        const int64_t other_node_index = neighbor.Index();
-        // Don't try to connect the node to itself.
-        if (other_node_index != node_index)
+        const T& other_state =
+            roadmap.GetNodeImmutable(other_node_index).GetValueImmutable();
+        const bool other_state_to_state_valid =
+            edge_validity_check_fn(thread_num, other_state, state);
+
+        if (other_state_to_state_valid)
         {
-          const T& other_state =
-              roadmap.GetNodeImmutable(other_node_index).GetValueImmutable();
-          const bool other_state_to_state_valid = edge_validity_check_fn(
-              work_range.GetThreadNum(), other_state, state);
+          const double distance = neighbor.Distance();
+          node.AddInEdge(typename GraphType::EdgeType(
+              other_node_index, node_index, distance));
+        }
 
-          if (other_state_to_state_valid)
-          {
-            const double distance = neighbor.Distance();
-            node.AddInEdge(typename GraphType::EdgeType(
-                other_node_index, node_index, distance));
-          }
-
-          if (connection_is_symmetric && other_state_to_state_valid)
-          {
-            const double distance = neighbor.Distance();
-            node.AddOutEdge(typename GraphType::EdgeType(
-                node_index, other_node_index, distance));
-          }
-          else if (edge_validity_check_fn(
-                       work_range.GetThreadNum(), state, other_state))
-          {
-            const double distance = distance_fn(state, other_state);
-            node.AddOutEdge(typename GraphType::EdgeType(
-                node_index, other_node_index, distance));
-          }
+        if (connection_is_symmetric && other_state_to_state_valid)
+        {
+          const double distance = neighbor.Distance();
+          node.AddOutEdge(typename GraphType::EdgeType(
+              node_index, other_node_index, distance));
+        }
+        else if (edge_validity_check_fn(thread_num, state, other_state))
+        {
+          const double distance = distance_fn(state, other_state);
+          node.AddOutEdge(typename GraphType::EdgeType(
+              node_index, other_node_index, distance));
         }
       }
     }
   };
 
-  parallelism::StaticParallelForLoop(
-      parallelism, 0, roadmap.Size(), connection_thread_work,
+  parallelism::StaticParallelForIndexLoop(
+      parallelism, 0, roadmap.Size(), connection_item_work,
       parallelism::ParallelForBackend::BEST_AVAILABLE);
 
   // Helpers for checking if an edge is present in another node.
@@ -712,44 +696,38 @@ void UpdateRoadMapEdges(
     throw std::invalid_argument("Provided roadmap has invalid linkage");
   }
 
-  const auto per_thread_work = [&](
-      const parallelism::ThreadWorkRange& work_range)
+  const auto per_item_work = [&](
+      const int32_t thread_num, const int64_t current_node_index)
   {
-    for (int64_t current_node_index = work_range.GetRangeStart();
-         current_node_index < work_range.GetRangeEnd();
-         current_node_index++)
+    auto& current_node = roadmap.GetNodeMutable(current_node_index);
+    auto& current_node_out_edges = current_node.GetOutEdgesMutable();
+    for (auto& current_out_edge : current_node_out_edges)
     {
-      auto& current_node = roadmap.GetNodeMutable(current_node_index);
-      auto& current_node_out_edges = current_node.GetOutEdgesMutable();
-      for (auto& current_out_edge : current_node_out_edges)
+      const int64_t other_node_idx = current_out_edge.GetToIndex();
+      auto& other_node = roadmap.GetNodeMutable(other_node_idx);
+      auto& other_node_in_edges = other_node.GetInEdgesMutable();
+      const double updated_weight
+          = (edge_validity_check_fn(
+                thread_num, current_node.GetValueImmutable(),
+                other_node.GetValueImmutable()))
+            ? distance_fn(current_node.GetValueImmutable(),
+                          other_node.GetValueImmutable())
+            : std::numeric_limits<double>::infinity();
+      // Update our out edge
+      current_out_edge.SetWeight(updated_weight);
+      // Update the other node's in edges
+      for (auto& other_in_edge : other_node_in_edges)
       {
-        const int64_t other_node_idx = current_out_edge.GetToIndex();
-        auto& other_node = roadmap.GetNodeMutable(other_node_idx);
-        auto& other_node_in_edges = other_node.GetInEdgesMutable();
-        const double updated_weight
-            = (edge_validity_check_fn(
-                  work_range.GetThreadNum(),
-                  current_node.GetValueImmutable(),
-                  other_node.GetValueImmutable()))
-              ? distance_fn(current_node.GetValueImmutable(),
-                            other_node.GetValueImmutable())
-              : std::numeric_limits<double>::infinity();
-        // Update our out edge
-        current_out_edge.SetWeight(updated_weight);
-        // Update the other node's in edges
-        for (auto& other_in_edge : other_node_in_edges)
+        if (other_in_edge.GetFromIndex() == current_node_index)
         {
-          if (other_in_edge.GetFromIndex() == current_node_index)
-          {
-            other_in_edge.SetWeight(updated_weight);
-          }
+          other_in_edge.SetWeight(updated_weight);
         }
       }
     }
   };
 
-  parallelism::StaticParallelForLoop(
-      parallelism, 0, roadmap.Size(), per_thread_work,
+  parallelism::StaticParallelForIndexLoop(
+      parallelism, 0, roadmap.Size(), per_item_work,
       parallelism::ParallelForBackend::BEST_AVAILABLE);
 }
 

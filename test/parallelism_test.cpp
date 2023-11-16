@@ -112,20 +112,14 @@ void StaticParallelRecordThreads(
     const parallelism::DegreeOfParallelism& parallelism,
     const parallelism::ParallelForBackend backend)
 {
-  const auto per_thread_work = [&trackers](
-      const parallelism::ThreadWorkRange& work_range)
+  const auto per_item_work = [&trackers](
+      const int32_t thread_num, const int64_t index)
   {
-    for (int64_t index = work_range.GetRangeStart();
-         index < work_range.GetRangeEnd();
-         index++)
-    {
-      trackers.at(static_cast<size_t>(index)).RecordThread(
-          work_range.GetThreadNum());
-    }
+    trackers.at(static_cast<size_t>(index)).RecordThread(thread_num);
   };
 
-  parallelism::StaticParallelForLoop(
-      parallelism, 0, static_cast<int64_t>(trackers.size()), per_thread_work,
+  parallelism::StaticParallelForIndexLoop(
+      parallelism, 0, static_cast<int64_t>(trackers.size()), per_item_work,
       backend);
 }
 
@@ -134,20 +128,14 @@ void DynamicParallelRecordThreads(
     const parallelism::DegreeOfParallelism& parallelism,
     const parallelism::ParallelForBackend backend)
 {
-  const auto per_thread_work = [&trackers](
-      const parallelism::ThreadWorkRange& work_range)
+  const auto per_item_work = [&trackers](
+      const int32_t thread_num, const int64_t index)
   {
-    for (int64_t index = work_range.GetRangeStart();
-         index < work_range.GetRangeEnd();
-         index++)
-    {
-      trackers.at(static_cast<size_t>(index)).RecordThread(
-          work_range.GetThreadNum());
-    }
+    trackers.at(static_cast<size_t>(index)).RecordThread(thread_num);
   };
 
-  parallelism::DynamicParallelForLoop(
-      parallelism, 0, static_cast<int64_t>(trackers.size()), per_thread_work,
+  parallelism::DynamicParallelForIndexLoop(
+      parallelism, 0, static_cast<int64_t>(trackers.size()), per_item_work,
       backend);
 }
 
@@ -158,20 +146,15 @@ int64_t StaticParallelSum(
 {
   std::vector<int64_t> parallel_thread_sums(parallelism.GetNumThreads(), 0);
 
-  const auto per_thread_work = [&elements, &parallel_thread_sums](
-      const parallelism::ThreadWorkRange& work_range)
+  const auto per_item_work = [&elements, &parallel_thread_sums](
+      const int32_t thread_num, const int64_t index)
   {
-    for (int64_t index = work_range.GetRangeStart();
-         index < work_range.GetRangeEnd();
-         index++)
-    {
-      parallel_thread_sums.at(static_cast<size_t>(work_range.GetThreadNum()))
-          += elements.at(static_cast<size_t>(index));
-    }
+    parallel_thread_sums.at(static_cast<size_t>(thread_num))
+        += elements.at(static_cast<size_t>(index));
   };
 
-  parallelism::StaticParallelForLoop(
-      parallelism, 0, static_cast<int64_t>(elements.size()), per_thread_work,
+  parallelism::StaticParallelForIndexLoop(
+      parallelism, 0, static_cast<int64_t>(elements.size()), per_item_work,
       backend);
 
   int64_t parallel_sum = 0;
@@ -190,20 +173,15 @@ int64_t DynamicParallelSum(
 {
   std::vector<int64_t> parallel_thread_sums(parallelism.GetNumThreads(), 0);
 
-  const auto per_thread_work = [&elements, &parallel_thread_sums](
-      const parallelism::ThreadWorkRange& work_range)
+  const auto per_item_work = [&elements, &parallel_thread_sums](
+      const int32_t thread_num, const int64_t index)
   {
-    for (int64_t index = work_range.GetRangeStart();
-         index < work_range.GetRangeEnd();
-         index++)
-    {
-      parallel_thread_sums.at(static_cast<size_t>(work_range.GetThreadNum()))
-          += elements.at(static_cast<size_t>(index));
-    }
+    parallel_thread_sums.at(static_cast<size_t>(thread_num))
+        += elements.at(static_cast<size_t>(index));
   };
 
-  parallelism::DynamicParallelForLoop(
-      parallelism, 0, static_cast<int64_t>(elements.size()), per_thread_work,
+  parallelism::DynamicParallelForIndexLoop(
+      parallelism, 0, static_cast<int64_t>(elements.size()), per_item_work,
       backend);
 
   int64_t parallel_sum = 0;

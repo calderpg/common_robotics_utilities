@@ -166,24 +166,19 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
     {
       std::vector<IndexAndDistance> k_nearests(range_size);
 
-      // Helper lambda for each thread's work.
-      const auto per_thread_work = [&](
-          const parallelism::ThreadWorkRange& work_range)
+      // Helper lambda for each item's work.
+      const auto per_item_work = [&](const int32_t, const int64_t index)
       {
-        for (size_t index = static_cast<size_t>(work_range.GetRangeStart());
-             index < static_cast<size_t>(work_range.GetRangeEnd());
-             index++)
-        {
-          const Item& item = items[index];
-          const double distance = distance_fn(item, current);
-          k_nearests[index - range_start].SetIndexAndDistance(index, distance);
-        }
+        const Item& item = items[static_cast<size_t>(index)];
+        const double distance = distance_fn(item, current);
+        k_nearests[static_cast<size_t>(index) - range_start]
+            .SetIndexAndDistance(index, distance);
       };
 
       // Dispatch, preferably using OpenMP if available, std::async otherwise.
-      parallelism::StaticParallelForLoop(
+      parallelism::StaticParallelForIndexLoop(
           parallelism, static_cast<int64_t>(range_start),
-          static_cast<int64_t>(range_end), per_thread_work,
+          static_cast<int64_t>(range_end), per_item_work,
           parallelism::ParallelForBackend::BEST_AVAILABLE);
 
       return k_nearests;
@@ -197,8 +192,8 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
       std::vector<std::vector<IndexAndDistance>>
           per_thread_nearests(num_threads);
 
-      // Helper lambda for each thread's work.
-      const auto per_thread_work = [&](
+      // Helper lambda for each range's work.
+      const auto per_range_work = [&](
           const parallelism::ThreadWorkRange& work_range)
       {
         per_thread_nearests[work_range.GetThreadNum()] =
@@ -209,9 +204,9 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
       };
 
       // Dispatch, preferably using OpenMP if available, std::async otherwise.
-      parallelism::StaticParallelForLoop(
+      parallelism::StaticParallelForRangeLoop(
           parallelism, static_cast<int64_t>(range_start),
-          static_cast<int64_t>(range_end), per_thread_work,
+          static_cast<int64_t>(range_end), per_range_work,
           parallelism::ParallelForBackend::BEST_AVAILABLE);
 
       // Merge the per-thread K-nearest together.

@@ -138,7 +138,7 @@ enum class ParallelForBackend { OPENMP, ASYNC, BEST_AVAILABLE };
 /// Functor must have a signature compatible with
 /// functor(const ThreadWorkRange& work_range).
 template<typename Functor>
-void StaticParallelForLoop(
+void StaticParallelForRangeLoop(
     const DegreeOfParallelism& parallelism,
     const int64_t range_start, const int64_t range_end,
     const Functor& functor,
@@ -218,7 +218,7 @@ void StaticParallelForLoop(
 /// Functor must have a signature compatible with
 /// functor(const ThreadWorkRange& work_range).
 template<typename Functor>
-void DynamicParallelForLoop(
+void DynamicParallelForRangeLoop(
     const DegreeOfParallelism& parallelism,
     const int64_t range_start, const int64_t range_end,
     const Functor& functor,
@@ -375,6 +375,52 @@ void DynamicParallelForLoop(
       }
     }
   }
+}
+
+/// Functor must have a signature compatible with
+/// functor(const int32_t thread_num, const int64_t index).
+template<typename Functor>
+void StaticParallelForIndexLoop(
+    const DegreeOfParallelism& parallelism,
+    const int64_t range_start, const int64_t range_end,
+    const Functor& functor,
+    const ParallelForBackend backend = ParallelForBackend::BEST_AVAILABLE)
+{
+  const auto ranged_functor = [&functor](const ThreadWorkRange& work_range)
+  {
+    for (int64_t index = work_range.GetRangeStart();
+         index < work_range.GetRangeEnd();
+         index++)
+    {
+      functor(work_range.GetThreadNum(), index);
+    }
+  };
+
+  StaticParallelForRangeLoop(
+      parallelism, range_start, range_end, ranged_functor, backend);
+}
+
+/// Functor must have a signature compatible with
+/// functor(const int32_t thread_num, const int64_t index).
+template<typename Functor>
+void DynamicParallelForIndexLoop(
+    const DegreeOfParallelism& parallelism,
+    const int64_t range_start, const int64_t range_end,
+    const Functor& functor,
+    const ParallelForBackend backend = ParallelForBackend::BEST_AVAILABLE)
+{
+  const auto ranged_functor = [&functor](const ThreadWorkRange& work_range)
+  {
+    for (int64_t index = work_range.GetRangeStart();
+         index < work_range.GetRangeEnd();
+         index++)
+    {
+      functor(work_range.GetThreadNum(), index);
+    }
+  };
+
+  DynamicParallelForRangeLoop(
+      parallelism, range_start, range_end, ranged_functor, backend);
 }
 }  // namespace openmp_helpers
 CRU_NAMESPACE_END

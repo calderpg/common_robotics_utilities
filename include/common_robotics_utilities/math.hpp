@@ -537,36 +537,33 @@ Eigen::MatrixXd BuildPairwiseDistanceMatrix(
 {
   Eigen::MatrixXd distance_matrix(data.size(), data.size());
 
-  const auto per_thread_work = [&](
-      const parallelism::ThreadWorkRange& work_range)
+  const auto per_item_work = [&](const int32_t, const int64_t index)
   {
-    for (size_t idx = static_cast<size_t>(work_range.GetRangeStart());
-         idx < static_cast<size_t>(work_range.GetRangeEnd());
-         idx++)
+    const size_t idx = static_cast<size_t>(index);
+    const DataType& item = data[idx];
+
+    for (size_t jdx = idx; jdx < data.size(); jdx++)
     {
-      for (size_t jdx = idx; jdx < data.size(); jdx++)
+      if (idx != jdx)
       {
-        if (idx != jdx)
-        {
-          const double distance = distance_fn(data[idx], data[jdx]);
-          distance_matrix(static_cast<ssize_t>(idx), static_cast<ssize_t>(jdx))
-              = distance;
-          distance_matrix(static_cast<ssize_t>(jdx), static_cast<ssize_t>(idx))
-              = distance;
-        }
-        else
-        {
-          distance_matrix(static_cast<ssize_t>(idx), static_cast<ssize_t>(jdx))
-              = 0.0;
-          distance_matrix(static_cast<ssize_t>(jdx), static_cast<ssize_t>(idx))
-              = 0.0;
-        }
+        const double distance = distance_fn(item, data[jdx]);
+        distance_matrix(static_cast<ssize_t>(idx), static_cast<ssize_t>(jdx))
+            = distance;
+        distance_matrix(static_cast<ssize_t>(jdx), static_cast<ssize_t>(idx))
+            = distance;
+      }
+      else
+      {
+        distance_matrix(static_cast<ssize_t>(idx), static_cast<ssize_t>(jdx))
+            = 0.0;
+        distance_matrix(static_cast<ssize_t>(jdx), static_cast<ssize_t>(idx))
+            = 0.0;
       }
     }
   };
 
-  parallelism::StaticParallelForLoop(
-      parallelism, 0, static_cast<int64_t>(data.size()), per_thread_work,
+  parallelism::StaticParallelForIndexLoop(
+      parallelism, 0, static_cast<int64_t>(data.size()), per_item_work,
       parallelism::ParallelForBackend::BEST_AVAILABLE);
 
   return distance_matrix;
@@ -583,25 +580,21 @@ Eigen::MatrixXd BuildPairwiseDistanceMatrix(
 {
   Eigen::MatrixXd distance_matrix(data1.size(), data2.size());
 
-  const auto per_thread_work = [&](
-      const parallelism::ThreadWorkRange& work_range)
+  const auto per_item_work = [&](const int32_t, const int64_t data1_index)
   {
-    for (size_t data1_index = static_cast<size_t>(work_range.GetRangeStart());
-         data1_index < static_cast<size_t>(work_range.GetRangeEnd());
-         data1_index++)
+    const FirstDataType& first_item = data1[static_cast<size_t>(data1_index)];
+
+    for (size_t data2_index = 0; data2_index < data2.size(); data2_index++)
     {
-      for (size_t data2_index = 0; data2_index < data2.size(); data2_index++)
-      {
-        const double distance =
-            distance_fn(data1[data1_index], data2[data2_index]);
-        distance_matrix(static_cast<ssize_t>(data1_index),
-                        static_cast<ssize_t>(data2_index)) = distance;
-      }
+      const double distance =
+          distance_fn(first_item, data2[data2_index]);
+      distance_matrix(static_cast<ssize_t>(data1_index),
+                      static_cast<ssize_t>(data2_index)) = distance;
     }
   };
 
-  parallelism::StaticParallelForLoop(
-      parallelism, 0, static_cast<int64_t>(data1.size()), per_thread_work,
+  parallelism::StaticParallelForIndexLoop(
+      parallelism, 0, static_cast<int64_t>(data1.size()), per_item_work,
       parallelism::ParallelForBackend::BEST_AVAILABLE);
 
   return distance_matrix;

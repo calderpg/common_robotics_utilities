@@ -3,6 +3,7 @@
 #include <mutex>
 #include <random>
 #include <set>
+#include <stdexcept>
 #include <vector>
 
 #include <common_robotics_utilities/maybe.hpp>
@@ -342,6 +343,78 @@ TEST_P(ParallelismTestSuite, DynamicParallelForSumTest)
   const int64_t async_backend_sum = DynamicParallelSum(
       elements, parallelism, parallelism::ParallelForBackend::ASYNC);
   EXPECT_EQ(serial_sum, async_backend_sum);
+}
+
+TEST_P(ParallelismTestSuite, StaticParallelForExceptionHandling)
+{
+  const parallelism::DegreeOfParallelism parallelism = GetParam();
+  std::cout << "# of threads = " << parallelism.GetNumThreads() << std::endl;
+
+  constexpr int64_t kNumIterations = 20;
+  constexpr int64_t kExceptionThreshold = 10;
+
+  const auto per_item_work = [kExceptionThreshold](
+      const int32_t, const int64_t index)
+  {
+    if (index >= kExceptionThreshold)
+    {
+      throw std::runtime_error("index >= kExceptionThreshold");
+    }
+  };
+
+  EXPECT_THROW(
+      parallelism::StaticParallelForIndexLoop(
+          parallelism, 0, kNumIterations, per_item_work,
+          parallelism::ParallelForBackend::BEST_AVAILABLE),
+      std::runtime_error);
+
+  EXPECT_THROW(
+      parallelism::StaticParallelForIndexLoop(
+          parallelism, 0, kNumIterations, per_item_work,
+          parallelism::ParallelForBackend::OPENMP),
+      std::runtime_error);
+
+  EXPECT_THROW(
+      parallelism::StaticParallelForIndexLoop(
+          parallelism, 0, kNumIterations, per_item_work,
+          parallelism::ParallelForBackend::ASYNC),
+      std::runtime_error);
+}
+
+TEST_P(ParallelismTestSuite, DynamicParallelForExceptionHandling)
+{
+  const parallelism::DegreeOfParallelism parallelism = GetParam();
+  std::cout << "# of threads = " << parallelism.GetNumThreads() << std::endl;
+
+  constexpr int64_t kNumIterations = 20;
+  constexpr int64_t kExceptionThreshold = 10;
+
+  const auto per_item_work = [kExceptionThreshold](
+      const int32_t, const int64_t index)
+  {
+    if (index >= kExceptionThreshold)
+    {
+      throw std::runtime_error("index >= kExceptionThreshold");
+    }
+  };
+
+  EXPECT_THROW(
+      parallelism::DynamicParallelForIndexLoop(
+          parallelism, 0, kNumIterations, per_item_work,
+          parallelism::ParallelForBackend::BEST_AVAILABLE),
+      std::runtime_error);
+
+  EXPECT_THROW(
+      parallelism::DynamicParallelForIndexLoop(
+          parallelism, 0, kNumIterations, per_item_work,
+          parallelism::ParallelForBackend::OPENMP),
+      std::runtime_error);
+
+  EXPECT_THROW(
+      parallelism::DynamicParallelForIndexLoop(
+          parallelism, 0, kNumIterations, per_item_work,
+          parallelism::ParallelForBackend::ASYNC),
+      std::runtime_error);
 }
 
 INSTANTIATE_TEST_SUITE_P(

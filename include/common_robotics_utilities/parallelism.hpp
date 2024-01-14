@@ -2,8 +2,10 @@
 
 #include <cstdint>
 #include <deque>
+#include <exception>
 #include <future>
 #include <list>
+#include <mutex>
 #include <stdexcept>
 
 #include <common_robotics_utilities/cru_namespace.hpp>
@@ -173,17 +175,33 @@ void StaticParallelForRangeLoop(
       (backend == ParallelForBackend::BEST_AVAILABLE &&
        openmp_helpers::IsOmpEnabledInBuild()))
   {
+    std::mutex exception_mutex;
+    std::exception_ptr loop_exception;
+
 #if defined(_OPENMP)
 #pragma omp parallel for num_threads(real_num_threads) schedule(static)
 #endif
     for (int32_t thread_num = 0; thread_num < real_num_threads; thread_num++)
     {
-      const auto thread_range_start_end = CalcStaticThreadRangeStartAndEnd(
-          range_start, range_end, real_num_threads, thread_num);
-      const ThreadWorkRange work_range(
-          thread_range_start_end.first, thread_range_start_end.second,
-          openmp_helpers::GetContextOmpThreadNum());
-      functor(work_range);
+      try
+      {
+        const auto thread_range_start_end = CalcStaticThreadRangeStartAndEnd(
+            range_start, range_end, real_num_threads, thread_num);
+        const ThreadWorkRange work_range(
+            thread_range_start_end.first, thread_range_start_end.second,
+            openmp_helpers::GetContextOmpThreadNum());
+        functor(work_range);
+      }
+      catch (...)
+      {
+        std::lock_guard<std::mutex> lock(exception_mutex);
+        loop_exception = std::current_exception();
+      }
+    }
+
+    if (loop_exception)
+    {
+      std::rethrow_exception(loop_exception);
     }
   }
   else
@@ -253,14 +271,30 @@ void DynamicParallelForRangeLoop(
       (backend == ParallelForBackend::BEST_AVAILABLE &&
        openmp_helpers::IsOmpEnabledInBuild()))
   {
+    std::mutex exception_mutex;
+    std::exception_ptr loop_exception;
+
 #if defined(_OPENMP)
 #pragma omp parallel for num_threads(real_num_threads) schedule(dynamic)
 #endif
     for (int64_t index = range_start; index < range_end; index++)
     {
-      const ThreadWorkRange work_range(
-          index, index + 1, openmp_helpers::GetContextOmpThreadNum());
-      functor(work_range);
+      try
+      {
+        const ThreadWorkRange work_range(
+            index, index + 1, openmp_helpers::GetContextOmpThreadNum());
+        functor(work_range);
+      }
+      catch (...)
+      {
+        std::lock_guard<std::mutex> lock(exception_mutex);
+        loop_exception = std::current_exception();
+      }
+    }
+
+    if (loop_exception)
+    {
+      std::rethrow_exception(loop_exception);
     }
   }
   else

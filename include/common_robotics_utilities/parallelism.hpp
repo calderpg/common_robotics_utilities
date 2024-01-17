@@ -382,13 +382,20 @@ void DynamicParallelForRangeLoop(
             [&functor, &cv, &cv_mutex, &num_live_workers](
                 const int64_t index, const int32_t thread_number) -> int32_t
             {
+              const auto notify_when_done = [&]()
+              {
+                {
+                  std::lock_guard<std::mutex> lock(cv_mutex);
+                  num_live_workers--;
+                }
+                cv.notify_all();
+              };
+
+              // Run notify via RAII, so it runs even if an exception is thrown.
+              const utility::OnScopeExit on_exit(notify_when_done);
+
               const ThreadWorkRange work_range(index, index + 1, thread_number);
               functor(work_range);
-              {
-                std::lock_guard<std::mutex> lock(cv_mutex);
-                num_live_workers--;
-              }
-              cv.notify_all();
               return thread_number;
             },
             workers_dispatched,

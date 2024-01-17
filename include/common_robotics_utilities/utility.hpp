@@ -85,6 +85,44 @@ namespace common_robotics_utilities
 CRU_NAMESPACE_BEGIN
 namespace utility
 {
+/// Helper type to run the provided function on scope exit via RAII.
+class OnScopeExit
+{
+public:
+  // OnScopeExit does not allow copy/move/assign operations.
+  OnScopeExit(const OnScopeExit& other) = delete;
+
+  OnScopeExit(OnScopeExit&& other) = delete;
+
+  OnScopeExit& operator=(const OnScopeExit& other) = delete;
+
+  OnScopeExit& operator=(OnScopeExit&& other) = delete;
+
+  explicit OnScopeExit(const std::function<void(void)>& on_scope_exit)
+      : on_scope_exit_(on_scope_exit)
+  {
+    if (!on_scope_exit_)
+    {
+      throw std::invalid_argument("on_scope_exit must not be nullptr");
+    }
+  }
+
+  ~OnScopeExit()
+  {
+    if (on_scope_exit_)
+    {
+      on_scope_exit_();
+    }
+  }
+
+  bool IsEnabled() const { return (on_scope_exit_ != nullptr); }
+
+  void Disable() { on_scope_exit_ = {}; }
+
+private:
+  std::function<void(void)> on_scope_exit_;
+};
+
 /// Signature of a basic logging function.
 using LoggingFunction = std::function<void(const std::string&)>;
 

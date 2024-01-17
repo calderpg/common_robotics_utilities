@@ -238,6 +238,31 @@ GTEST_TEST(UtilityTest, IsFutureReadyTest)
   wait_future.wait();
   EXPECT_TRUE(utility::IsFutureReady(wait_future));
 }
+
+GTEST_TEST(UtilityTest, OnScopeExitTest)
+{
+  int test_val = 0;
+
+  const auto on_exit_fn = [&test_val]() { test_val = 10; };
+
+  EXPECT_EQ(test_val, 0);
+  {
+    const utility::OnScopeExit on_exit(on_exit_fn);
+    EXPECT_TRUE(on_exit.IsEnabled());
+  }
+  EXPECT_EQ(test_val, 10);
+
+  test_val = 0;
+
+  EXPECT_EQ(test_val, 0);
+  {
+    utility::OnScopeExit on_exit(on_exit_fn);
+    EXPECT_TRUE(on_exit.IsEnabled());
+    on_exit.Disable();
+    EXPECT_FALSE(on_exit.IsEnabled());
+  }
+  EXPECT_EQ(test_val, 0);
+}
 }  // namespace utility_test
 }  // namespace common_robotics_utilities
 

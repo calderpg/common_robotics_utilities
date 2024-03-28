@@ -275,7 +275,7 @@ inline AstarResult<T, Container> PerformAstarSearch(
                       std::vector<AstarPQueueElement<T>>,
                       CompareAstarPQueueElementFn<T>> queue;
 
-  // We must specific an initial bucket count to unordered_map constructors.
+  // We must specify an initial bucket count to unordered_map constructors
   const size_t initial_bucket_count = 100;
 
   // Optional map to reduce the number of duplicate items added to the pqueue
@@ -284,22 +284,66 @@ inline AstarResult<T, Container> PerformAstarSearch(
   std::unordered_map<T, double, StateHash, StateEqual> queue_members_map(
       initial_bucket_count, hasher, equaler);
 
+  // Helper to check if the provided state is already in queue_members_map with
+  // a lower cost-to-come
+  const auto is_queue_better = [&queue_members_map, limit_pqueue_duplicates](
+      const T& state, const double cost_to_come)
+  {
+    if (limit_pqueue_duplicates)
+    {
+      const auto queue_members_map_itr = queue_members_map.find(state);
+      if (queue_members_map_itr != queue_members_map.end())
+      {
+        return cost_to_come >= queue_members_map_itr->second;
+      }
+      else
+      {
+        return false;
+      }
+    }
+    else
+    {
+      return false;
+    }
+  };
+
   // Key is the node ID
   // Value is backpointer + cost-to-come
   // backpointer is the parent node ID
   ExploredList<T, StateHash, StateEqual> explored(
       initial_bucket_count, hasher, equaler);
 
+  // Helper to check if the provided state is already in explored with a lower
+  // cost-to-come
+  const auto is_explored_better = [&explored](
+      const T& state, const double cost_to_come)
+  {
+    const auto explored_find_itr = explored.find(state);
+    if (explored_find_itr != explored.end())
+    {
+      return cost_to_come >= explored_find_itr->second.CostToCome();
+    }
+    else
+    {
+      return false;
+    }
+  };
+
   // Initialize
   for (const auto& start_state_and_cost : start_states)
   {
     const T& start_state = start_state_and_cost.State();
     const double start_cost = start_state_and_cost.Cost();
-    queue.push(AstarPQueueElement<T>(
-        start_state, start_cost, heuristic_fn(start_state)));
-    if (limit_pqueue_duplicates)
+
+    if (!is_queue_better(start_state, start_cost))
     {
-      queue_members_map[start_state] = start_cost;
+      queue.push(AstarPQueueElement<T>(
+          start_state, start_cost, heuristic_fn(start_state)));
+
+      if (limit_pqueue_duplicates)
+      {
+        queue_members_map[start_state] = start_cost;
+      }
     }
   }
 
@@ -319,17 +363,11 @@ inline AstarResult<T, Container> PerformAstarSearch(
       queue_members_map.erase(top_node.State());
     }
 
-    // Check if the node has already been discovered
-    const auto node_explored_find_itr = explored.find(top_node.State());
-    // We have not been here before, or it is cheaper now
-    const bool node_in_explored = (node_explored_find_itr != explored.end());
-    const bool node_explored_is_better
-        = (node_in_explored)
-          ? (top_node.CostToCome()
-              >= node_explored_find_itr->second.CostToCome())
-          : false;
+    // Check if the state has already been discovered with lower cost.
+    const bool explored_top_is_better
+        = is_explored_better(top_node.State(), top_node.CostToCome());
 
-    if (!node_explored_is_better)
+    if (!explored_top_is_better)
     {
       // Add to the explored list
       explored[top_node.State()] = BackPointerAndCostToCome<T>(top_node);
@@ -355,33 +393,16 @@ inline AstarResult<T, Container> PerformAstarSearch(
         const double child_cost_to_come
             = parent_cost_to_come + parent_to_child_cost;
 
-        // Check if the child state has already been explored
-        const auto child_explored_find_itr = explored.find(child_state);
-        // Check if it has already been explored with lower cost
-        const bool child_in_explored
-            = (child_explored_find_itr != explored.end());
+        // Check if the child state has already been explored with lower cost
         const bool explored_child_is_better
-            = (child_in_explored)
-              ? (child_cost_to_come
-                  >= child_explored_find_itr->second.CostToCome())
-              : false;
+            = is_explored_better(child_state, child_cost_to_come);
 
         // Check if the child state is already in the queue
-        bool queue_is_better = false;
-        if (limit_pqueue_duplicates)
-        {
-          const auto queue_members_map_itr
-              = queue_members_map.find(child_state);
-          const bool in_queue
-              = (queue_members_map_itr != queue_members_map.end());
-          queue_is_better
-              = (in_queue)
-                ? (child_cost_to_come >= queue_members_map_itr->second)
-                : false;
-        }
+        const bool queue_child_is_better
+            = is_queue_better(child_state, child_cost_to_come);
 
         // Only add the new state if we need to
-        if (!explored_child_is_better && !queue_is_better)
+        if (!explored_child_is_better && !queue_child_is_better)
         {
           // Compute the heuristic for the child
           const double child_heuristic = heuristic_fn(child_state);

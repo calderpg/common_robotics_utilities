@@ -285,10 +285,49 @@ inline AstarIndexResult PerformLazyAstarSearch(
   // Value is cost-to-come
   std::unordered_map<int64_t, double> queue_members_map;
 
+  // Helper to check if the provided node index is already in queue_members_map
+  // with a lower cost-to-come
+  const auto is_queue_better = [&queue_members_map, limit_pqueue_duplicates](
+      const int64_t node_index, const double cost_to_come)
+  {
+    if (limit_pqueue_duplicates)
+    {
+      const auto queue_members_map_itr = queue_members_map.find(node_index);
+      if (queue_members_map_itr != queue_members_map.end())
+      {
+        return cost_to_come >= queue_members_map_itr->second;
+      }
+      else
+      {
+        return false;
+      }
+    }
+    else
+    {
+      return false;
+    }
+  };
+
   // Key is the node index in the provided graph
   // Value is backpointer + cost-to-come
   // backpointer is the parent index in the provided graph
   simple_astar_search::ExploredList<int64_t> explored;
+
+  // Helper to check if the provided node index is already in explored with a
+  // lower cost-to-come
+  const auto is_explored_better = [&explored](
+      const int64_t node_index, const double cost_to_come)
+  {
+    const auto explored_find_itr = explored.find(node_index);
+    if (explored_find_itr != explored.end())
+    {
+      return cost_to_come >= explored_find_itr->second.CostToCome();
+    }
+    else
+    {
+      return false;
+    }
+  };
 
   // Initialize
   for (const auto& start_index_and_cost : start_indices)
@@ -296,12 +335,15 @@ inline AstarIndexResult PerformLazyAstarSearch(
     const int64_t start_index = start_index_and_cost.State();
     const double start_cost = start_index_and_cost.Cost();
 
-    queue.push(AstarIndexPQueueElement(
-        start_index, start_cost, heuristic_fn(graph, start_index)));
-
-    if (limit_pqueue_duplicates)
+    if (!is_queue_better(start_index, start_cost))
     {
-      queue_members_map[start_index] = start_cost;
+      queue.push(AstarIndexPQueueElement(
+          start_index, start_cost, heuristic_fn(graph, start_index)));
+
+      if (limit_pqueue_duplicates)
+      {
+        queue_members_map[start_index] = start_cost;
+      }
     }
   }
 
@@ -321,17 +363,11 @@ inline AstarIndexResult PerformLazyAstarSearch(
       queue_members_map.erase(top_node.State());
     }
 
-    // Check if the node has already been discovered
-    const auto node_explored_find_itr = explored.find(top_node.State());
-    // We have not been here before, or it is cheaper now
-    const bool node_in_explored = (node_explored_find_itr != explored.end());
-    const bool explored_node_is_better
-        = (node_in_explored)
-          ? (top_node.CostToCome()
-              >= node_explored_find_itr->second.CostToCome())
-          : false;
+    // Check if the node has already been discovered with lower cost.
+    const bool explored_top_is_better
+        = is_explored_better(top_node.State(), top_node.CostToCome());
 
-    if (!explored_node_is_better)
+    if (!explored_top_is_better)
     {
       // Add to the explored list
       explored[top_node.State()]
@@ -363,35 +399,16 @@ inline AstarIndexResult PerformLazyAstarSearch(
           const double child_cost_to_come
               = parent_cost_to_come + parent_to_child_cost;
 
-          // Check if the child state has already been explored
-          const auto child_explored_find_itr
-              = explored.find(child_node_index);
-
-          // Check if it has already been explored with lower cost
-          const bool child_in_explored
-              = (child_explored_find_itr != explored.end());
+          // Check if the child node has already been explored with lower cost
           const bool explored_child_is_better
-              = (child_in_explored)
-                ? (child_cost_to_come
-                    >= child_explored_find_itr->second.CostToCome())
-                : false;
+              = is_explored_better(child_node_index, child_cost_to_come);
 
-          // Check if the child state is already in the queue
-          bool queue_is_better = false;
-          if (limit_pqueue_duplicates)
-          {
-            const auto queue_members_map_itr
-                = queue_members_map.find(child_node_index);
-            const bool in_queue
-                = (queue_members_map_itr != queue_members_map.end());
-            queue_is_better =
-                (in_queue)
-                ? (child_cost_to_come >= queue_members_map_itr->second)
-                : false;
-          }
+          // Check if the child node is already in the queue
+          const bool queue_child_is_better
+              = is_queue_better(child_node_index, child_cost_to_come);
 
           // Only add the new state if we need to
-          if (!explored_child_is_better && !queue_is_better)
+          if (!explored_child_is_better && !queue_child_is_better)
           {
             // Compute the heuristic for the child
             const double child_heuristic =

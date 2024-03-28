@@ -257,14 +257,14 @@ private:
 
 /// Return type for planning task state sequences.
 template<typename State>
-using TaskStateAStarResult = simple_astar_search::AstarResult
+using TaskStateAstarResult = simple_astar_search::AstarResult
     <OutcomeWithPrimitiveIndex<State>,
      OutcomeWithPrimitiveIndexContainer<State>>;
 
 template<typename State, typename Container=std::vector<State>,
          typename StateHash=std::hash<State>,
          typename StateEqual=std::equal_to<State>>
-TaskStateAStarResult<State> PlanTaskStateSequence(
+TaskStateAstarResult<State> PlanTaskStateSequence(
     const ActionPrimitiveCollection<State, Container>& primitive_collection,
     const TaskSequenceCompleteFunction<State>& task_sequence_complete_fn,
     const Container& start_states,
@@ -355,9 +355,10 @@ class NextPrimitiveToExecute
 {
 public:
   NextPrimitiveToExecute(
+      const TaskStateAstarResult<State>& planning_result,
       const ActionPrimitiveSharedPtr<State, Container>& action_primitive,
       const int64_t selected_outcome_index)
-      : action_primitive_(action_primitive),
+      : planning_result_(planning_result), action_primitive_(action_primitive),
         selected_outcome_index_(selected_outcome_index)
   {
     if (selected_outcome_index_ < 0)
@@ -366,8 +367,15 @@ public:
     }
   }
 
-  explicit NextPrimitiveToExecute(const int64_t selected_outcome_index)
-      : NextPrimitiveToExecute({}, selected_outcome_index) {}
+  NextPrimitiveToExecute(
+      const TaskStateAstarResult<State>& planning_result,
+      const int64_t selected_outcome_index)
+      : NextPrimitiveToExecute(planning_result, {}, selected_outcome_index) {}
+
+  const TaskStateAstarResult<State>& PlanningResult() const
+  {
+    return planning_result_;
+  }
 
   const ActionPrimitiveSharedPtr<State, Container>& ActionPrimitive() const
   {
@@ -377,6 +385,7 @@ public:
   int64_t SelectedOutcomeIndex() const { return selected_outcome_index_; }
 
 private:
+  TaskStateAstarResult<State> planning_result_;
   ActionPrimitiveSharedPtr<State, Container> action_primitive_;
   int64_t selected_outcome_index_ = -1;
 };
@@ -430,13 +439,14 @@ NextPrimitiveToExecute<State, Container> GetNextPrimitiveToExecute(
           static_cast<size_t>(next_state_and_index.PrimitiveIndex()));
 
       return NextPrimitiveToExecute<State, Container>(
-          next_primitive, best_outcome_index);
+          task_sequence, next_primitive, best_outcome_index);
     }
     else
     {
       // Path.size() == 1 means that the outcome completes a task sequence and
       // thus there is no next primitive to execute.
-      return NextPrimitiveToExecute<State, Container>(best_outcome_index);
+      return NextPrimitiveToExecute<State, Container>(
+          task_sequence, best_outcome_index);
     }
   }
   else
@@ -445,6 +455,25 @@ NextPrimitiveToExecute<State, Container> GetNextPrimitiveToExecute(
         "Could not identify task state sequence for any potential outcomes");
   }
 }
+
+template<typename State, typename Container=std::vector<State>>
+using PreExecutionCallbackFunction =
+    std::function<void(
+        const State&,  // Current state (i.e. selected outcome state).
+        const ActionPrimitiveSharedPtr<State, Container>&,  // Next primitive.
+        const TaskStateAstarResult<State>&)>;  // Task planning result.
+
+template<typename State, typename Container=std::vector<State>>
+using PostExecutionCallbackFunction =
+    std::function<void(
+        const Container&)>;  // Outcome states from execution.
+
+template<typename State, typename Container=std::vector<State>>
+using PostOutcomeCallbackFunction =
+    std::function<void(
+        const Container&,  // Current outcome states.
+        const int64_t,  // Index of selected outcome state.
+        const TaskStateAstarResult<State>&)>;  // Task planning result.
 
 template<typename State, typename Container=std::vector<State>,
          typename StateHash=std::hash<State>,
@@ -457,12 +486,11 @@ Container PerformSingleTaskExecution(
     const StateHeuristicFunction<State>& state_heuristic_fn = {},
     const StateHash& state_hasher = StateHash(),
     const StateEqual& state_equaler = StateEqual(),
-    const std::function<void(
-        const State&, const ActionPrimitiveSharedPtr<State, Container>&)>&
-            user_pre_action_callback_fn = {},
-    const std::function<void(const Container&)>&
-        user_post_execution_callback = {},
-    const std::function<void(const Container&, int64_t)>&
+    const PreExecutionCallbackFunction<State, Container>&
+        user_pre_execution_callback_fn = {},
+    const PostExecutionCallbackFunction<State, Container>&
+        user_post_execution_callback_fn = {},
+    const PostOutcomeCallbackFunction<State, Container>&
         user_post_outcome_callback_fn = {})
 {
   Container current_outcomes = start_states;
@@ -489,7 +517,8 @@ Container PerformSingleTaskExecution(
     if (user_post_outcome_callback_fn)
     {
       user_post_outcome_callback_fn(
-          current_outcomes, next_to_execute.SelectedOutcomeIndex());
+          current_outcomes, next_to_execute.SelectedOutcomeIndex(),
+          next_to_execute.PlanningResult());
     }
 
     // Get the next primitive.
@@ -503,9 +532,10 @@ Container PerformSingleTaskExecution(
     }
 
     // Call the user-provided callback.
-    if (user_pre_action_callback_fn)
+    if (user_pre_execution_callback_fn)
     {
-      user_pre_action_callback_fn(selected_outcome, next_primitive);
+      user_pre_execution_callback_fn(
+          selected_outcome, next_primitive, next_to_execute.PlanningResult());
     }
 
     primitive_collection.Log(
@@ -516,9 +546,9 @@ Container PerformSingleTaskExecution(
     current_outcomes = next_primitive->Execute(selected_outcome);
 
     // Call the user-provided callback.
-    if (user_post_execution_callback)
+    if (user_post_execution_callback_fn)
     {
-      user_post_execution_callback(current_outcomes);
+      user_post_execution_callback_fn(current_outcomes);
     }
   }
 
@@ -536,12 +566,11 @@ Container PerformSingleTaskExecution(
     const StateHeuristicFunction<State>& state_heuristic_fn = {},
     const StateHash& state_hasher = StateHash(),
     const StateEqual& state_equaler = StateEqual(),
-    const std::function<void(
-        const State&, const ActionPrimitiveSharedPtr<State, Container>&)>&
-            user_pre_action_callback_fn = {},
-    const std::function<void(const Container&)>&
-        user_post_execution_callback = {},
-    const std::function<void(const Container&, int64_t)>&
+    const PreExecutionCallbackFunction<State, Container>&
+        user_pre_execution_callback_fn = {},
+    const PostExecutionCallbackFunction<State, Container>&
+        user_post_execution_callback_fn = {},
+    const PostOutcomeCallbackFunction<State, Container>&
         user_post_outcome_callback_fn = {})
 {
   Container start_states;
@@ -550,7 +579,7 @@ Container PerformSingleTaskExecution(
   return PerformSingleTaskExecution<State, Container, StateHash, StateEqual>(
       primitive_collection, task_sequence_complete_fn, start_states,
       max_primitive_executions, state_heuristic_fn, state_hasher, state_equaler,
-      user_pre_action_callback_fn, user_post_execution_callback,
+      user_pre_execution_callback_fn, user_post_execution_callback_fn,
       user_post_outcome_callback_fn);
 }
 }  // namespace simple_task_planner

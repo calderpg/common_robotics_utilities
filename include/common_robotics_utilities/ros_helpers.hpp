@@ -7,6 +7,9 @@
 #include <common_robotics_utilities/cru_namespace.hpp>
 
 #if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
+// The rosidl_runtime_cpp/traits.hpp header is missing this include, so we
+// include it first as a workaround.
+#include <cstdint>
 #include <rosidl_runtime_cpp/traits.hpp>
 // On pre-Humble distributions, a single message header is included to ensure
 // that rosidl_generator_traits::to_yaml is found by the compiler. The version

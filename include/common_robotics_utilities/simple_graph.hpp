@@ -31,7 +31,6 @@ private:
   uint64_t scratchpad_ = 0;
 
 public:
-
   static uint64_t Serialize(const GraphEdge& edge, std::vector<uint8_t>& buffer)
   {
     return edge.SerializeSelf(buffer);
@@ -580,7 +579,7 @@ public:
     return serialization::MakeDeserialized(temp_graph, bytes_read);
   }
 
-  Graph(const NodeVector& nodes)
+  explicit Graph(const NodeVector& nodes)
   {
     GraphType temp_graph;
     temp_graph.nodes_ = nodes;
@@ -595,7 +594,7 @@ public:
     }
   }
 
-  Graph(const int64_t expected_size)
+  explicit Graph(const int64_t expected_size)
   {
     nodes_.reserve(static_cast<size_t>(expected_size));
   }
@@ -779,10 +778,11 @@ protected:
   const GraphType& GetBaseGraphImmutable() const { return *base_graph_; }
 
 public:
-  NonOwningGraphOverlay(const GraphType& graph)
+  explicit NonOwningGraphOverlay(const GraphType& graph)
       : NonOwningGraphOverlay(std::addressof(graph)) {}
 
-  NonOwningGraphOverlay(const GraphType* const graph) : base_graph_(graph)
+  explicit NonOwningGraphOverlay(const GraphType* const graph)
+      : base_graph_(graph)
   {
     if (base_graph_ != nullptr)
     {
@@ -952,7 +952,8 @@ private:
   std::shared_ptr<const GraphType> owned_base_graph_;
 
 public:
-  OwningGraphOverlay(const std::shared_ptr<const GraphType>& owned_base_graph)
+  explicit OwningGraphOverlay(
+      const std::shared_ptr<const GraphType>& owned_base_graph)
       : NonOwningGraphOverlay<NodeValueType, GraphType>(owned_base_graph.get()),
         owned_base_graph_(owned_base_graph) {}
 };

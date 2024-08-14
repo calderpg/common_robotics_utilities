@@ -9,7 +9,7 @@
 
 namespace common_robotics_utilities
 {
-namespace maybe_test
+namespace
 {
 constexpr int32_t kDefaultValue = 0;
 
@@ -400,7 +400,7 @@ GTEST_TEST(ReferencingMaybeTest, ConstHandling)
   EXPECT_TRUE(std::is_const<typename std::remove_reference<decltype(
       const_maybe_const_value.Value())>::type>::value);
 }
-}  // namespace maybe_test
+}  // namespace
 }  // namespace common_robotics_utilities
 
 int main(int argc, char** argv)

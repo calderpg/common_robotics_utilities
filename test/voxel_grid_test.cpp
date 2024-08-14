@@ -9,7 +9,7 @@
 
 namespace common_robotics_utilities
 {
-namespace voxel_grid_test
+namespace
 {
 GTEST_TEST(VoxelGridTest, IndexLookup)
 {
@@ -178,7 +178,7 @@ GTEST_TEST(VoxelGridTest, DshvgLookup)
     }
   }
 }
-}  // namespace voxel_grid_test
+}  // namespace
 }  // namespace common_robotics_utilities
 
 int main(int argc, char** argv)

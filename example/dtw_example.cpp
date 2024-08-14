@@ -15,6 +15,8 @@ using PointVector = common_robotics_utilities::math::VectorVector4d;
 using PointVectorDTW = common_robotics_utilities::simple_dtw::SimpleDTW<
     Eigen::Vector4d, Eigen::Vector4d, PointVector, PointVector>;
 
+namespace
+{
 PointVector SampleRandomPointVector(
     const size_t num_points, std::mt19937_64& prng,
     std::uniform_real_distribution<double>& distribution)
@@ -30,6 +32,7 @@ PointVector SampleRandomPointVector(
   }
   return random_points;
 }
+}  // namespace
 
 int main(int, char**)
 {

@@ -19,6 +19,8 @@ using PointClusteringResult
     = common_robotics_utilities::simple_hierarchical_clustering
         ::ClusteringResult<Eigen::Vector4d, PointVector>;
 
+namespace
+{
 void SaveClustering(
     const PointClusteringResult& clusters,
     const std::string& filename)
@@ -55,6 +57,7 @@ void SaveIndexClustering(
               Eigen::Vector4d, PointVector>(raw_points, index_clusters),
       filename);
 }
+}  // namespace
 
 int main(int argc, char** argv)
 {

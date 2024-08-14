@@ -13,7 +13,7 @@
 
 namespace common_robotics_utilities
 {
-namespace utility_test
+namespace
 {
 GTEST_TEST(UtilityTest, GetUniformRandom)
 {
@@ -263,7 +263,7 @@ GTEST_TEST(UtilityTest, OnScopeExitTest)
   }
   EXPECT_EQ(test_val, 0);
 }
-}  // namespace utility_test
+}  // namespace
 }  // namespace common_robotics_utilities
 
 int main(int argc, char** argv)

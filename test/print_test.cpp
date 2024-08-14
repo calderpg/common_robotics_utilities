@@ -32,7 +32,7 @@ std::ostream& operator<<(std::ostream& os, const test::DummyType& dummy)
 
 namespace common_robotics_utilities
 {
-namespace print_test
+namespace
 {
 GTEST_TEST(PrintTest, CanPrintIfADLCanFindStreamOperator)
 {
@@ -50,7 +50,7 @@ GTEST_TEST(PrintTest, CanPrintROSMessages)
 #endif
   std::cout << print::Print(std::vector<Point>(3)) << std::endl;
 }
-}  // namespace print_test
+}  // namespace
 }  // namespace common_robotics_utilities
 
 int main(int argc, char** argv)

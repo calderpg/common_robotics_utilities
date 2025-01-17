@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <functional>
@@ -85,6 +86,80 @@ namespace common_robotics_utilities
 CRU_NAMESPACE_BEGIN
 namespace utility
 {
+/// Copyable and moveable wrapper around simple uses of std::atomic<T>.
+/// Beyond load() and store(), methods are only available on integral types.
+template <typename T>
+class CopyableMoveableAtomic
+{
+public:
+  CopyableMoveableAtomic(T value) : internal_{value} {}
+
+  CopyableMoveableAtomic() : internal_{} {}
+
+  CopyableMoveableAtomic(const CopyableMoveableAtomic<T>& other)
+  {
+    store(other.load());
+  }
+
+  CopyableMoveableAtomic(CopyableMoveableAtomic<T>&& other)
+  {
+    store(other.load());
+  }
+
+  CopyableMoveableAtomic<T>& operator=(const CopyableMoveableAtomic<T>& other)
+  {
+    if (this != std::addressof(other))
+    {
+      store(other.load());
+    }
+    return *this;
+  }
+
+  CopyableMoveableAtomic<T>& operator=(CopyableMoveableAtomic<T>&& other)
+  {
+    if (this != std::addressof(other))
+    {
+      store(other.load());
+    }
+    return *this;
+  }
+
+  T load(std::memory_order order = std::memory_order_seq_cst) const
+  {
+    return internal_.load(order);
+  }
+
+  void store(T desired, std::memory_order order = std::memory_order_seq_cst)
+  {
+    internal_.store(desired, order);
+  }
+
+  T fetch_add(T arg, std::memory_order order = std::memory_order_seq_cst)
+  {
+    return internal_.fetch_add(arg, order);
+  }
+
+  T fetch_add(
+      T arg, std::memory_order order = std::memory_order_seq_cst) volatile
+  {
+    return internal_.fetch_add(arg, order);
+  }
+
+  T fetch_sub(T arg, std::memory_order order = std::memory_order_seq_cst)
+  {
+    return internal_.fetch_sub(arg, order);
+  }
+
+  T fetch_sub(
+      T arg, std::memory_order order = std::memory_order_seq_cst) volatile
+  {
+    return internal_.fetch_sub(arg, order);
+  }
+
+private:
+  std::atomic<T> internal_;
+};
+
 /// Helper type to run the provided function on scope exit via RAII.
 class OnScopeExit
 {

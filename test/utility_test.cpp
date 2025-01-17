@@ -263,6 +263,36 @@ GTEST_TEST(UtilityTest, OnScopeExitTest)
   }
   EXPECT_EQ(test_val, 0);
 }
+
+GTEST_TEST(UtilityTest, CopyableMoveableAtomicTest)
+{
+  // Thread safety is covered elsewhere, simply exercise the API here.
+
+  utility::CopyableMoveableAtomic<bool> test_bool(false);
+  EXPECT_FALSE(test_bool.load());
+  test_bool.store(true);
+  EXPECT_TRUE(test_bool.load());
+  test_bool.store(false);
+  EXPECT_FALSE(test_bool.load());
+
+  utility::CopyableMoveableAtomic<int32_t> test_int32(0);
+  EXPECT_EQ(test_int32.load(), 0);
+  test_int32.store(100);
+  EXPECT_EQ(test_int32.load(), 100);
+  test_int32.fetch_add(25);
+  EXPECT_EQ(test_int32.load(), 125);
+  test_int32.fetch_sub(50);
+  EXPECT_EQ(test_int32.load(), 75);
+
+  volatile utility::CopyableMoveableAtomic<int32_t> test_volatile_int32(0);
+  EXPECT_EQ(test_volatile_int32.load(), 0);
+  test_volatile_int32.store(100);
+  EXPECT_EQ(test_volatile_int32.load(), 100);
+  test_volatile_int32.fetch_add(25);
+  EXPECT_EQ(test_volatile_int32.load(), 125);
+  test_volatile_int32.fetch_sub(50);
+  EXPECT_EQ(test_volatile_int32.load(), 75);
+}
 }  // namespace
 }  // namespace common_robotics_utilities
 

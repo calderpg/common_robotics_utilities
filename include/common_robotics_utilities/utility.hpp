@@ -129,7 +129,18 @@ public:
     return internal_.load(order);
   }
 
+  T load(std::memory_order order = std::memory_order_seq_cst) const volatile
+  {
+    return internal_.load(order);
+  }
+
   void store(T desired, std::memory_order order = std::memory_order_seq_cst)
+  {
+    internal_.store(desired, order);
+  }
+
+  void store(
+      T desired, std::memory_order order = std::memory_order_seq_cst) volatile
   {
     internal_.store(desired, order);
   }

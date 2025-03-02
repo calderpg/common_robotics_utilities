@@ -88,25 +88,39 @@ namespace utility
 {
 /// Copyable and moveable wrapper around simple uses of std::atomic<T>.
 /// Beyond load() and store(), methods are only available on integral types.
-template <typename T>
+template <typename T,
+          std::memory_order default_order = std::memory_order_seq_cst>
 class CopyableMoveableAtomic
 {
 public:
-  CopyableMoveableAtomic(T value) : internal_{value} {}
+  explicit CopyableMoveableAtomic(T value) : internal_{value} {}
 
   CopyableMoveableAtomic() : internal_{} {}
 
-  CopyableMoveableAtomic(const CopyableMoveableAtomic<T>& other)
+  CopyableMoveableAtomic(const CopyableMoveableAtomic<T, default_order>& other)
   {
     store(other.load());
   }
 
-  CopyableMoveableAtomic(CopyableMoveableAtomic<T>&& other)
+  CopyableMoveableAtomic(CopyableMoveableAtomic<T, default_order>&& other)
   {
     store(other.load());
   }
 
-  CopyableMoveableAtomic<T>& operator=(const CopyableMoveableAtomic<T>& other)
+  template <std::memory_order other_order>
+  CopyableMoveableAtomic(const CopyableMoveableAtomic<T, other_order>& other)
+  {
+    store(other.load());
+  }
+
+  template <std::memory_order other_order>
+  CopyableMoveableAtomic(CopyableMoveableAtomic<T, other_order>&& other)
+  {
+    store(other.load());
+  }
+
+  CopyableMoveableAtomic<T, default_order>& operator=(
+      const CopyableMoveableAtomic<T, default_order>& other)
   {
     if (this != std::addressof(other))
     {
@@ -115,7 +129,8 @@ public:
     return *this;
   }
 
-  CopyableMoveableAtomic<T>& operator=(CopyableMoveableAtomic<T>&& other)
+  CopyableMoveableAtomic<T, default_order>& operator=(
+      CopyableMoveableAtomic<T, default_order>&& other)
   {
     if (this != std::addressof(other))
     {
@@ -124,45 +139,58 @@ public:
     return *this;
   }
 
-  T load(std::memory_order order = std::memory_order_seq_cst) const
+  template <std::memory_order other_order>
+  CopyableMoveableAtomic<T, default_order>& operator=(
+      const CopyableMoveableAtomic<T, other_order>& other)
+  {
+    store(other.load());
+    return *this;
+  }
+
+  template <std::memory_order other_order>
+  CopyableMoveableAtomic<T, default_order>& operator=(
+      CopyableMoveableAtomic<T, other_order>&& other)
+  {
+    store(other.load());
+    return *this;
+  }
+
+  T load(std::memory_order order = default_order) const
   {
     return internal_.load(order);
   }
 
-  T load(std::memory_order order = std::memory_order_seq_cst) const volatile
+  T load(std::memory_order order = default_order) const volatile
   {
     return internal_.load(order);
   }
 
-  void store(T desired, std::memory_order order = std::memory_order_seq_cst)
+  void store(T desired, std::memory_order order = default_order)
   {
     internal_.store(desired, order);
   }
 
-  void store(
-      T desired, std::memory_order order = std::memory_order_seq_cst) volatile
+  void store(T desired, std::memory_order order = default_order) volatile
   {
     internal_.store(desired, order);
   }
 
-  T fetch_add(T arg, std::memory_order order = std::memory_order_seq_cst)
+  T fetch_add(T arg, std::memory_order order = default_order)
   {
     return internal_.fetch_add(arg, order);
   }
 
-  T fetch_add(
-      T arg, std::memory_order order = std::memory_order_seq_cst) volatile
+  T fetch_add(T arg, std::memory_order order = default_order) volatile
   {
     return internal_.fetch_add(arg, order);
   }
 
-  T fetch_sub(T arg, std::memory_order order = std::memory_order_seq_cst)
+  T fetch_sub(T arg, std::memory_order order = default_order)
   {
     return internal_.fetch_sub(arg, order);
   }
 
-  T fetch_sub(
-      T arg, std::memory_order order = std::memory_order_seq_cst) volatile
+  T fetch_sub(T arg, std::memory_order order = default_order) volatile
   {
     return internal_.fetch_sub(arg, order);
   }

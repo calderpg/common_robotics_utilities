@@ -264,7 +264,7 @@ GTEST_TEST(UtilityTest, OnScopeExitTest)
   EXPECT_EQ(test_val, 0);
 }
 
-GTEST_TEST(UtilityTest, CopyableMoveableAtomicTest)
+GTEST_TEST(UtilityTest, CopyableMoveableAtomicMethodsTest)
 {
   // Thread safety is covered elsewhere, simply exercise the API here.
 
@@ -292,6 +292,28 @@ GTEST_TEST(UtilityTest, CopyableMoveableAtomicTest)
   EXPECT_EQ(test_volatile_int32.load(), 125);
   test_volatile_int32.fetch_sub(50);
   EXPECT_EQ(test_volatile_int32.load(), 75);
+}
+
+GTEST_TEST(UtilityTest, CopyableMoveableAtomicCopyMoveAssignTest)
+{
+  const utility::CopyableMoveableAtomic<int32_t> test_int32_default(100);
+  EXPECT_EQ(test_int32_default.load(), 100);
+  const utility::CopyableMoveableAtomic<int32_t>
+      copied_test_int32_default(test_int32_default);
+  EXPECT_EQ(copied_test_int32_default.load(), 100);
+  utility::CopyableMoveableAtomic<int32_t> assigned_test_int32_default(0);
+  EXPECT_EQ(assigned_test_int32_default.load(), 0);
+  assigned_test_int32_default = test_int32_default;
+  EXPECT_EQ(assigned_test_int32_default.load(), 100);
+
+  const utility::CopyableMoveableAtomic<int32_t, std::memory_order_relaxed>
+      copied_test_int32_relaxed(test_int32_default);
+  EXPECT_EQ(copied_test_int32_relaxed.load(), 100);
+  utility::CopyableMoveableAtomic<int32_t, std::memory_order_relaxed>
+      assigned_test_int32_relaxed(0);
+  EXPECT_EQ(assigned_test_int32_relaxed.load(), 0);
+  assigned_test_int32_relaxed = test_int32_default;
+  EXPECT_EQ(assigned_test_int32_relaxed.load(), 100);
 }
 }  // namespace
 }  // namespace common_robotics_utilities

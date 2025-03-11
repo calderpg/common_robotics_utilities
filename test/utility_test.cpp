@@ -268,52 +268,114 @@ GTEST_TEST(UtilityTest, CopyableMoveableAtomicMethodsTest)
 {
   // Thread safety is covered elsewhere, simply exercise the API here.
 
-  utility::CopyableMoveableAtomic<bool> test_bool(false);
-  EXPECT_FALSE(test_bool.load());
-  test_bool.store(true);
-  EXPECT_TRUE(test_bool.load());
-  test_bool.store(false);
-  EXPECT_FALSE(test_bool.load());
+  utility::CopyableMoveableAtomic<bool> basic_bool(false);
+  EXPECT_FALSE(basic_bool.load());
+  basic_bool.store(true);
+  EXPECT_TRUE(basic_bool.load());
+  basic_bool.store(false);
+  EXPECT_FALSE(basic_bool.load());
 
-  utility::CopyableMoveableAtomic<int32_t> test_int32(0);
-  EXPECT_EQ(test_int32.load(), 0);
-  test_int32.store(100);
-  EXPECT_EQ(test_int32.load(), 100);
-  test_int32.fetch_add(25);
-  EXPECT_EQ(test_int32.load(), 125);
-  test_int32.fetch_sub(50);
-  EXPECT_EQ(test_int32.load(), 75);
+  utility::CopyableMoveableAtomic<int32_t> basic_int32(0);
+  EXPECT_EQ(basic_int32.load(), 0);
+  basic_int32.store(100);
+  EXPECT_EQ(basic_int32.load(), 100);
+  basic_int32.fetch_add(25);
+  EXPECT_EQ(basic_int32.load(), 125);
+  basic_int32.fetch_sub(50);
+  EXPECT_EQ(basic_int32.load(), 75);
+}
 
-  volatile utility::CopyableMoveableAtomic<int32_t> test_volatile_int32(0);
-  EXPECT_EQ(test_volatile_int32.load(), 0);
-  test_volatile_int32.store(100);
-  EXPECT_EQ(test_volatile_int32.load(), 100);
-  test_volatile_int32.fetch_add(25);
-  EXPECT_EQ(test_volatile_int32.load(), 125);
-  test_volatile_int32.fetch_sub(50);
-  EXPECT_EQ(test_volatile_int32.load(), 75);
+GTEST_TEST(UtilityTest, CopyableMoveableAtomicSelfAssignTest)
+{
+  using CMAi32 = utility::CopyableMoveableAtomic<int32_t>;
+
+  CMAi32 basic_int32(100);
+  EXPECT_EQ(basic_int32.load(), 100);
+
+  auto& basic_copy_assign_ret = (basic_int32 = basic_int32);
+  EXPECT_EQ(basic_int32.load(), 100);
+  EXPECT_EQ(basic_copy_assign_ret.load(), 100);
+
+  // GCC and Clang will warn if we directly write var = std::move(var), but we
+  // can exercise the same operation using std::swap(var, var).
+  std::swap(basic_int32, basic_int32);
+  EXPECT_EQ(basic_int32.load(), 100);
 }
 
 GTEST_TEST(UtilityTest, CopyableMoveableAtomicCopyMoveAssignTest)
 {
-  const utility::CopyableMoveableAtomic<int32_t> test_int32_default(100);
-  EXPECT_EQ(test_int32_default.load(), 100);
-  const utility::CopyableMoveableAtomic<int32_t>
-      copied_test_int32_default(test_int32_default);
-  EXPECT_EQ(copied_test_int32_default.load(), 100);
-  utility::CopyableMoveableAtomic<int32_t> assigned_test_int32_default(0);
-  EXPECT_EQ(assigned_test_int32_default.load(), 0);
-  assigned_test_int32_default = test_int32_default;
-  EXPECT_EQ(assigned_test_int32_default.load(), 100);
+  using CMAi32 = utility::CopyableMoveableAtomic<int32_t>;
 
-  const utility::CopyableMoveableAtomic<int32_t, std::memory_order_relaxed>
-      copied_test_int32_relaxed(test_int32_default);
-  EXPECT_EQ(copied_test_int32_relaxed.load(), 100);
-  utility::CopyableMoveableAtomic<int32_t, std::memory_order_relaxed>
-      assigned_test_int32_relaxed(0);
-  EXPECT_EQ(assigned_test_int32_relaxed.load(), 0);
-  assigned_test_int32_relaxed = test_int32_default;
-  EXPECT_EQ(assigned_test_int32_relaxed.load(), 100);
+  // Initial value for copy operations.
+  const CMAi32 const_int32(100);
+  EXPECT_EQ(const_int32.load(), 100);
+
+  // Copy construction works.
+  const CMAi32 copied_int32(const_int32);
+  EXPECT_EQ(copied_int32.load(), 100);
+
+  // Copy assignment works.
+  CMAi32 assigned_int32(0);
+  EXPECT_EQ(assigned_int32.load(), 0);
+  assigned_int32 = const_int32;
+  EXPECT_EQ(assigned_int32.load(), 100);
+
+  // Initial value for move operations.
+  CMAi32 mutable_int32(200);
+  EXPECT_EQ(mutable_int32.load(), 200);
+
+  // Move construction works.
+  CMAi32 move_constructed_int32(std::move(mutable_int32));
+  EXPECT_EQ(move_constructed_int32.load(), 200);
+  // Move constructor leaves moved-from unmodified.
+  EXPECT_EQ(mutable_int32.load(), 200);
+
+  // Move assignment works.
+  CMAi32 moved_to_int32(0);
+  EXPECT_EQ(moved_to_int32.load(), 0);
+  moved_to_int32 = std::move(mutable_int32);
+  EXPECT_EQ(moved_to_int32.load(), 200);
+  // Move assignment leaves moved-from unmodified.
+  EXPECT_EQ(mutable_int32.load(), 200);
+}
+
+GTEST_TEST(UtilityTest, CopyableMoveableAtomicCrossMemoryOrderTest)
+{
+  using CMAi32 = utility::CopyableMoveableAtomic<int32_t>;
+  using CMAi32Relaxed =
+      utility::CopyableMoveableAtomic<int32_t, std::memory_order_relaxed>;
+
+  // Initial value for copy operations.
+  const CMAi32 const_int32(100);
+  EXPECT_EQ(const_int32.load(), 100);
+
+  // Copy construction works.
+  const CMAi32Relaxed copied_int32(const_int32);
+  EXPECT_EQ(copied_int32.load(), 100);
+
+  // Copy assignment works.
+  CMAi32Relaxed assigned_int32(0);
+  EXPECT_EQ(assigned_int32.load(), 0);
+  assigned_int32 = const_int32;
+  EXPECT_EQ(assigned_int32.load(), 100);
+
+  // Initial value for move operations.
+  CMAi32 mutable_int32(200);
+  EXPECT_EQ(mutable_int32.load(), 200);
+
+  // Move construction works.
+  CMAi32Relaxed move_constructed_int32(std::move(mutable_int32));
+  EXPECT_EQ(move_constructed_int32.load(), 200);
+  // Move constructor leaves moved-from unmodified.
+  EXPECT_EQ(mutable_int32.load(), 200);
+
+  // Move assignment works.
+  CMAi32Relaxed moved_to_int32(0);
+  EXPECT_EQ(moved_to_int32.load(), 0);
+  moved_to_int32 = std::move(mutable_int32);
+  EXPECT_EQ(moved_to_int32.load(), 200);
+  // Move assignment leaves moved-from unmodified.
+  EXPECT_EQ(mutable_int32.load(), 200);
 }
 }  // namespace
 }  // namespace common_robotics_utilities

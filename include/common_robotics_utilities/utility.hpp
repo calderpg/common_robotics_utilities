@@ -87,7 +87,10 @@ CRU_NAMESPACE_BEGIN
 namespace utility
 {
 /// Copyable and moveable wrapper around simple uses of std::atomic<T>.
-/// Beyond load() and store(), methods are only available on integral types.
+/// Beyond load() and store(), fetch_add() and fetch_sub() methods are available
+/// for some types T depending on the C++ standard/dialect in use:
+/// - for pre-C++20 versions, only integral types are supported
+/// - for C++20 and later, integral and floating-point types are supported.
 template <typename T,
           std::memory_order default_order = std::memory_order_seq_cst>
 class CopyableMoveableAtomic
@@ -160,17 +163,7 @@ public:
     return internal_.load(order);
   }
 
-  T load(std::memory_order order = default_order) const volatile
-  {
-    return internal_.load(order);
-  }
-
   void store(T desired, std::memory_order order = default_order)
-  {
-    internal_.store(desired, order);
-  }
-
-  void store(T desired, std::memory_order order = default_order) volatile
   {
     internal_.store(desired, order);
   }
@@ -180,17 +173,7 @@ public:
     return internal_.fetch_add(arg, order);
   }
 
-  T fetch_add(T arg, std::memory_order order = default_order) volatile
-  {
-    return internal_.fetch_add(arg, order);
-  }
-
   T fetch_sub(T arg, std::memory_order order = default_order)
-  {
-    return internal_.fetch_sub(arg, order);
-  }
-
-  T fetch_sub(T arg, std::memory_order order = default_order) volatile
   {
     return internal_.fetch_sub(arg, order);
   }

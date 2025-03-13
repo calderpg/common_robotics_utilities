@@ -1,5 +1,6 @@
 #pragma once
 
+#include <atomic>
 #include <chrono>
 #include <cstdlib>
 #include <functional>
@@ -85,6 +86,102 @@ namespace common_robotics_utilities
 CRU_NAMESPACE_BEGIN
 namespace utility
 {
+/// Copyable and moveable wrapper around simple uses of std::atomic<T>.
+/// Beyond load() and store(), fetch_add() and fetch_sub() methods are available
+/// for some types T depending on the C++ standard/dialect in use:
+/// - for pre-C++20 versions, only integral types are supported
+/// - for C++20 and later, integral and floating-point types are supported.
+template <typename T,
+          std::memory_order default_order = std::memory_order_seq_cst>
+class CopyableMoveableAtomic
+{
+public:
+  explicit CopyableMoveableAtomic(T value) : internal_{value} {}
+
+  CopyableMoveableAtomic() : internal_{} {}
+
+  CopyableMoveableAtomic(const CopyableMoveableAtomic<T, default_order>& other)
+  {
+    store(other.load());
+  }
+
+  CopyableMoveableAtomic(CopyableMoveableAtomic<T, default_order>&& other)
+  {
+    store(other.load());
+  }
+
+  template <std::memory_order other_order>
+  CopyableMoveableAtomic(const CopyableMoveableAtomic<T, other_order>& other)
+  {
+    store(other.load());
+  }
+
+  template <std::memory_order other_order>
+  CopyableMoveableAtomic(CopyableMoveableAtomic<T, other_order>&& other)
+  {
+    store(other.load());
+  }
+
+  CopyableMoveableAtomic<T, default_order>& operator=(
+      const CopyableMoveableAtomic<T, default_order>& other)
+  {
+    if (this != std::addressof(other))
+    {
+      store(other.load());
+    }
+    return *this;
+  }
+
+  CopyableMoveableAtomic<T, default_order>& operator=(
+      CopyableMoveableAtomic<T, default_order>&& other)
+  {
+    if (this != std::addressof(other))
+    {
+      store(other.load());
+    }
+    return *this;
+  }
+
+  template <std::memory_order other_order>
+  CopyableMoveableAtomic<T, default_order>& operator=(
+      const CopyableMoveableAtomic<T, other_order>& other)
+  {
+    store(other.load());
+    return *this;
+  }
+
+  template <std::memory_order other_order>
+  CopyableMoveableAtomic<T, default_order>& operator=(
+      CopyableMoveableAtomic<T, other_order>&& other)
+  {
+    store(other.load());
+    return *this;
+  }
+
+  T load(std::memory_order order = default_order) const
+  {
+    return internal_.load(order);
+  }
+
+  void store(T desired, std::memory_order order = default_order)
+  {
+    internal_.store(desired, order);
+  }
+
+  T fetch_add(T arg, std::memory_order order = default_order)
+  {
+    return internal_.fetch_add(arg, order);
+  }
+
+  T fetch_sub(T arg, std::memory_order order = default_order)
+  {
+    return internal_.fetch_sub(arg, order);
+  }
+
+private:
+  std::atomic<T> internal_;
+};
+
 /// Helper type to run the provided function on scope exit via RAII.
 class OnScopeExit
 {

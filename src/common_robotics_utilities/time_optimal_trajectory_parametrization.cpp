@@ -431,19 +431,17 @@ Path::Path(const std::list<Eigen::VectorXd>& path, const double max_deviation)
 Path::Path(const Path& path)
   : length_(path.length_), switching_points_(path.switching_points_)
 {
-  for (std::list<PathSegment*>::const_iterator it = path.path_segments_.begin();
-      it != path.path_segments_.end(); it++)
+  for (const auto* segment : path.path_segments_)
   {
-    path_segments_.push_back((*it)->Clone());
+    path_segments_.push_back(segment->Clone());
   }
 }
 
 Path::~Path()
 {
-  for(std::list<PathSegment*>::iterator it = path_segments_.begin();
-      it != path_segments_.end(); it++)
+  for (auto* segment : path_segments_)
   {
-    delete *it;
+    delete segment;
   }
 }
 
@@ -564,8 +562,8 @@ Trajectory::Trajectory(const Path& path,
                       before_acceleration);
   }
   const double before_acceleration
-      = GetMinMaxPathAcceleration(path.Length(), 0.0, false);
-  IntegrateBackward(trajectory_, path.Length(), 0.0, before_acceleration);
+      = GetMinMaxPathAcceleration(path_.Length(), 0.0, false);
+  IntegrateBackward(trajectory_, path_.Length(), 0.0, before_acceleration);
   // calculate timing
   std::list<TrajectoryStep>::iterator previous = trajectory_.begin();
   std::list<TrajectoryStep>::iterator it = previous;

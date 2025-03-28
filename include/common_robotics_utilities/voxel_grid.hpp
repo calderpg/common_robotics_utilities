@@ -689,6 +689,13 @@ protected:
                                const int64_t y_index,
                                const int64_t z_index) = 0;
 
+  /// Callback on any mutable raw access to the grid (i.e. via data index or
+  /// access to the backing store). Return true/false to allow or disallow
+  /// mutable access to grid elements. For example, this can be used to prohibit
+  /// changes to a non-const grid, or to invalidate a cache if voxels are
+  /// modified.
+  virtual bool OnMutableRawAccess() = 0;
+
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -1072,17 +1079,38 @@ public:
 
   T& GetDataIndexMutable(const int64_t data_index)
   {
-    return AccessIndex(data_index);
+    if (OnMutableRawAccess())
+    {
+      return AccessIndex(data_index);
+    }
+    else
+    {
+      throw std::runtime_error("Mutable raw access is prohibited");
+    }
   }
 
   void SetDataIndex(const int64_t data_index, const T& value)
   {
-    AccessIndex(data_index) = value;
+    if (OnMutableRawAccess())
+    {
+      AccessIndex(data_index) = value;
+    }
+    else
+    {
+      throw std::runtime_error("Mutable raw access is prohibited");
+    }
   }
 
   void SetDataIndex(const int64_t data_index, T&& value)
   {
-    AccessIndex(data_index) = value;
+    if (OnMutableRawAccess())
+    {
+      AccessIndex(data_index) = value;
+    }
+    else
+    {
+      throw std::runtime_error("Mutable raw access is prohibited");
+    }
   }
 
   const GridSizes& GetGridSizes() const { return sizes_; }
@@ -1237,21 +1265,37 @@ public:
     return sizes_.GetGridIndexFromDataIndex(data_index);
   }
 
-  BackingStore& GetMutableRawData() { return data_; }
-
-  const BackingStore& GetImmutableRawData() const { return data_; }
-
-  bool SetRawData(const BackingStore& data)
+  BackingStore& GetMutableRawData()
   {
-    const int64_t expected_length = GetTotalCells();
-    if (static_cast<int64_t>(data.size()) == expected_length)
+    if (OnMutableRawAccess())
     {
-      data_ = data;
-      return true;
+      return data_;
     }
     else
     {
-      return false;
+      throw std::runtime_error("Mutable raw access is prohibited");
+    }
+  }
+
+  const BackingStore& GetImmutableRawData() const { return data_; }
+
+  void SetRawData(const BackingStore& data)
+  {
+    if (OnMutableRawAccess())
+    {
+      const int64_t expected_length = GetTotalCells();
+      if (static_cast<int64_t>(data.size()) == expected_length)
+      {
+        data_ = data;
+      }
+      else
+      {
+        throw std::runtime_error("Provided data is not the expected size");
+      }
+    }
+    else
+    {
+      throw std::runtime_error("Mutable raw access is prohibited");
     }
   }
 
@@ -1309,6 +1353,8 @@ private:
     CRU_UNUSED(z_index);
     return true;
   }
+
+  bool OnMutableRawAccess() override { return true; }
 
 public:
   static uint64_t Serialize(

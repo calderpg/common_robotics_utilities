@@ -773,6 +773,12 @@ protected:
   /// modified.
   virtual bool OnMutableAccess(const Eigen::Vector4d& location) = 0;
 
+  /// Callback on any mutable access to the grid. Return true/false to allow or
+  /// disallow access to the grid. For example, this can be used to prohibit
+  /// changes to a non-const grid, or to invalidate a cache if voxels are
+  /// modified.
+  virtual bool OnMutableRawAccess() = 0;
+
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
@@ -1054,7 +1060,14 @@ public:
 
   ChunkMap& GetMutableInternalChunks() const
   {
-    return chunks_;
+    if (OnMutableRawAccess())
+    {
+      return chunks_;
+    }
+    else
+    {
+      throw std::runtime_error("Mutable raw access is prohibited");
+    }
   }
 };
 
@@ -1096,6 +1109,8 @@ private:
     CRU_UNUSED(location);
     return true;
   }
+
+  bool OnMutableRawAccess() override { return true; }
 
 public:
   static uint64_t Serialize(

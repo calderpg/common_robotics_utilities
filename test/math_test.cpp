@@ -23,6 +23,21 @@ GTEST_TEST(MathTest, EnforceContinuousRevoluteBounds)
       math::EnforceContinuousRevoluteBounds(-M_PI - 1.0), (M_PI - 1.0));
   EXPECT_DOUBLE_EQ(math::EnforceContinuousRevoluteBounds(2.0 * M_PI), 0.0);
   EXPECT_DOUBLE_EQ(math::EnforceContinuousRevoluteBounds(2.0 * - M_PI), 0.0);
+
+  const std::vector<double> angles =
+      {0.0, 1.0, M_PI_4, M_PI_2, M_PI - 1e-6, -1.0, -M_PI_4, -M_PI_2, -M_PI};
+  const std::vector<double> wraps = {0.0, 1.0, 2.0, 3.0, -1.0, -2.0, -3.0};
+  constexpr double full_wrap = M_PI * 2.0;
+
+  for (const double& angle : angles)
+  {
+    for (const double& wrap : wraps)
+    {
+      const double value = angle + (full_wrap * wrap);
+      const double wrapped_angle = math::EnforceContinuousRevoluteBounds(value);
+      EXPECT_NEAR(angle, wrapped_angle, 1e-9);
+    }
+  }
 }
 
 GTEST_TEST(MathTest, ContinuousRevoluteSignedDistance)

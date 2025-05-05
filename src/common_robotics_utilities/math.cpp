@@ -70,25 +70,16 @@ bool CloseEnough(const Eigen::Vector3d& v1,
 
 double EnforceContinuousRevoluteBounds(const double value)
 {
-  if ((value <= -M_PI) || (value > M_PI))
+  constexpr double low = -M_PI;
+  constexpr double high = M_PI;
+  const double remainder = std::fmod(value - low, high - low);
+  if (remainder >= 0.0)
   {
-    const double remainder = std::fmod(value, 2.0 * M_PI);
-    if (remainder <= -M_PI)
-    {
-      return (remainder + (2.0 * M_PI));
-    }
-    else if (remainder > M_PI)
-    {
-      return (remainder - (2.0 * M_PI));
-    }
-    else
-    {
-      return remainder;
-    }
+    return remainder + low;
   }
   else
   {
-    return value;
+    return remainder + high;
   }
 }
 
@@ -404,42 +395,14 @@ double InterpolateContinuousRevolute(const double p1,
                                      const double p2,
                                      const double ratio)
 {
-  // Safety check ratio
+  // Clip interpolation ratio to [0, 1].
   const double real_ratio = utility::ClampValue(ratio, 0.0, 1.0);
-  // Safety check args
-  const double real_p1 = EnforceContinuousRevoluteBounds(p1);
-  const double real_p2 = EnforceContinuousRevoluteBounds(p2);
-  // Interpolate
-  double interpolated = 0.0;
-  double diff = real_p2 - real_p1;
-  if (std::abs(diff) <= M_PI)
-  {
-    interpolated = real_p1 + diff * real_ratio;
-  }
-  else
-  {
-    if (diff > 0.0)
-    {
-      diff = 2.0 * M_PI - diff;
-    }
-    else
-    {
-      diff = -2.0 * M_PI - diff;
-    }
-    interpolated = real_p1 - diff * real_ratio;
-    // Input states are within bounds, so the following check is sufficient
-    if (interpolated > M_PI)
-    {
-      interpolated -= 2.0 * M_PI;
-    }
-    else
-    {
-      if (interpolated < -M_PI)
-      {
-        interpolated += 2.0 * M_PI;
-      }
-    }
-  }
+
+  // Note that this takes care of wrapping args to [-pi,pi) range.
+  const double delta = ContinuousRevoluteSignedDistance(p1, p2);
+
+  const double interpolated =
+      AddContinuousRevoluteValues(p1, (delta * real_ratio));
   return interpolated;
 }
 
@@ -638,29 +601,12 @@ double Distance(const std::vector<double>& p1, const std::vector<double>& p2)
 
 double ContinuousRevoluteSignedDistance(const double p1, const double p2)
 {
-  // Safety check args
-  const double real_p1 = EnforceContinuousRevoluteBounds(p1);
-  const double real_p2 = EnforceContinuousRevoluteBounds(p2);
-  const double raw_distance = real_p2 - real_p1;
-  if ((raw_distance <= -M_PI) || (raw_distance > M_PI))
-  {
-    if (raw_distance <= -M_PI)
-    {
-      return (-(2.0 * M_PI) - raw_distance);
-    }
-    else if (raw_distance > M_PI)
-    {
-      return ((2.0 * M_PI) - raw_distance);
-    }
-    else
-    {
-      return raw_distance;
-    }
-  }
-  else
-  {
-    return raw_distance;
-  }
+  // Wrap args to [-pi,pi) range.
+  const double clipped_p1 = EnforceContinuousRevoluteBounds(p1);
+  const double clipped_p2 = EnforceContinuousRevoluteBounds(p2);
+
+  const double raw_distance = clipped_p2 - clipped_p1;
+  return EnforceContinuousRevoluteBounds(raw_distance);
 }
 
 double ContinuousRevoluteDistance(const double p1, const double p2)

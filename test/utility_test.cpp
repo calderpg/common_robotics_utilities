@@ -283,6 +283,39 @@ GTEST_TEST(UtilityTest, CopyableMoveableAtomicMethodsTest)
   EXPECT_EQ(basic_int32.load(), 125);
   basic_int32.fetch_sub(50);
   EXPECT_EQ(basic_int32.load(), 75);
+
+  utility::CopyableMoveableAtomic<int32_t> exchange_int32(0);
+  EXPECT_EQ(exchange_int32.load(), 0);
+  EXPECT_EQ(exchange_int32.exchange(100), 0);
+  EXPECT_EQ(exchange_int32.load(), 100);
+
+  utility::CopyableMoveableAtomic<int32_t> cxw_int32(0);
+  EXPECT_EQ(cxw_int32.load(), 0);
+  int32_t cxw_expected = 0;
+  EXPECT_TRUE(cxw_int32.compare_exchange_weak(cxw_expected, 100));
+  EXPECT_EQ(cxw_int32.load(), 100);
+  EXPECT_EQ(cxw_expected, 0);
+  EXPECT_FALSE(cxw_int32.compare_exchange_weak(cxw_expected, 200));
+  EXPECT_EQ(cxw_int32.load(), 100);
+  EXPECT_EQ(cxw_expected, 100);
+  EXPECT_TRUE(cxw_int32.compare_exchange_weak(
+      cxw_expected, 200, std::memory_order_relaxed, std::memory_order_relaxed));
+  EXPECT_EQ(cxw_int32.load(), 200);
+  EXPECT_EQ(cxw_expected, 100);
+
+  utility::CopyableMoveableAtomic<int32_t> cxs_int32(0);
+  EXPECT_EQ(cxs_int32.load(), 0);
+  int32_t cxs_expected = 0;
+  EXPECT_TRUE(cxs_int32.compare_exchange_strong(cxs_expected, 100));
+  EXPECT_EQ(cxs_int32.load(), 100);
+  EXPECT_EQ(cxs_expected, 0);
+  EXPECT_FALSE(cxs_int32.compare_exchange_strong(cxs_expected, 200));
+  EXPECT_EQ(cxs_int32.load(), 100);
+  EXPECT_EQ(cxs_expected, 100);
+  EXPECT_TRUE(cxs_int32.compare_exchange_weak(
+      cxs_expected, 200, std::memory_order_relaxed, std::memory_order_relaxed));
+  EXPECT_EQ(cxs_int32.load(), 200);
+  EXPECT_EQ(cxs_expected, 100);
 }
 
 GTEST_TEST(UtilityTest, CopyableMoveableAtomicSelfAssignTest)

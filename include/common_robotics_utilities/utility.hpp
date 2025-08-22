@@ -178,6 +178,38 @@ public:
     return internal_.fetch_sub(arg, order);
   }
 
+  T exchange(T desired, std::memory_order order = default_order)
+  {
+    return internal_.exchange(desired, order);
+  }
+
+  bool compare_exchange_weak(
+      T& expected, T desired,
+      std::memory_order success, std::memory_order failure)
+  {
+    return internal_.compare_exchange_weak(expected, desired, success, failure);
+  }
+
+  bool compare_exchange_weak(
+      T& expected, T desired, std::memory_order order = default_order)
+  {
+    return internal_.compare_exchange_weak(expected, desired, order);
+  }
+
+  bool compare_exchange_strong(
+      T& expected, T desired,
+      std::memory_order success, std::memory_order failure)
+  {
+    return internal_.compare_exchange_strong(
+        expected, desired, success, failure);
+  }
+
+  bool compare_exchange_strong(
+      T& expected, T desired, std::memory_order order = default_order)
+  {
+    return internal_.compare_exchange_strong(expected, desired, order);
+  }
+
 private:
   std::atomic<T> internal_;
 };

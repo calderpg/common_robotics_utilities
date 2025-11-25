@@ -2,6 +2,7 @@
 
 #include <cmath>
 #include <cstdint>
+#include <limits>
 #include <memory>
 #include <ostream>
 #include <stdexcept>
@@ -22,12 +23,15 @@ namespace voxel_grid
 class GridIndex
 {
 private:
-  int64_t x_ = -1;
-  int64_t y_ = -1;
-  int64_t z_ = -1;
+  // These defaults mean that a default-constructed GridIndex cannot be a valid
+  // index for any VoxelGrid (whose indices start at 0,0,0) or DSHVG (whose
+  // indices may be negative, but no lower than -2^52).
+  int64_t x_ = std::numeric_limits<int64_t>::lowest();
+  int64_t y_ = std::numeric_limits<int64_t>::lowest();
+  int64_t z_ = std::numeric_limits<int64_t>::lowest();
 
 public:
-  GridIndex() : x_(-1), y_(-1), z_(-1) {}
+  GridIndex() {}
 
   GridIndex(const int64_t x, const int64_t y, const int64_t z)
       : x_(x), y_(y), z_(z) {}
@@ -54,6 +58,16 @@ public:
     return !(*this == other);
   }
 };
+
+inline GridIndex operator+(const GridIndex& a, const GridIndex& b)
+{
+  return GridIndex(a.X() + b.X(), a.Y() + b.Y(), a.Z() + b.Z());
+}
+
+inline GridIndex operator-(const GridIndex& a, const GridIndex& b)
+{
+  return GridIndex(a.X() - b.X(), a.Y() - b.Y(), a.Z() - b.Z());
+}
 
 class GridSizes
 {

@@ -11,6 +11,24 @@ namespace common_robotics_utilities
 {
 namespace
 {
+GTEST_TEST(VoxelGridTest, IndexOperations)
+{
+  const voxel_grid::GridIndex index_a(10, 20, 30);
+  const voxel_grid::GridIndex index_b(100, 200, 300);
+
+  const voxel_grid::GridIndex index_added = index_a + index_b;
+
+  EXPECT_EQ(index_added.X(), 110);
+  EXPECT_EQ(index_added.Y(), 220);
+  EXPECT_EQ(index_added.Z(), 330);
+
+  const voxel_grid::GridIndex index_subbed = index_a - index_b;
+
+  EXPECT_EQ(index_subbed.X(), -90);
+  EXPECT_EQ(index_subbed.Y(), -180);
+  EXPECT_EQ(index_subbed.Z(), -270);
+}
+
 GTEST_TEST(VoxelGridTest, IndexLookup)
 {
   const voxel_grid::GridSizes grid_sizes(1.0, 20.0, 20.0, 20.0);

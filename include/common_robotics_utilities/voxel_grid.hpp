@@ -4,9 +4,9 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
-#include <ostream>
 #include <stdexcept>
 #include <string>
+#include <type_traits>
 #include <vector>
 
 #include <Eigen/Geometry>
@@ -14,79 +14,25 @@
 #include <common_robotics_utilities/maybe.hpp>
 #include <common_robotics_utilities/serialization.hpp>
 #include <common_robotics_utilities/utility.hpp>
+#include <common_robotics_utilities/voxel_grid_common.hpp>
 
 namespace common_robotics_utilities
 {
 CRU_NAMESPACE_BEGIN
 namespace voxel_grid
 {
-class GridIndex
+
+class VoxelGridSizes
 {
 private:
-  // These defaults mean that a default-constructed GridIndex cannot be a valid
-  // index for any VoxelGrid (whose indices start at 0,0,0) or DSHVG (whose
-  // indices may be negative, but no lower than -2^52).
-  int64_t x_ = std::numeric_limits<int64_t>::lowest();
-  int64_t y_ = std::numeric_limits<int64_t>::lowest();
-  int64_t z_ = std::numeric_limits<int64_t>::lowest();
-
-public:
-  GridIndex() {}
-
-  GridIndex(const int64_t x, const int64_t y, const int64_t z)
-      : x_(x), y_(y), z_(z) {}
-
-  const int64_t& X() const { return x_; }
-
-  const int64_t& Y() const { return y_; }
-
-  const int64_t& Z() const { return z_; }
-
-  int64_t& X() { return x_; }
-
-  int64_t& Y() { return y_; }
-
-  int64_t& Z() { return z_; }
-
-  bool operator==(const GridIndex& other) const
-  {
-    return (X() == other.X() && Y() == other.Y() && Z() == other.Z());
-  }
-
-  bool operator!=(const GridIndex& other) const
-  {
-    return !(*this == other);
-  }
-};
-
-inline GridIndex operator+(const GridIndex& a, const GridIndex& b)
-{
-  return GridIndex(a.X() + b.X(), a.Y() + b.Y(), a.Z() + b.Z());
-}
-
-inline GridIndex operator-(const GridIndex& a, const GridIndex& b)
-{
-  return GridIndex(a.X() - b.X(), a.Y() - b.Y(), a.Z() - b.Z());
-}
-
-class GridSizes
-{
-private:
-  double cell_x_size_ = 0.0;
-  double cell_y_size_ = 0.0;
-  double cell_z_size_ = 0.0;
-  double inv_cell_x_size_ = 0.0;
-  double inv_cell_y_size_ = 0.0;
-  double inv_cell_z_size_ = 0.0;
-  double x_size_ = 0.0;
-  double y_size_ = 0.0;
-  double z_size_ = 0.0;
-  int64_t num_x_cells_ = 0;
-  int64_t num_y_cells_ = 0;
-  int64_t num_z_cells_ = 0;
-  int64_t stride1_ = 0;
-  int64_t stride2_ = 0;
-  bool valid_ = false;
+  // Voxel sizes (and their inverses) are stored in Vector4 to enable certain
+  // SIMD operations.
+  Eigen::Vector4d voxel_sizes_ = Eigen::Vector4d::Zero();
+  Eigen::Vector4d inverse_voxel_sizes_ = Eigen::Vector4d::Zero();
+  Eigen::Vector3d grid_sizes_ = Eigen::Vector3d::Zero();
+  Vector3i64 voxel_counts_ = Vector3i64::Zero();
+  int64_t stride_1_ = 0;
+  int64_t stride_2_ = 0;
 
   static bool CheckPositiveValid(const double param)
   {
@@ -98,299 +44,225 @@ private:
     return (param > 0);
   }
 
-  bool Initialize(
-      const double cell_x_size,
-      const double cell_y_size,
-      const double cell_z_size,
-      const double x_size,
-      const double y_size,
-      const double z_size)
+  // This constructor is private so that users can only construct via the named
+  // factory methods, which avoids ambiguity between grid sizes and voxel counts
+  // parameters.
+  VoxelGridSizes(
+      const Eigen::Vector3d& voxel_sizes, const Vector3i64& voxel_counts)
   {
-    // Safety check
-    if (CheckPositiveValid(cell_x_size) && CheckPositiveValid(cell_y_size) &&
-        CheckPositiveValid(cell_z_size) && CheckPositiveValid(x_size) &&
-        CheckPositiveValid(y_size) && CheckPositiveValid(z_size))
-    {
-      // Set
-      cell_x_size_ = cell_x_size;
-      cell_y_size_ = cell_y_size;
-      cell_z_size_ = cell_z_size;
-      inv_cell_x_size_ = 1.0 / cell_x_size_;
-      inv_cell_y_size_ = 1.0 / cell_y_size_;
-      inv_cell_z_size_ = 1.0 / cell_z_size_;
-      num_x_cells_
-          = static_cast<int64_t>(std::ceil(x_size / cell_x_size));
-      num_y_cells_
-          = static_cast<int64_t>(std::ceil(y_size / cell_y_size));
-      num_z_cells_
-          = static_cast<int64_t>(std::ceil(z_size / cell_z_size));
-      x_size_ = static_cast<double>(num_x_cells_) * cell_x_size_;
-      y_size_ = static_cast<double>(num_y_cells_) * cell_y_size_;
-      z_size_ = static_cast<double>(num_z_cells_) * cell_z_size_;
-      stride1_ = num_y_cells_ * num_z_cells_;
-      stride2_ = num_z_cells_;
-      valid_ = true;
+    const bool initialized = Initialize(voxel_sizes, voxel_counts);
 
-      return true;
-    }
-    else
+    if (!initialized)
     {
-      return false;
+      throw std::invalid_argument(
+          "All size parameters must be positive, non-zero, and finite");
     }
-  }
-
-  bool Initialize(
-      const double cell_x_size,
-      const double cell_y_size,
-      const double cell_z_size,
-      const int64_t num_x_cells,
-      const int64_t num_y_cells,
-      const int64_t num_z_cells)
-  {
-    // Safety check
-    if (CheckPositiveValid(cell_x_size) && CheckPositiveValid(cell_y_size) &&
-        CheckPositiveValid(cell_z_size) && CheckPositiveValid(num_x_cells) &&
-        CheckPositiveValid(num_y_cells) && CheckPositiveValid(num_z_cells))
-    {
-      // Set
-      cell_x_size_ = cell_x_size;
-      cell_y_size_ = cell_y_size;
-      cell_z_size_ = cell_z_size;
-      inv_cell_x_size_ = 1.0 / cell_x_size_;
-      inv_cell_y_size_ = 1.0 / cell_y_size_;
-      inv_cell_z_size_ = 1.0 / cell_z_size_;
-      num_x_cells_ = num_x_cells;
-      num_y_cells_ = num_y_cells;
-      num_z_cells_ = num_z_cells;
-      x_size_ = static_cast<double>(num_x_cells_) * cell_x_size_;
-      y_size_ = static_cast<double>(num_y_cells_) * cell_y_size_;
-      z_size_ = static_cast<double>(num_z_cells_) * cell_z_size_;
-      stride1_ = num_y_cells_ * num_z_cells_;
-      stride2_ = num_z_cells_;
-      valid_ = true;
-
-      return true;
-    }
-    else
-    {
-      return false;
-    }
-  }
-
-  void DefaultInitialize()
-  {
-    cell_x_size_ = 0.0;
-    cell_y_size_ = 0.0;
-    cell_z_size_ = 0.0;
-    inv_cell_x_size_ = 0.0;
-    inv_cell_y_size_ = 0.0;
-    inv_cell_z_size_ = 0.0;
-    num_x_cells_ = 0;
-    num_y_cells_ = 0;
-    num_z_cells_ = 0;
-    x_size_ = 0.0;
-    y_size_ = 0.0;
-    z_size_ = 0.0;
-    stride1_ = 0.0;
-    stride2_ = 0.0;
-    valid_ = false;
   }
 
 public:
   static uint64_t Serialize(
-      const GridSizes& sizes, std::vector<uint8_t>& buffer)
-  {
-    return sizes.SerializeSelf(buffer);
-  }
-
-  static serialization::Deserialized<GridSizes> Deserialize(
-      const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
-  {
-    GridSizes temp_sizes;
-    const uint64_t bytes_read
-        = temp_sizes.DeserializeSelf(buffer, starting_offset);
-    return serialization::MakeDeserialized(temp_sizes, bytes_read);
-  }
-
-  GridSizes(const double cell_size,
-            const double x_size,
-            const double y_size,
-            const double z_size)
-      : GridSizes(cell_size, cell_size, cell_size, x_size, y_size, z_size) {}
-
-  GridSizes(const double cell_size,
-            const int64_t num_x_cells,
-            const int64_t num_y_cells,
-            const int64_t num_z_cells)
-      : GridSizes(cell_size, cell_size, cell_size,
-                  num_x_cells, num_y_cells, num_z_cells) {}
-
-  GridSizes(const double cell_x_size,
-            const double cell_y_size,
-            const double cell_z_size,
-            const double x_size,
-            const double y_size,
-            const double z_size)
-  {
-    const bool initialized = Initialize(
-        cell_x_size, cell_y_size, cell_z_size, x_size, y_size, z_size);
-
-    if (!initialized)
-    {
-      throw std::invalid_argument(
-          "All size parameters must be positive, non-zero, and finite");
-    }
-  }
-
-  GridSizes(const double cell_x_size,
-            const double cell_y_size,
-            const double cell_z_size,
-            const int64_t num_x_cells,
-            const int64_t num_y_cells,
-            const int64_t num_z_cells)
-  {
-    const bool initialized = Initialize(
-        cell_x_size, cell_y_size, cell_z_size,
-        num_x_cells, num_y_cells, num_z_cells);
-
-    if (!initialized)
-    {
-      throw std::invalid_argument(
-          "All size parameters must be positive, non-zero, and finite");
-    }
-  }
-
-  GridSizes() { DefaultInitialize(); }
-
-  bool Valid() const { return valid_; }
-
-  bool UniformCellSize() const
-  {
-    return ((cell_x_size_ == cell_y_size_) && (cell_x_size_ == cell_z_size_));
-  }
-
-  uint64_t SerializeSelf(std::vector<uint8_t>& buffer) const
+      const VoxelGridSizes& sizes, std::vector<uint8_t>& buffer)
   {
     const uint64_t start_buffer_size = buffer.size();
-    // Serialize everything needed to reproduce the grid sizes
-    serialization::SerializeMemcpyable<double>(CellXSize(), buffer);
-    serialization::SerializeMemcpyable<double>(CellYSize(), buffer);
-    serialization::SerializeMemcpyable<double>(CellZSize(), buffer);
-    serialization::SerializeMemcpyable<int64_t>(NumXCells(), buffer);
-    serialization::SerializeMemcpyable<int64_t>(NumYCells(), buffer);
-    serialization::SerializeMemcpyable<int64_t>(NumZCells(), buffer);
-    // Figure out how many bytes were written
+
+    // Serialize everything needed to reproduce the grid sizes.
+    serialization::SerializeMemcpyable<double>(sizes.VoxelXSize(), buffer);
+    serialization::SerializeMemcpyable<double>(sizes.VoxelYSize(), buffer);
+    serialization::SerializeMemcpyable<double>(sizes.VoxelZSize(), buffer);
+    serialization::SerializeMemcpyable<int64_t>(sizes.NumXVoxels(), buffer);
+    serialization::SerializeMemcpyable<int64_t>(sizes.NumYVoxels(), buffer);
+    serialization::SerializeMemcpyable<int64_t>(sizes.NumZVoxels(), buffer);
+
+    // Figure out how many bytes were written.
     const uint64_t end_buffer_size = buffer.size();
     const uint64_t bytes_written = end_buffer_size - start_buffer_size;
     return bytes_written;
   }
 
-  uint64_t DeserializeSelf(const std::vector<uint8_t>& buffer,
-                           const uint64_t starting_offset)
+  static serialization::Deserialized<VoxelGridSizes> Deserialize(
+      const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
   {
     uint64_t current_position = starting_offset;
-    const auto cell_x_size_deserialized
-        = serialization::DeserializeMemcpyable<double>(buffer,
-                                                       current_position);
-    const double cell_x_size = cell_x_size_deserialized.Value();
-    current_position += cell_x_size_deserialized.BytesRead();
-    const auto cell_y_size_deserialized
-        = serialization::DeserializeMemcpyable<double>(buffer,
-                                                       current_position);
-    const double cell_y_size = cell_y_size_deserialized.Value();
-    current_position += cell_y_size_deserialized.BytesRead();
-    const auto cell_z_size_deserialized
-        = serialization::DeserializeMemcpyable<double>(buffer,
-                                                       current_position);
-    const double cell_z_size = cell_z_size_deserialized.Value();
-    current_position += cell_z_size_deserialized.BytesRead();
-    const auto num_x_cells_deserialized
-        = serialization::DeserializeMemcpyable<int64_t>(buffer,
-                                                        current_position);
-    const int64_t num_x_cells = num_x_cells_deserialized.Value();
-    current_position += num_x_cells_deserialized.BytesRead();
-    const auto num_y_cells_deserialized
-        = serialization::DeserializeMemcpyable<int64_t>(buffer,
-                                                        current_position);
-    const int64_t num_y_cells = num_y_cells_deserialized.Value();
-    current_position += num_y_cells_deserialized.BytesRead();
-    const auto num_z_cells_deserialized
-        = serialization::DeserializeMemcpyable<int64_t>(buffer,
-                                                        current_position);
-    const int64_t num_z_cells = num_z_cells_deserialized.Value();
-    current_position += num_z_cells_deserialized.BytesRead();
 
-    const bool initialized = Initialize(
-        cell_x_size, cell_y_size, cell_z_size,
-        num_x_cells, num_y_cells, num_z_cells);
-    if (!initialized)
-    {
-      // The only reason Initialize can fail is if the params are
-      // default-initialized or invalid. We make sure to zero and set invalid.
-      DefaultInitialize();
-    }
-    // Figure out how many bytes were read
+    // Deserialize voxel sizes.
+    const auto voxel_x_size_deserialized =
+        serialization::DeserializeMemcpyable<double>(buffer, current_position);
+    const double voxel_x_size = voxel_x_size_deserialized.Value();
+    current_position += voxel_x_size_deserialized.BytesRead();
+    const auto voxel_y_size_deserialized =
+        serialization::DeserializeMemcpyable<double>(buffer, current_position);
+    const double voxel_y_size = voxel_y_size_deserialized.Value();
+    current_position += voxel_y_size_deserialized.BytesRead();
+    const auto voxel_z_size_deserialized =
+        serialization::DeserializeMemcpyable<double>(buffer, current_position);
+    const double voxel_z_size = voxel_z_size_deserialized.Value();
+    current_position += voxel_z_size_deserialized.BytesRead();
+
+    const Eigen::Vector3d voxel_sizes(voxel_x_size, voxel_y_size, voxel_z_size);
+
+    // Deserialize voxel counts.
+    const auto num_x_voxels_deserialized =
+        serialization::DeserializeMemcpyable<int64_t>(buffer, current_position);
+    const int64_t num_x_voxels = num_x_voxels_deserialized.Value();
+    current_position += num_x_voxels_deserialized.BytesRead();
+    const auto num_y_voxels_deserialized =
+        serialization::DeserializeMemcpyable<int64_t>(buffer, current_position);
+    const int64_t num_y_voxels = num_y_voxels_deserialized.Value();
+    current_position += num_y_voxels_deserialized.BytesRead();
+    const auto num_z_voxels_deserialized =
+        serialization::DeserializeMemcpyable<int64_t>(buffer, current_position);
+    const int64_t num_z_voxels = num_z_voxels_deserialized.Value();
+    current_position += num_z_voxels_deserialized.BytesRead();
+
+    const Vector3i64 voxel_counts(num_x_voxels, num_y_voxels, num_z_voxels);
+
+    // Start with a default-constructed VoxelGridSizes.
+    VoxelGridSizes temp_sizes;
+
+    // Attempt to initialize from the deserialized values. If any of them are
+    // invalid, temp_sizes is unchanged.
+    temp_sizes.Initialize(voxel_sizes, voxel_counts);
+
+    // Figure out how many bytes were read.
     const uint64_t bytes_read = current_position - starting_offset;
-    return bytes_read;
+    return serialization::MakeDeserialized(temp_sizes, bytes_read);
   }
 
-  double CellXSize() const { return cell_x_size_; }
-
-  double CellYSize() const { return cell_y_size_; }
-
-  double CellZSize() const { return cell_z_size_; }
-
-  Eigen::Vector3d CellSizes() const
+  static VoxelGridSizes FromGridSizes(
+      const Eigen::Vector3d& voxel_sizes, const Eigen::Vector3d& grid_sizes)
   {
-    return Eigen::Vector3d(cell_x_size_, cell_y_size_, cell_z_size_);
+    const Vector3i64 voxel_counts(
+        static_cast<int64_t>(std::ceil(grid_sizes.x() / voxel_sizes.x())),
+        static_cast<int64_t>(std::ceil(grid_sizes.y() / voxel_sizes.y())),
+        static_cast<int64_t>(std::ceil(grid_sizes.z() / voxel_sizes.z())));
+    return VoxelGridSizes(voxel_sizes, voxel_counts);
   }
 
-  double InvCellXSize() const { return inv_cell_x_size_; }
-
-  double InvCellYSize() const { return inv_cell_y_size_; }
-
-  double InvCellZSize() const { return inv_cell_z_size_; }
-
-  int64_t NumXCells() const { return num_x_cells_; }
-
-  int64_t NumYCells() const { return num_y_cells_; }
-
-  int64_t NumZCells() const { return num_z_cells_; }
-
-  Eigen::Matrix<int64_t, 3, 1> NumCells() const
+  static VoxelGridSizes FromGridSizes(
+      const double voxel_size, const Eigen::Vector3d& grid_sizes)
   {
-    Eigen::Matrix<int64_t, 3, 1> num_cells;
-    num_cells << num_x_cells_, num_y_cells_, num_z_cells_;
-    return num_cells;
+    return FromGridSizes(
+        Eigen::Vector3d(voxel_size, voxel_size, voxel_size), grid_sizes);
   }
 
-  int64_t TotalCells() const
+  static VoxelGridSizes FromVoxelCounts(
+      const Eigen::Vector3d& voxel_sizes, const Vector3i64& voxel_counts)
   {
-    return num_x_cells_ * num_y_cells_ * num_z_cells_;
+    return VoxelGridSizes(voxel_sizes, voxel_counts);
   }
 
-  double XSize() const { return x_size_; }
-
-  double YSize() const { return y_size_; }
-
-  double ZSize() const { return z_size_; }
-
-  Eigen::Vector3d Sizes() const
+  static VoxelGridSizes FromVoxelCounts(
+      const double voxel_size, const Vector3i64& voxel_counts)
   {
-    return Eigen::Vector3d(x_size_, y_size_, z_size_);
+    return FromVoxelCounts(
+        Eigen::Vector3d(voxel_size, voxel_size, voxel_size), voxel_counts);
   }
 
-  int64_t Stride1() const { return stride1_; }
+  VoxelGridSizes() {}
 
-  int64_t Stride2() const { return stride2_; }
-
-  bool IndexInBounds(const int64_t x_index,
-                     const int64_t y_index,
-                     const int64_t z_index) const
+  // This is exposed only for testing.
+  bool Initialize(
+      const Eigen::Vector3d& voxel_sizes, const Vector3i64& voxel_counts)
   {
-    if (x_index >= 0 && y_index >= 0 && z_index >= 0
-        && x_index < NumXCells() && y_index < NumYCells()
-        && z_index < NumZCells())
+    if (CheckPositiveValid(voxel_sizes.x()) &&
+        CheckPositiveValid(voxel_sizes.y()) &&
+        CheckPositiveValid(voxel_sizes.z()) &&
+        CheckPositiveValid(voxel_counts.x()) &&
+        CheckPositiveValid(voxel_counts.y()) &&
+        CheckPositiveValid(voxel_counts.z()))
+    {
+      voxel_sizes_ = Eigen::Vector4d(
+          voxel_sizes.x(), voxel_sizes.y(), voxel_sizes.z(), 1.0);
+      inverse_voxel_sizes_ = voxel_sizes_.cwiseInverse();
+      voxel_counts_ = voxel_counts;
+      grid_sizes_ =
+          voxel_sizes_.head<3>().cwiseProduct(voxel_counts_.cast<double>());
+      stride_1_ = voxel_counts_.y() * voxel_counts_.z();
+      stride_2_ = voxel_counts_.z();
+
+      return true;
+    }
+    else
+    {
+      return false;
+    }
+  }
+
+  bool IsValid() const { return stride_2_ > 0; }
+
+  // Accessors for voxel sizes.
+
+  const Eigen::Vector4d& VoxelSizesInternal() const { return voxel_sizes_; }
+
+  Eigen::Vector3d VoxelSizes() const { return voxel_sizes_.head<3>(); }
+
+  double VoxelXSize() const { return voxel_sizes_(0); }
+
+  double VoxelYSize() const { return voxel_sizes_(1); }
+
+  double VoxelZSize() const { return voxel_sizes_(2); }
+
+  bool HasUniformVoxelSize() const
+  {
+    return voxel_sizes_(0) == voxel_sizes_(1) &&
+           voxel_sizes_(0) == voxel_sizes_(2);
+  }
+
+  // Accessors for inverse voxel sizes.
+
+  const Eigen::Vector4d& InverseVoxelSizesInternal() const
+  {
+    return inverse_voxel_sizes_;
+  }
+
+  Eigen::Vector3d InverseVoxelSizes() const
+  {
+    return inverse_voxel_sizes_.head<3>();
+  }
+
+  double InverseVoxelXSize() const { return inverse_voxel_sizes_(0); }
+
+  double InverseVoxelYSize() const { return inverse_voxel_sizes_(1); }
+
+  double InverseVoxelZSize() const { return inverse_voxel_sizes_(2); }
+
+  // Accessors for grid sizes.
+
+  const Eigen::Vector3d& GridSizes() const { return grid_sizes_; }
+
+  double XSize() const { return grid_sizes_.x(); }
+
+  double YSize() const { return grid_sizes_.y(); }
+
+  double ZSize() const { return grid_sizes_.z(); }
+
+  // Accessors for voxel counts.
+
+  const Vector3i64& VoxelCounts() const { return voxel_counts_; }
+
+  int64_t NumXVoxels() const { return voxel_counts_.x(); }
+
+  int64_t NumYVoxels() const { return voxel_counts_.y(); }
+
+  int64_t NumZVoxels() const { return voxel_counts_.z(); }
+
+  int64_t NumTotalVoxels() const { return voxel_counts_.prod(); }
+
+  // Accessors for strides.
+
+  int64_t Stride1() const { return stride_1_; }
+
+  int64_t Stride2() const { return stride_2_; }
+
+  // Index bounds checks.
+
+  bool CheckGridIndexInBounds(const int64_t x_index,
+                              const int64_t y_index,
+                              const int64_t z_index) const
+  {
+    if (x_index >= 0 && x_index < NumXVoxels() &&
+        y_index >= 0 && y_index < NumYVoxels() &&
+        z_index >= 0 && z_index < NumZVoxels())
     {
       return true;
     }
@@ -400,33 +272,26 @@ public:
     }
   }
 
-  bool IndexInBounds(const GridIndex& index) const
+  bool CheckGridIndexInBounds(const GridIndex& index) const
   {
-    if (index.X() >= 0 && index.Y() >= 0 && index.Z() >= 0
-        && index.X() < NumXCells() && index.Y() < NumYCells()
-        && index.Z() < NumZCells())
-    {
-      return true;
-    }
-    else
-    {
-      return false;
-    }
+    return CheckGridIndexInBounds(index.X(), index.Y(), index.Z());
   }
 
-  int64_t GetDataIndex(const int64_t x_index,
-                       const int64_t y_index,
-                       const int64_t z_index) const
+  // Grid index <-> data index conversions.
+
+  int64_t GridIndexToDataIndex(const int64_t x_index,
+                               const int64_t y_index,
+                               const int64_t z_index) const
   {
     return (x_index * Stride1()) + (y_index * Stride2()) + z_index;
   }
 
-  int64_t GetDataIndex(const GridIndex& index) const
+  int64_t GridIndexToDataIndex(const GridIndex& index) const
   {
-    return (index.X() * Stride1()) + (index.Y() * Stride2()) + index.Z();
+    return GridIndexToDataIndex(index.X(), index.Y(), index.Z());
   }
 
-  GridIndex GetGridIndexFromDataIndex(const int64_t data_index) const
+  GridIndex DataIndexToGridIndex(const int64_t data_index) const
   {
     const int64_t x_idx = data_index / Stride1();
     const int64_t remainder = data_index % Stride1();
@@ -435,47 +300,98 @@ public:
     return GridIndex(x_idx, y_idx, z_idx);
   }
 
-  Eigen::Vector4d IndexToLocationInGridFrame(const GridIndex& index) const
+  // Grid-frame location <-> index conversions.
+
+  GridIndex LocationInGridFrameToGridIndex3d(
+      const Eigen::Vector3d& location) const
   {
-    return IndexToLocationInGridFrame(index.X(), index.Y(), index.Z());
+    const Eigen::Vector3d raw_index =
+        location.cwiseProduct(InverseVoxelSizes()).array().floor();
+    return GridIndex(
+        static_cast<int64_t>(raw_index.x()),
+        static_cast<int64_t>(raw_index.y()),
+        static_cast<int64_t>(raw_index.z()));
   }
 
-  Eigen::Vector4d IndexToLocationInGridFrame(const int64_t x_index,
-                                             const int64_t y_index,
-                                             const int64_t z_index) const
+  GridIndex LocationInGridFrameToGridIndex4d(
+      const Eigen::Vector4d& location) const
   {
-    const Eigen::Vector4d point_in_grid_frame(
-          CellXSize() * (static_cast<double>(x_index) + 0.5),
-          CellYSize() * (static_cast<double>(y_index) + 0.5),
-          CellZSize() * (static_cast<double>(z_index) + 0.5),
-          1.0);
-    return point_in_grid_frame;
+    const Eigen::Vector4d raw_index =
+        location.cwiseProduct(InverseVoxelSizesInternal()).array().floor();
+    return GridIndex(
+        static_cast<int64_t>(raw_index(0)),
+        static_cast<int64_t>(raw_index(1)),
+        static_cast<int64_t>(raw_index(2)));
   }
 
-  bool operator==(const GridSizes& other) const
+  GridIndex LocationInGridFrameToGridIndex(
+      const double x, const double y, const double z) const
   {
-    return (NumXCells() == other.NumXCells()
-            && NumYCells() == other.NumYCells()
-            && NumZCells() == other.NumZCells()
-            && CellXSize() == other.CellXSize()
-            && CellYSize() == other.CellYSize()
-            && CellZSize() == other.CellZSize());
+    const Eigen::Vector4d location(x, y, z, 1.0);
+    return LocationInGridFrameToGridIndex4d(location);
   }
 
-  bool operator!=(const GridSizes& other) const
+  Eigen::Vector4d GridIndexToLocationInGridFrame(
+      const int64_t x_index, const int64_t y_index, const int64_t z_index) const
+  {
+    const Eigen::Vector4d voxel_indexes(
+        static_cast<double>(x_index) + 0.5,
+        static_cast<double>(y_index) + 0.5,
+        static_cast<double>(z_index) + 0.5,
+        1.0);
+    return VoxelSizesInternal().cwiseProduct(voxel_indexes);
+  }
+
+  Eigen::Vector4d GridIndexToLocationInGridFrame(const GridIndex& index) const
+  {
+    return GridIndexToLocationInGridFrame(index.X(), index.Y(), index.Z());
+  }
+
+  // Grid-frame location bounds checks.
+
+  bool CheckGridFrameLocationInBounds3d(const Eigen::Vector3d& location) const
+  {
+    const GridIndex index = LocationInGridFrameToGridIndex3d(location);
+    return CheckGridIndexInBounds(index);
+  }
+
+  bool CheckGridFrameLocationInBounds4d(const Eigen::Vector4d& location) const
+  {
+    const GridIndex index = LocationInGridFrameToGridIndex4d(location);
+    return CheckGridIndexInBounds(index);
+  }
+
+  bool CheckGridFrameLocationInBounds(
+      const double x, const double y, const double z) const
+  {
+    const GridIndex index = LocationInGridFrameToGridIndex(x, y, z);
+    return CheckGridIndexInBounds(index);
+  }
+
+  // Equality operators.
+
+  bool operator==(const VoxelGridSizes& other) const
+  {
+    return (VoxelSizesInternal().array() ==
+                other.VoxelSizesInternal().array()).all() &&
+           (VoxelCounts().array() == other.VoxelCounts().array()).all();
+  }
+
+  bool operator!=(const VoxelGridSizes& other) const
   {
     return !(*this == other);
   }
 };
 
-enum class AccessStatus
-    : uint8_t {SUCCESS, OUT_OF_BOUNDS, MUTABLE_ACCESS_PROHIBITED, UNKNOWN};
+static_assert(
+    std::is_trivially_destructible<VoxelGridSizes>::value,
+    "VoxelGridSizes must be trivially destructible");
 
 // While this looks like a std::optional<T>, it *does not own* the item of T,
 // unlike std::optional<T>, since it needs to pass the caller a const/mutable
 // reference to the item in the voxel grid.
 template<typename T>
-class GridQuery
+class VoxelGridQuery
 {
 private:
   ReferencingMaybe<T> value_;
@@ -485,48 +401,48 @@ private:
   // and status constructors.
   struct AccessStatusSuccess {};
 
-  explicit GridQuery(T& value, AccessStatusSuccess)
+  explicit VoxelGridQuery(T& value, AccessStatusSuccess)
       : value_(value), status_(AccessStatus::SUCCESS) {}
 
-  explicit GridQuery(const AccessStatus status) : status_(status)
+  explicit VoxelGridQuery(const AccessStatus status) : status_(status)
   {
     if (status_ == AccessStatus::SUCCESS)
     {
       throw std::invalid_argument(
-          "GridQuery cannot be constructed with AccessStatus::SUCCESS");
+          "VoxelGridQuery cannot be constructed with AccessStatus::SUCCESS");
     }
   }
 
 public:
-  static GridQuery<T> Success(T& value)
+  static VoxelGridQuery<T> Success(T& value)
   {
-    return GridQuery<T>(value, AccessStatusSuccess{});
+    return VoxelGridQuery<T>(value, AccessStatusSuccess{});
   }
 
-  static GridQuery<T> OutOfBounds()
+  static VoxelGridQuery<T> OutOfBounds()
   {
-    return GridQuery<T>(AccessStatus::OUT_OF_BOUNDS);
+    return VoxelGridQuery<T>(AccessStatus::OUT_OF_BOUNDS);
   }
 
-  static GridQuery<T> MutableAccessProhibited()
+  static VoxelGridQuery<T> MutableAccessProhibited()
   {
-    return GridQuery<T>(AccessStatus::MUTABLE_ACCESS_PROHIBITED);
+    return VoxelGridQuery<T>(AccessStatus::MUTABLE_ACCESS_PROHIBITED);
   }
 
-  static GridQuery<T> Unknown()
+  static VoxelGridQuery<T> Unknown()
   {
-    return GridQuery<T>(AccessStatus::UNKNOWN);
+    return VoxelGridQuery<T>(AccessStatus::UNKNOWN);
   }
 
-  GridQuery() : status_(AccessStatus::UNKNOWN) {}
+  VoxelGridQuery() = default;
 
-  GridQuery(const GridQuery<T>& other) = default;
+  VoxelGridQuery(const VoxelGridQuery<T>& other) = default;
 
-  GridQuery(GridQuery<T>&& other) = default;
+  VoxelGridQuery(VoxelGridQuery<T>&& other) = default;
 
-  GridQuery<T>& operator=(const GridQuery<T>& other) = default;
+  VoxelGridQuery<T>& operator=(const VoxelGridQuery<T>& other) = default;
 
-  GridQuery<T>& operator=(GridQuery<T>&& other) = default;
+  VoxelGridQuery<T>& operator=(VoxelGridQuery<T>&& other) = default;
 
   void Reset()
   {
@@ -559,8 +475,38 @@ private:
   T default_value_;
   T oob_value_;
   BackingStore data_;
-  GridSizes sizes_;
-  bool initialized_ = false;
+  VoxelGridSizes voxel_grid_sizes_;
+
+  void Initialize(const Eigen::Isometry3d& origin_transform,
+                  const VoxelGridSizes& voxel_grid_sizes,
+                  const T& default_value,
+                  const T& oob_value)
+  {
+    if (voxel_grid_sizes.IsValid())
+    {
+      origin_transform_ = origin_transform;
+      inverse_origin_transform_ = origin_transform_.inverse();
+      default_value_ = default_value;
+      oob_value_ = oob_value;
+      voxel_grid_sizes_ = voxel_grid_sizes;
+      SetContents(default_value_);
+    }
+    else
+    {
+      throw std::invalid_argument("voxel_grid_sizes is not valid");
+    }
+  }
+
+  void Initialize(const VoxelGridSizes& voxel_grid_sizes,
+                  const T& default_value,
+                  const T& oob_value)
+  {
+    const Eigen::Translation3d origin_translation(
+        voxel_grid_sizes.GridSizes() * -0.5);
+    const Eigen::Isometry3d origin_transform =
+        origin_translation * Eigen::Quaterniond::Identity();
+    Initialize(origin_transform, voxel_grid_sizes, default_value, oob_value);
+  }
 
   T& AccessIndex(const int64_t& data_index)
   {
@@ -594,7 +540,7 @@ private:
   {
     data_.clear();
     data_.resize(static_cast<typename BackingStore::size_type>(
-        sizes_.TotalCells()), value);
+        NumTotalVoxels()), value);
   }
 
   uint64_t BaseSerializeSelf(
@@ -612,10 +558,7 @@ private:
     serialization::SerializeVectorLike<T, BackingStore>(
           data_, buffer, value_serializer);
     // Serialize the grid sizes
-    GridSizes::Serialize(sizes_, buffer);
-    // Serialize the initialized
-    serialization::SerializeMemcpyable<uint8_t>(
-        static_cast<uint8_t>(initialized_), buffer);
+    VoxelGridSizes::Serialize(voxel_grid_sizes_, buffer);
     // Figure out how many bytes were written
     const uint64_t end_buffer_size = buffer.size();
     const uint64_t bytes_written = end_buffer_size - start_buffer_size;
@@ -628,54 +571,41 @@ private:
   {
     uint64_t current_position = starting_offset;
     // Deserialize the transforms
-    const auto origin_transform_deserialized
-        = serialization::DeserializeIsometry3d(buffer, current_position);
+    const auto origin_transform_deserialized =
+        serialization::DeserializeIsometry3d(buffer, current_position);
     origin_transform_ = origin_transform_deserialized.Value();
     current_position += origin_transform_deserialized.BytesRead();
     inverse_origin_transform_ = origin_transform_.inverse();
     // Deserialize the default value
-    const auto default_value_deserialized
-        = value_deserializer(buffer, current_position);
+    const auto default_value_deserialized =
+        value_deserializer(buffer, current_position);
     default_value_ = default_value_deserialized.Value();
     current_position += default_value_deserialized.BytesRead();
     // Deserialize the OOB value
-    const auto oob_value_deserialized
-        = value_deserializer(buffer, current_position);
+    const auto oob_value_deserialized =
+        value_deserializer(buffer, current_position);
     oob_value_ = oob_value_deserialized.Value();
     current_position += oob_value_deserialized.BytesRead();
     // Deserialize the data
-    const auto data_deserialized
-        = serialization::DeserializeVectorLike<T, BackingStore>(
+    const auto data_deserialized =
+        serialization::DeserializeVectorLike<T, BackingStore>(
               buffer, current_position, value_deserializer);
     data_ = data_deserialized.Value();
     current_position += data_deserialized.BytesRead();
     // Deserialize the cell sizes
-    const auto sizes_deserialized
-        = GridSizes::Deserialize(buffer, current_position);
-    sizes_ = sizes_deserialized.Value();
-    current_position += sizes_deserialized.BytesRead();
-    if (sizes_.TotalCells() != static_cast<int64_t>(data_.size()))
+    const auto voxel_grid_sizes_deserialized =
+        VoxelGridSizes::Deserialize(buffer, current_position);
+    voxel_grid_sizes_ = voxel_grid_sizes_deserialized.Value();
+    current_position += voxel_grid_sizes_deserialized.BytesRead();
+    if (voxel_grid_sizes_.NumTotalVoxels() !=
+            static_cast<int64_t>(data_.size()))
     {
-      throw std::runtime_error("sizes_.NumCells() != data_.size()");
-    }
-    // Deserialize the initialized
-    const auto initialized_deserialized
-        = serialization::DeserializeMemcpyable<uint8_t>(buffer,
-                                                        current_position);
-    initialized_ = static_cast<bool>(initialized_deserialized.Value());
-    current_position += initialized_deserialized.BytesRead();
-    if (sizes_.Valid() != initialized_)
-    {
-      throw std::runtime_error("sizes_.Valid() != initialized_");
+      throw std::runtime_error(
+          "voxel_grid_sizes_.NumTotalVoxels() != data_.size()");
     }
     // Figure out how many bytes were read
     const uint64_t bytes_read = current_position - starting_offset;
     return bytes_read;
-  }
-
-  bool OnMutableAccess(const GridIndex& index)
-  {
-    return OnMutableAccess(index.X(), index.Y(), index.Y());
   }
 
 protected:
@@ -714,56 +644,23 @@ public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
   VoxelGridBase(const Eigen::Isometry3d& origin_transform,
-                const GridSizes& sizes,
+                const VoxelGridSizes& voxel_grid_sizes,
                 const T& default_value,
                 const T& oob_value)
   {
-    Initialize(origin_transform, sizes, default_value, oob_value);
+    Initialize(origin_transform, voxel_grid_sizes, default_value, oob_value);
   }
 
-  VoxelGridBase(const GridSizes& sizes,
+  VoxelGridBase(const VoxelGridSizes& voxel_grid_sizes,
                 const T& default_value,
                 const T& oob_value)
   {
-    Initialize(sizes, default_value, oob_value);
+    Initialize(voxel_grid_sizes, default_value, oob_value);
   }
 
   VoxelGridBase() = default;
 
   virtual ~VoxelGridBase() {}
-
-  void Initialize(const Eigen::Isometry3d& origin_transform,
-                  const GridSizes& sizes,
-                  const T& default_value,
-                  const T& oob_value)
-  {
-    if (sizes.Valid())
-    {
-      origin_transform_ = origin_transform;
-      inverse_origin_transform_ = origin_transform_.inverse();
-      default_value_ = default_value;
-      oob_value_ = oob_value;
-      sizes_ = sizes;
-      SetContents(default_value_);
-      initialized_ = true;
-    }
-    else
-    {
-      throw std::invalid_argument("sizes is not valid");
-    }
-  }
-
-  void Initialize(const GridSizes& sizes,
-                  const T& default_value,
-                  const T& oob_value)
-  {
-    const Eigen::Translation3d origin_translation(-sizes.XSize() * 0.5,
-                                                  -sizes.YSize() * 0.5,
-                                                  -sizes.ZSize() * 0.5);
-    const Eigen::Isometry3d origin_transform
-        = origin_translation * Eigen::Quaterniond::Identity();
-    Initialize(origin_transform, sizes, default_value, oob_value);
-  }
 
   std::unique_ptr<VoxelGridBase<T, BackingStore>> Clone() const
   {
@@ -792,167 +689,407 @@ public:
     return bytes_read;
   }
 
-  bool IsInitialized() const
-  {
-    return initialized_;
-  }
+  bool IsInitialized() const { return voxel_grid_sizes_.IsValid(); }
 
-  void ResetWithDefault()
+  void ResetWithDefaultValue()
   {
-    SetContents(default_value_);
+    if (OnMutableRawAccess())
+    {
+      SetContents(DefaultValue());
+    }
+    else
+    {
+      throw std::runtime_error("Mutable raw access is prohibited");
+    }
   }
 
   void ResetWithNewValue(const T& new_value)
   {
-    SetContents(new_value);
+    if (OnMutableRawAccess())
+    {
+      SetContents(new_value);
+    }
+    else
+    {
+      throw std::runtime_error("Mutable raw access is prohibited");
+    }
   }
 
-  void ResetWithNewDefault(const T& new_default)
+  void ResetWithNewDefaultValue(const T& new_default)
   {
-    default_value_ = new_default;
-    SetContents(default_value_);
+    if (OnMutableRawAccess())
+    {
+      SetDefaultValue(new_default);
+      ResetWithDefaultValue();
+    }
+    else
+    {
+      throw std::runtime_error("Mutable raw access is prohibited");
+    }
   }
 
-  bool IndexInBounds(const int64_t x_index,
-                     const int64_t y_index,
-                     const int64_t z_index) const
+  const T& DefaultValue() const { return default_value_; }
+
+  const T& OOBValue() const { return oob_value_; }
+
+  void SetDefaultValue(const T& default_value)
   {
-    return sizes_.IndexInBounds(x_index, y_index, z_index);
+    if (OnMutableRawAccess())
+    {
+      default_value_ = default_value;
+    }
+    else
+    {
+      throw std::runtime_error("Mutable raw access is prohibited");
+    }
   }
 
-  bool IndexInBounds(const GridIndex& index) const
+  void SetOOBValue(const T& oob_value)
   {
-    return sizes_.IndexInBounds(index);
+    if (OnMutableRawAccess())
+    {
+      oob_value_ = oob_value;
+    }
+    else
+    {
+      throw std::runtime_error("Mutable raw access is prohibited");
+    }
   }
 
-  bool LocationInBounds(const double x,
-                        const double y,
-                        const double z) const
+  const VoxelGridSizes& Sizes() const { return voxel_grid_sizes_; }
+
+  const Eigen::Isometry3d& OriginTransform() const
   {
-    const GridIndex index = LocationToGridIndex(x, y, z);
-    return sizes_.IndexInBounds(index);
+    return origin_transform_;
   }
 
-  bool LocationInBounds3d(const Eigen::Vector3d& location) const
+  const Eigen::Isometry3d& InverseOriginTransform() const
   {
-    const GridIndex index = LocationToGridIndex3d(location);
-    return sizes_.IndexInBounds(index);
+    return inverse_origin_transform_;
   }
 
-  bool LocationInBounds4d(const Eigen::Vector4d& location) const
+  void UpdateOriginTransform(const Eigen::Isometry3d& origin_transform)
   {
-    const GridIndex index = LocationToGridIndex4d(location);
-    return sizes_.IndexInBounds(index);
+    origin_transform_ = origin_transform;
+    inverse_origin_transform_ = origin_transform_.inverse();
+  }
+
+  // Helpers forwarded from our VoxelGridSizes.
+
+  // Accessors for voxel sizes.
+
+  Eigen::Vector3d VoxelSizes() const { return voxel_grid_sizes_.VoxelSizes(); }
+
+  double VoxelXSize() const { return voxel_grid_sizes_.VoxelXSize(); }
+
+  double VoxelYSize() const { return voxel_grid_sizes_.VoxelYSize(); }
+
+  double VoxelZSize() const { return voxel_grid_sizes_.VoxelZSize(); }
+
+  bool HasUniformVoxelSize() const
+  {
+    return voxel_grid_sizes_.HasUniformVoxelSize();
+  }
+
+  // Accessors for grid sizes.
+
+  const Eigen::Vector3d& GridSizes() const
+  {
+    return voxel_grid_sizes_.GridSizes();
+  }
+
+  double XSize() const { return voxel_grid_sizes_.XSize(); }
+
+  double YSize() const { return voxel_grid_sizes_.YSize(); }
+
+  double ZSize() const { return voxel_grid_sizes_.ZSize(); }
+
+  // Accessors for voxel counts.
+
+  const Vector3i64& VoxelCounts() const
+  {
+    return voxel_grid_sizes_.VoxelCounts();
+  }
+
+  int64_t NumXVoxels() const { return voxel_grid_sizes_.NumXVoxels(); }
+
+  int64_t NumYVoxels() const { return voxel_grid_sizes_.NumYVoxels(); }
+
+  int64_t NumZVoxels() const { return voxel_grid_sizes_.NumZVoxels(); }
+
+  int64_t NumTotalVoxels() const { return voxel_grid_sizes_.NumTotalVoxels(); }
+
+  // Index bounds checks.
+
+  bool CheckGridIndexInBounds(const int64_t x_index,
+                              const int64_t y_index,
+                              const int64_t z_index) const
+  {
+    return voxel_grid_sizes_.CheckGridIndexInBounds(x_index, y_index, z_index);
+  }
+
+  bool CheckGridIndexInBounds(const GridIndex& index) const
+  {
+    return voxel_grid_sizes_.CheckGridIndexInBounds(index);
+  }
+
+  // Grid index <-> data index conversions.
+
+  int64_t GridIndexToDataIndex(const int64_t x_index,
+                               const int64_t y_index,
+                               const int64_t z_index) const
+  {
+    return voxel_grid_sizes_.GridIndexToDataIndex(x_index, y_index, z_index);
+  }
+
+  int64_t GridIndexToDataIndex(const GridIndex& index) const
+  {
+    return voxel_grid_sizes_.GridIndexToDataIndex(index);
+  }
+
+  GridIndex DataIndexToGridIndex(const int64_t data_index) const
+  {
+    return voxel_grid_sizes_.DataIndexToGridIndex(data_index);
+  }
+
+  // Grid-frame location <-> index conversions.
+
+  GridIndex LocationInGridFrameToGridIndex3d(
+      const Eigen::Vector3d& location) const
+  {
+    return voxel_grid_sizes_.LocationInGridFrameToGridIndex3d(location);
+  }
+
+  GridIndex LocationInGridFrameToGridIndex4d(
+      const Eigen::Vector4d& location) const
+  {
+    return voxel_grid_sizes_.LocationInGridFrameToGridIndex4d(location);
+  }
+
+  GridIndex LocationInGridFrameToGridIndex(
+      const double x, const double y, const double z) const
+  {
+    return voxel_grid_sizes_.LocationInGridFrameToGridIndex(x, y, z);
+  }
+
+  Eigen::Vector4d GridIndexToLocationInGridFrame(
+      const int64_t x_index, const int64_t y_index, const int64_t z_index) const
+  {
+    return voxel_grid_sizes_.GridIndexToLocationInGridFrame(
+        x_index, y_index, z_index);
+  }
+
+  Eigen::Vector4d GridIndexToLocationInGridFrame(const GridIndex& index) const
+  {
+    return voxel_grid_sizes_.GridIndexToLocationInGridFrame(index);
+  }
+
+  // Grid-frame location bounds checks.
+
+  bool CheckGridFrameLocationInBounds3d(const Eigen::Vector3d& location) const
+  {
+    return voxel_grid_sizes_.CheckGridFrameLocationInBounds3d(location);
+  }
+
+  bool CheckGridFrameLocationInBounds4d(const Eigen::Vector4d& location) const
+  {
+    return voxel_grid_sizes_.CheckGridFrameLocationInBounds4d(location);
+  }
+
+  bool CheckGridFrameLocationInBounds(
+      const double x, const double y, const double z) const
+  {
+    return voxel_grid_sizes_.CheckGridFrameLocationInBounds(x, y, z);
+  }
+
+  // Location <-> grid-frame location conversions.
+
+  Eigen::Vector3d LocationToGridFrameLocation3d(
+      const Eigen::Vector3d& location) const
+  {
+    return InverseOriginTransform() * location;
+  }
+
+  Eigen::Vector4d LocationToGridFrameLocation4d(
+      const Eigen::Vector4d& location) const
+  {
+    return InverseOriginTransform() * location;
+  }
+
+  Eigen::Vector4d LocationToGridFrameLocation(
+      const double x, const double y, const double z) const
+  {
+    const Eigen::Vector4d location(x, y, z, 1.0);
+    return LocationToGridFrameLocation4d(location);
+  }
+
+  Eigen::Vector3d GridFrameLocationToLocation3d(
+      const Eigen::Vector3d& location) const
+  {
+    return OriginTransform() * location;
+  }
+
+  Eigen::Vector4d GridFrameLocationToLocation4d(
+      const Eigen::Vector4d& location) const
+  {
+    return OriginTransform() * location;
+  }
+
+  Eigen::Vector4d GridFrameLocationToLocation(
+      const double x, const double y, const double z) const
+  {
+    const Eigen::Vector4d location(x, y, z, 1.0);
+    return GridFrameLocationToLocation4d(location);
+  }
+
+  // Location bounds checks.
+
+  bool CheckLocationInBounds3d(const Eigen::Vector3d& location) const
+  {
+    const Eigen::Vector3d grid_frame_location =
+        LocationToGridFrameLocation3d(location);
+    return CheckGridFrameLocationInBounds3d(grid_frame_location);
+  }
+
+  bool CheckLocationInBounds4d(const Eigen::Vector4d& location) const
+  {
+    const Eigen::Vector4d grid_frame_location =
+        LocationToGridFrameLocation4d(location);
+    return CheckGridFrameLocationInBounds4d(grid_frame_location);
+  }
+
+  bool CheckLocationInBounds(const double x,
+                             const double y,
+                             const double z) const
+  {
+    const Eigen::Vector4d grid_frame_location =
+        LocationToGridFrameLocation(x, y, z);
+    return CheckGridFrameLocationInBounds4d(grid_frame_location);
+  }
+
+  // Location <-> grid index conversions.
+
+  GridIndex LocationToGridIndex3d(const Eigen::Vector3d& location) const
+  {
+    const Eigen::Vector3d grid_frame_location =
+        LocationToGridFrameLocation3d(location);
+    return LocationInGridFrameToGridIndex3d(grid_frame_location);
+  }
+
+  GridIndex LocationToGridIndex4d(const Eigen::Vector4d& location) const
+  {
+    const Eigen::Vector4d grid_frame_location =
+        LocationToGridFrameLocation4d(location);
+    return LocationInGridFrameToGridIndex4d(grid_frame_location);
+  }
+
+  GridIndex LocationToGridIndex(
+      const double x, const double y, const double z) const
+  {
+    const Eigen::Vector4d grid_frame_location =
+        LocationToGridFrameLocation(x, y, z);
+    return LocationInGridFrameToGridIndex4d(grid_frame_location);
+  }
+
+  Eigen::Vector4d GridIndexToLocation(
+      const int64_t x_index, const int64_t y_index, const int64_t z_index) const
+  {
+    const Eigen::Vector4d grid_frame_location =
+        GridIndexToLocationInGridFrame(x_index, y_index, z_index);
+    return GridFrameLocationToLocation4d(grid_frame_location);
+  }
+
+  Eigen::Vector4d GridIndexToLocation(const GridIndex& index) const
+  {
+    const Eigen::Vector4d grid_frame_location =
+        GridIndexToLocationInGridFrame(index);
+    return GridFrameLocationToLocation4d(grid_frame_location);
   }
 
   // Immutable location-based queries.
 
-  GridQuery<const T> GetLocationImmutable3d(
+  VoxelGridQuery<const T> GetLocationImmutable3d(
       const Eigen::Vector3d& location) const
   {
     return GetIndexImmutable(LocationToGridIndex3d(location));
   }
 
-  GridQuery<const T> GetLocationImmutable4d(
+  VoxelGridQuery<const T> GetLocationImmutable4d(
       const Eigen::Vector4d& location) const
   {
     return GetIndexImmutable(LocationToGridIndex4d(location));
   }
 
-  GridQuery<const T> GetLocationImmutable(
+  VoxelGridQuery<const T> GetLocationImmutable(
       const double x, const double y, const double z) const
   {
-    const Eigen::Vector4d location(x, y, z, 1.0);
-    return GetLocationImmutable4d(location);
+    return GetIndexImmutable(LocationToGridIndex(x, y, z));
   }
 
   // Immutable index-based queries.
 
-  GridQuery<const T> GetIndexImmutable(const GridIndex& index) const
+  VoxelGridQuery<const T> GetIndexImmutable(const GridIndex& index) const
   {
-    if (sizes_.IndexInBounds(index))
-    {
-      return GridQuery<const T>::Success(
-          AccessIndex(sizes_.GetDataIndex(index)));
-    }
-    else
-    {
-      return GridQuery<const T>::OutOfBounds();
-    }
+    return GetIndexImmutable(index.X(), index.Y(), index.Z());
   }
 
-  GridQuery<const T> GetIndexImmutable(
+  VoxelGridQuery<const T> GetIndexImmutable(
       const int64_t x_index, const int64_t y_index, const int64_t z_index) const
   {
-    if (sizes_.IndexInBounds(x_index, y_index, z_index))
+    if (CheckGridIndexInBounds(x_index, y_index, z_index))
     {
-      return GridQuery<const T>::Success(
-          AccessIndex(sizes_.GetDataIndex(x_index, y_index, z_index)));
+      return VoxelGridQuery<const T>::Success(
+          AccessIndex(GridIndexToDataIndex(x_index, y_index, z_index)));
     }
     else
     {
-      return GridQuery<const T>::OutOfBounds();
+      return VoxelGridQuery<const T>::OutOfBounds();
     }
   }
 
   // Mutable location-based queries.
 
-  GridQuery<T> GetLocationMutable3d(const Eigen::Vector3d& location)
+  VoxelGridQuery<T> GetLocationMutable3d(const Eigen::Vector3d& location)
   {
     return GetIndexMutable(LocationToGridIndex3d(location));
   }
 
-  GridQuery<T> GetLocationMutable4d(const Eigen::Vector4d& location)
+  VoxelGridQuery<T> GetLocationMutable4d(const Eigen::Vector4d& location)
   {
     return GetIndexMutable(LocationToGridIndex4d(location));
   }
 
-  GridQuery<T> GetLocationMutable(
+  VoxelGridQuery<T> GetLocationMutable(
       const double x, const double y, const double z)
   {
-    const Eigen::Vector4d location(x, y, z, 1.0);
-    return GetLocationMutable4d(location);
+    return GetIndexMutable(LocationToGridIndex(x, y, z));
   }
 
   // Mutable index-based queries.
 
-  GridQuery<T> GetIndexMutable(const GridIndex& index)
+  VoxelGridQuery<T> GetIndexMutable(const GridIndex& index)
   {
-    if (sizes_.IndexInBounds(index))
-    {
-      if (OnMutableAccess(index))
-      {
-        return GridQuery<T>::Success(AccessIndex(sizes_.GetDataIndex(index)));
-      }
-      else
-      {
-        return GridQuery<T>::MutableAccessProhibited();
-      }
-    }
-    else
-    {
-      return GridQuery<T>::OutOfBounds();
-    }
+    return GetIndexMutable(index.X(), index.Y(), index.Z());
   }
 
-  GridQuery<T> GetIndexMutable(
+  VoxelGridQuery<T> GetIndexMutable(
       const int64_t x_index, const int64_t y_index, const int64_t z_index)
   {
-    if (sizes_.IndexInBounds(x_index, y_index, z_index))
+    if (CheckGridIndexInBounds(x_index, y_index, z_index))
     {
       if (OnMutableAccess(x_index, y_index, z_index))
       {
-        return GridQuery<T>::Success(
-            AccessIndex(sizes_.GetDataIndex(x_index, y_index, z_index)));
+        return VoxelGridQuery<T>::Success(
+            AccessIndex(GridIndexToDataIndex(x_index, y_index, z_index)));
       }
       else
       {
-        return GridQuery<T>::MutableAccessProhibited();
+        return VoxelGridQuery<T>::MutableAccessProhibited();
       }
     }
     else
     {
-      return GridQuery<T>::OutOfBounds();
+      return VoxelGridQuery<T>::OutOfBounds();
     }
   }
 
@@ -971,41 +1108,25 @@ public:
   AccessStatus SetLocation(
       const double x, const double y, const double z, const T& value)
   {
-    const Eigen::Vector4d location(x, y, z, 1.0);
-    return SetLocation4d(location, value);
+    return SetIndex(LocationToGridIndex(x, y, z), value);
   }
 
   // Index-based setters.
 
   AccessStatus SetIndex(const GridIndex& index, const T& value)
   {
-    if (sizes_.IndexInBounds(index))
-    {
-      if (OnMutableAccess(index))
-      {
-        AccessIndex(sizes_.GetDataIndex(index)) = value;
-        return AccessStatus::SUCCESS;
-      }
-      else
-      {
-        return AccessStatus::MUTABLE_ACCESS_PROHIBITED;
-      }
-    }
-    else
-    {
-      return AccessStatus::OUT_OF_BOUNDS;
-    }
+    return SetIndex(index.X(), index.Y(), index.Z(), value);
   }
 
   AccessStatus SetIndex(
       const int64_t x_index, const int64_t y_index, const int64_t z_index,
       const T& value)
   {
-    if (sizes_.IndexInBounds(x_index, y_index, z_index))
+    if (CheckGridIndexInBounds(x_index, y_index, z_index))
     {
       if (OnMutableAccess(x_index, y_index, z_index))
       {
-        AccessIndex(sizes_.GetDataIndex(x_index, y_index, z_index)) = value;
+        AccessIndex(GridIndexToDataIndex(x_index, y_index, z_index)) = value;
         return AccessStatus::SUCCESS;
       }
       else
@@ -1034,41 +1155,25 @@ public:
   AccessStatus SetLocation(
       const double x, const double y, const double z, T&& value)
   {
-    const Eigen::Vector4d location(x, y, z, 1.0);
-    return SetLocation4d(location, value);
+    return SetIndex(LocationToGridIndex(x, y, z), value);
   }
 
   // Index-based setters (for temporary values).
 
   AccessStatus SetIndex(const GridIndex& index, T&& value)
   {
-    if (sizes_.IndexInBounds(index))
-    {
-      if (OnMutableAccess(index))
-      {
-        AccessIndex(sizes_.GetDataIndex(index)) = value;
-        return AccessStatus::SUCCESS;
-      }
-      else
-      {
-        return AccessStatus::MUTABLE_ACCESS_PROHIBITED;
-      }
-    }
-    else
-    {
-      return AccessStatus::OUT_OF_BOUNDS;
-    }
+    return SetIndex(index.X(), index.Y(), index.Z(), value);
   }
 
   AccessStatus SetIndex(
       const int64_t x_index, const int64_t y_index, const int64_t z_index,
       T&& value)
   {
-    if (sizes_.IndexInBounds(x_index, y_index, z_index))
+    if (CheckGridIndexInBounds(x_index, y_index, z_index))
     {
       if (OnMutableAccess(x_index, y_index, z_index))
       {
-        AccessIndex(sizes_.GetDataIndex(x_index, y_index, z_index)) = value;
+        AccessIndex(GridIndexToDataIndex(x_index, y_index, z_index)) = value;
         return AccessStatus::SUCCESS;
       }
       else
@@ -1127,158 +1232,6 @@ public:
     }
   }
 
-  const GridSizes& GetGridSizes() const { return sizes_; }
-
-  double GetXSize() const { return sizes_.XSize(); }
-
-  double GetYSize() const { return sizes_.YSize(); }
-
-  double GetZSize() const { return sizes_.ZSize(); }
-
-  Eigen::Vector3d GetSizes() const { return sizes_.Sizes(); }
-
-  Eigen::Vector3d GetCellSizes() const { return sizes_.CellSizes(); }
-
-  bool HasUniformCellSize() const { return sizes_.UniformCellSize(); }
-
-  const T& GetDefaultValue() const { return default_value_; }
-
-  const T& GetOOBValue() const { return oob_value_; }
-
-  void SetDefaultValue(const T& default_value)
-  {
-    default_value_ = default_value;
-  }
-
-  void SetOOBValue(const T& oob_value) { oob_value_ = oob_value; }
-
-  int64_t GetTotalCells() const { return sizes_.TotalCells(); }
-
-  int64_t GetNumXCells() const { return sizes_.NumXCells(); }
-
-  int64_t GetNumYCells() const { return sizes_.NumYCells(); }
-
-  int64_t GetNumZCells() const { return sizes_.NumZCells(); }
-
-  Eigen::Matrix<int64_t, 3, 1> GetNumCells() const { return sizes_.NumCells(); }
-
-  const Eigen::Isometry3d& GetOriginTransform() const
-  {
-    return origin_transform_;
-  }
-
-  const Eigen::Isometry3d& GetInverseOriginTransform() const
-  {
-    return inverse_origin_transform_;
-  }
-
-  void UpdateOriginTransform(const Eigen::Isometry3d& origin_transform)
-  {
-    origin_transform_ = origin_transform;
-    inverse_origin_transform_ = origin_transform_.inverse();
-  }
-
-  GridIndex LocationInGridFrameToGridIndex(const double x,
-                                           const double y,
-                                           const double z) const
-  {
-    return LocationInGridFrameToGridIndex4d(Eigen::Vector4d(x, y, z, 1.0));
-  }
-
-  GridIndex LocationInGridFrameToGridIndex3d(
-      const Eigen::Vector3d& location) const
-  {
-    const int64_t x_cell = static_cast<int64_t>(
-        std::floor(location.x() * sizes_.InvCellXSize()));
-    const int64_t y_cell = static_cast<int64_t>(
-        std::floor(location.y() * sizes_.InvCellYSize()));
-    const int64_t z_cell = static_cast<int64_t>(
-        std::floor(location.z() * sizes_.InvCellZSize()));
-    return GridIndex(x_cell, y_cell, z_cell);
-  }
-
-  GridIndex LocationInGridFrameToGridIndex4d(
-      const Eigen::Vector4d& location) const
-  {
-    if (location(3) == 1.0)
-    {
-      const int64_t x_cell = static_cast<int64_t>(
-          std::floor(location(0) * sizes_.InvCellXSize()));
-      const int64_t y_cell = static_cast<int64_t>(
-          std::floor(location(1) * sizes_.InvCellYSize()));
-      const int64_t z_cell = static_cast<int64_t>(
-          std::floor(location(2) * sizes_.InvCellZSize()));
-      return GridIndex(x_cell, y_cell, z_cell);
-    }
-    else
-    {
-      throw std::invalid_argument("location(3) != 1");
-    }
-  }
-
-  GridIndex LocationToGridIndex(const double x,
-                                const double y,
-                                const double z) const
-  {
-    return LocationToGridIndex4d(Eigen::Vector4d(x, y, z, 1.0));
-  }
-
-  GridIndex LocationToGridIndex3d(const Eigen::Vector3d& location) const
-  {
-    const Eigen::Vector3d point_in_grid_frame
-        = GetInverseOriginTransform() * location;
-    return LocationInGridFrameToGridIndex3d(point_in_grid_frame);
-  }
-
-  GridIndex LocationToGridIndex4d(const Eigen::Vector4d& location) const
-  {
-    const Eigen::Vector4d point_in_grid_frame
-        = GetInverseOriginTransform() * location;
-    return LocationInGridFrameToGridIndex4d(point_in_grid_frame);
-  }
-
-  Eigen::Vector4d GridIndexToLocationInGridFrame(const GridIndex& index) const
-  {
-    return sizes_.IndexToLocationInGridFrame(index);
-  }
-
-  Eigen::Vector4d GridIndexToLocationInGridFrame(const int64_t x_index,
-                                                 const int64_t y_index,
-                                                 const int64_t z_index) const
-  {
-    return sizes_.IndexToLocationInGridFrame(x_index, y_index, z_index);
-  }
-
-  Eigen::Vector4d GridIndexToLocation(const GridIndex& index) const
-  {
-    return GetOriginTransform() * GridIndexToLocationInGridFrame(index);
-  }
-
-  Eigen::Vector4d GridIndexToLocation(const int64_t x_index,
-                                      const int64_t y_index,
-                                      const int64_t z_index) const
-  {
-    return GetOriginTransform()
-        * GridIndexToLocationInGridFrame(x_index, y_index, z_index);
-  }
-
-  int64_t GridIndexToDataIndex(const int64_t x_index,
-                               const int64_t y_index,
-                               const int64_t z_index) const
-  {
-    return sizes_.GetDataIndex(x_index, y_index, z_index);
-  }
-
-  int64_t GridIndexToDataIndex(const GridIndex& index) const
-  {
-    return sizes_.GetDataIndex(index);
-  }
-
-  GridIndex DataIndexToGridIndex(const int64_t data_index) const
-  {
-    return sizes_.GetGridIndexFromDataIndex(data_index);
-  }
-
   BackingStore& GetMutableRawData()
   {
     if (OnMutableRawAccess())
@@ -1297,7 +1250,7 @@ public:
   {
     if (OnMutableRawAccess())
     {
-      const int64_t expected_length = GetTotalCells();
+      const int64_t expected_length = NumTotalVoxels();
       if (static_cast<int64_t>(data.size()) == expected_length)
       {
         data_ = data;
@@ -1383,56 +1336,37 @@ public:
       const serialization::Deserializer<T>& value_deserializer)
   {
     VoxelGrid<T, BackingStore> temp_grid;
-    const uint64_t bytes_read
-        = temp_grid.DeserializeSelf(buffer, starting_offset,
-                                    value_deserializer);
+    const uint64_t bytes_read = temp_grid.DeserializeSelf(
+        buffer, starting_offset, value_deserializer);
     return serialization::MakeDeserialized(temp_grid, bytes_read);
   }
 
   VoxelGrid(const Eigen::Isometry3d& origin_transform,
-            const GridSizes& sizes,
+            const VoxelGridSizes& voxel_grid_sizes,
             const T& default_value)
       : VoxelGridBase<T, BackingStore>(
-          origin_transform, sizes, default_value, default_value) {}
+          origin_transform, voxel_grid_sizes, default_value, default_value) {}
 
   VoxelGrid(const Eigen::Isometry3d& origin_transform,
-            const GridSizes& sizes,
+            const VoxelGridSizes& voxel_grid_sizes,
             const T& default_value,
             const T& oob_value)
       : VoxelGridBase<T, BackingStore>(
-          origin_transform, sizes, default_value, oob_value) {}
+          origin_transform, voxel_grid_sizes, default_value, oob_value) {}
 
-  VoxelGrid(const GridSizes& sizes, const T& default_value)
-      : VoxelGridBase<T, BackingStore>(sizes, default_value, default_value) {}
+  VoxelGrid(const VoxelGridSizes& voxel_grid_sizes, const T& default_value)
+      : VoxelGridBase<T, BackingStore>(
+          voxel_grid_sizes, default_value, default_value) {}
 
-  VoxelGrid(const GridSizes& sizes, const T& default_value, const T& oob_value)
-      : VoxelGridBase<T, BackingStore>(sizes, default_value, oob_value) {}
+  VoxelGrid(const VoxelGridSizes& voxel_grid_sizes,
+            const T& default_value,
+            const T& oob_value)
+      : VoxelGridBase<T, BackingStore>(
+          voxel_grid_sizes, default_value, oob_value) {}
 
   VoxelGrid() : VoxelGridBase<T, BackingStore>() {}
 };
 
-inline std::ostream& operator<<(std::ostream& strm, const GridIndex& index)
-{
-  strm << "GridIndex: (" << index.X() << "," << index.Y() << "," << index.Z()
-       << ")";
-  return strm;
-}
 }  // namespace voxel_grid
 CRU_NAMESPACE_END
 }  // namespace common_robotics_utilities
-
-namespace std
-{
-template <>
-struct hash<common_robotics_utilities::voxel_grid::GridIndex>
-{
-  std::size_t operator()(
-      const common_robotics_utilities::voxel_grid::GridIndex& index) const
-  {
-    std::size_t hash_val = 0;
-    common_robotics_utilities::utility::hash_combine(
-        hash_val, index.X(), index.Y(), index.Z());
-    return hash_val;
-  }
-};
-}

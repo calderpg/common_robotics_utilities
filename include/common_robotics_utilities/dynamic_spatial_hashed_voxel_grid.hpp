@@ -3,9 +3,11 @@
 #include <cmath>
 #include <cstdint>
 #include <memory>
+#include <mutex>
 #include <stdexcept>
 #include <string>
 #include <unordered_map>
+#include <utility>
 #include <vector>
 
 #include <Eigen/Geometry>
@@ -13,58 +15,427 @@
 #include <common_robotics_utilities/maybe.hpp>
 #include <common_robotics_utilities/serialization.hpp>
 #include <common_robotics_utilities/utility.hpp>
-#include <common_robotics_utilities/voxel_grid.hpp>
+#include <common_robotics_utilities/voxel_grid_common.hpp>
 
 namespace common_robotics_utilities
 {
 CRU_NAMESPACE_BEGIN
 namespace voxel_grid
 {
-class ChunkRegion
+// Since the internal index math uses doubles to avoid integer division, we
+// prohibit index axis values beyond those representable exactly by a double.
+constexpr int64_t MAXIMUM_ALLOWED_DSHVG_INDEX_AXIS_VALUE =
+    INT64_C(0x0010000000000000);
+constexpr int64_t MINIMUM_ALLOWED_DSHVG_INDEX_AXIS_VALUE =
+    -MAXIMUM_ALLOWED_DSHVG_INDEX_AXIS_VALUE;
+
+class ChunkBase
 {
 private:
-  Eigen::Vector4d base_ = Eigen::Vector4d(0.0, 0.0, 0.0, 1.0);
+  // These defaults mean that a default-constructed ChunkBase cannot be a valid
+  // index for any VoxelGrid (whose indices start at 0,0,0) or DSHVG (whose
+  // indices may be negative, but no lower than -2^52).
+  int64_t x_ = std::numeric_limits<int64_t>::lowest();
+  int64_t y_ = std::numeric_limits<int64_t>::lowest();
+  int64_t z_ = std::numeric_limits<int64_t>::lowest();
 
 public:
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
   static uint64_t Serialize(
-      const ChunkRegion& region, std::vector<uint8_t>& buffer)
+      const ChunkBase& base, std::vector<uint8_t>& buffer)
   {
-    return serialization::SerializeVector4d(region.Base(), buffer);
+    const uint64_t start_buffer_size = buffer.size();
+    // Serialize members
+    serialization::SerializeMemcpyable<int64_t>(base.X(), buffer);
+    serialization::SerializeMemcpyable<int64_t>(base.Y(), buffer);
+    serialization::SerializeMemcpyable<int64_t>(base.Z(), buffer);
+    // Figure out how many bytes were written
+    const uint64_t end_buffer_size = buffer.size();
+    const uint64_t bytes_written = end_buffer_size - start_buffer_size;
+    return bytes_written;
   }
 
-  static serialization::Deserialized<ChunkRegion> Deserialize(
+  static serialization::Deserialized<ChunkBase> Deserialize(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
   {
-    const auto base_deserialized
-        = serialization::DeserializeVector4d(buffer, starting_offset);
-    return serialization::MakeDeserialized(
-        ChunkRegion(base_deserialized.Value()), base_deserialized.BytesRead());
+    uint64_t current_position = starting_offset;
+    const auto x_deserialized =
+        serialization::DeserializeMemcpyable<int64_t>(
+            buffer, current_position);
+    const int64_t x = x_deserialized.Value();
+    current_position += x_deserialized.BytesRead();
+    const auto y_deserialized =
+        serialization::DeserializeMemcpyable<int64_t>(
+            buffer, current_position);
+    const int64_t y = y_deserialized.Value();
+    current_position += y_deserialized.BytesRead();
+    const auto z_deserialized =
+        serialization::DeserializeMemcpyable<int64_t>(
+            buffer, current_position);
+    const int64_t z = z_deserialized.Value();
+    current_position += z_deserialized.BytesRead();
+    // Figure out how many bytes were read
+    const uint64_t bytes_read = current_position - starting_offset;
+    return serialization::MakeDeserialized(ChunkBase(x, y, z), bytes_read);
   }
 
-  ChunkRegion() : base_(Eigen::Vector4d(0.0, 0.0, 0.0, 1.0)) {}
+  ChunkBase() {}
 
-  ChunkRegion(const double base_x, const double base_y, const double base_z)
-    : base_(Eigen::Vector4d(base_x, base_y, base_z, 1.0)) {}
+  ChunkBase(const int64_t x, const int64_t y, const int64_t z)
+      : x_(x), y_(y), z_(z) {}
 
-  ChunkRegion(const Eigen::Vector3d& base)
-    : base_(Eigen::Vector4d(base.x(), base.y(), base.z(), 1.0)) {}
+  const int64_t& X() const { return x_; }
 
-  ChunkRegion(const Eigen::Vector4d& base) : base_(base)
+  const int64_t& Y() const { return y_; }
+
+  const int64_t& Z() const { return z_; }
+
+  int64_t& X() { return x_; }
+
+  int64_t& Y() { return y_; }
+
+  int64_t& Z() { return z_; }
+
+  bool operator==(const ChunkBase& other) const
   {
-    if (base_(3) != 1.0)
+    return (X() == other.X() && Y() == other.Y() && Z() == other.Z());
+  }
+
+  bool operator!=(const ChunkBase& other) const
+  {
+    return !(*this == other);
+  }
+};
+
+static_assert(
+    std::is_trivially_destructible<ChunkBase>::value,
+    "ChunkBase must be trivially destructible");
+
+class ChunkIndex
+{
+private:
+  // These defaults mean that a default-constructed ChunkIndex cannot be valid.
+  int64_t x_ = std::numeric_limits<int64_t>::lowest();
+  int64_t y_ = std::numeric_limits<int64_t>::lowest();
+  int64_t z_ = std::numeric_limits<int64_t>::lowest();
+
+public:
+  ChunkIndex() = default;
+
+  ChunkIndex(const int64_t x, const int64_t y, const int64_t z)
+      : x_(x), y_(y), z_(z) {}
+
+  const int64_t& X() const { return x_; }
+
+  const int64_t& Y() const { return y_; }
+
+  const int64_t& Z() const { return z_; }
+
+  int64_t& X() { return x_; }
+
+  int64_t& Y() { return y_; }
+
+  int64_t& Z() { return z_; }
+
+  bool operator==(const ChunkIndex& other) const
+  {
+    return (X() == other.X() && Y() == other.Y() && Z() == other.Z());
+  }
+
+  bool operator!=(const ChunkIndex& other) const
+  {
+    return !(*this == other);
+  }
+};
+
+static_assert(
+    std::is_trivially_destructible<ChunkIndex>::value,
+    "ChunkIndex must be trivially destructible");
+
+inline GridIndex operator+(const ChunkIndex& index, const ChunkBase& base)
+{
+  return GridIndex(
+      index.X() + base.X(), index.Y() + base.Y(), index.Z() + base.Z());
+}
+
+inline ChunkIndex operator-(const GridIndex& index, const ChunkBase& base)
+{
+  return ChunkIndex(
+      index.X() - base.X(), index.Y() - base.Y(), index.Z() - base.Z());
+}
+
+class DynamicSpatialHashedVoxelGridSizes
+{
+private:
+  // Voxel sizes (and their inverses) are stored in Vector4 to enable certain
+  // SIMD operations.
+  Eigen::Vector4d voxel_sizes_ = Eigen::Vector4d::Zero();
+  Eigen::Vector4d inverse_voxel_sizes_ = Eigen::Vector4d::Zero();
+  // Chunk voxel counts (and their inverses) are stored in Vector4d to avoid
+  // integer division and to enable certain SIMD operations.
+  Eigen::Vector4d chunk_voxel_counts_internal_ = Eigen::Vector4d::Zero();
+  Eigen::Vector4d inverse_chunk_voxel_counts_internal_ =
+      Eigen::Vector4d::Zero();
+  // "Normal" chunk sizes and voxel counts.
+  Eigen::Vector3d chunk_sizes_ = Eigen::Vector3d::Zero();
+  Vector3i64 chunk_voxel_counts_ = Vector3i64::Zero();
+  int64_t chunk_stride_1_ = 0;
+  int64_t chunk_stride_2_ = 0;
+
+  static bool CheckPositiveValid(const double param)
+  {
+    return (std::isfinite(param) && (param > 0.0));
+  }
+
+  static bool CheckPositiveValid(const int64_t param)
+  {
+    return (param > 0);
+  }
+
+  // This constructor is private so that users can only construct via the named
+  // factory methods, which avoids ambiguity between chunk sizes and chunk voxel
+  // counts parameters.
+  DynamicSpatialHashedVoxelGridSizes(
+      const Eigen::Vector3d& voxel_sizes, const Vector3i64& chunk_voxel_counts)
+  {
+    const bool initialized = Initialize(voxel_sizes, chunk_voxel_counts);
+
+    if (!initialized)
     {
-      throw std::invalid_argument("base(3) != 1");
+      throw std::invalid_argument(
+          "All size parameters must be positive, non-zero, and finite");
     }
   }
 
-  const Eigen::Vector4d& Base() const { return base_; }
-
-  bool operator==(const ChunkRegion& other) const
+public:
+  static uint64_t Serialize(
+      const DynamicSpatialHashedVoxelGridSizes& sizes,
+      std::vector<uint8_t>& buffer)
   {
-    if (Base()(0) == other.Base()(0) && Base()(1) == other.Base()(1) &&
-        Base()(2) == other.Base()(2) && Base()(3) == other.Base()(3))
+    const uint64_t start_buffer_size = buffer.size();
+
+    // Serialize everything needed to reproduce the grid sizes.
+    serialization::SerializeMemcpyable<double>(sizes.VoxelXSize(), buffer);
+    serialization::SerializeMemcpyable<double>(sizes.VoxelYSize(), buffer);
+    serialization::SerializeMemcpyable<double>(sizes.VoxelZSize(), buffer);
+    serialization::SerializeMemcpyable<int64_t>(
+        sizes.ChunkNumXVoxels(), buffer);
+    serialization::SerializeMemcpyable<int64_t>(
+        sizes.ChunkNumYVoxels(), buffer);
+    serialization::SerializeMemcpyable<int64_t>(
+        sizes.ChunkNumZVoxels(), buffer);
+
+    // Figure out how many bytes were written.
+    const uint64_t end_buffer_size = buffer.size();
+    const uint64_t bytes_written = end_buffer_size - start_buffer_size;
+    return bytes_written;
+  }
+
+  static serialization::Deserialized<DynamicSpatialHashedVoxelGridSizes>
+  Deserialize(
+      const std::vector<uint8_t>& buffer, const uint64_t starting_offset)
+  {
+    uint64_t current_position = starting_offset;
+
+    // Deserialize voxel sizes.
+    const auto voxel_x_size_deserialized =
+        serialization::DeserializeMemcpyable<double>(buffer, current_position);
+    const double voxel_x_size = voxel_x_size_deserialized.Value();
+    current_position += voxel_x_size_deserialized.BytesRead();
+    const auto voxel_y_size_deserialized =
+        serialization::DeserializeMemcpyable<double>(buffer, current_position);
+    const double voxel_y_size = voxel_y_size_deserialized.Value();
+    current_position += voxel_y_size_deserialized.BytesRead();
+    const auto voxel_z_size_deserialized =
+        serialization::DeserializeMemcpyable<double>(buffer, current_position);
+    const double voxel_z_size = voxel_z_size_deserialized.Value();
+    current_position += voxel_z_size_deserialized.BytesRead();
+
+    const Eigen::Vector3d voxel_sizes(voxel_x_size, voxel_y_size, voxel_z_size);
+
+    // Deserialize voxel counts.
+    const auto chunk_num_x_voxels_deserialized =
+        serialization::DeserializeMemcpyable<int64_t>(buffer, current_position);
+    const int64_t chunk_num_x_voxels = chunk_num_x_voxels_deserialized.Value();
+    current_position += chunk_num_x_voxels_deserialized.BytesRead();
+    const auto chunk_num_y_voxels_deserialized =
+        serialization::DeserializeMemcpyable<int64_t>(buffer, current_position);
+    const int64_t chunk_num_y_voxels = chunk_num_y_voxels_deserialized.Value();
+    current_position += chunk_num_y_voxels_deserialized.BytesRead();
+    const auto chunk_num_z_voxels_deserialized =
+        serialization::DeserializeMemcpyable<int64_t>(buffer, current_position);
+    const int64_t chunk_num_z_voxels = chunk_num_z_voxels_deserialized.Value();
+    current_position += chunk_num_z_voxels_deserialized.BytesRead();
+
+    const Vector3i64 chunk_voxel_counts(
+        chunk_num_x_voxels, chunk_num_y_voxels, chunk_num_z_voxels);
+
+    // Start with a default-constructed DynamicSpatialHashedVoxelGridSizes.
+    DynamicSpatialHashedVoxelGridSizes temp_sizes;
+
+    // Attempt to initialize from the deserialized values. If any of them are
+    // invalid, temp_sizes is unchanged.
+    temp_sizes.Initialize(voxel_sizes, chunk_voxel_counts);
+
+    // Figure out how many bytes were read.
+    const uint64_t bytes_read = current_position - starting_offset;
+    return serialization::MakeDeserialized(temp_sizes, bytes_read);
+  }
+
+  static DynamicSpatialHashedVoxelGridSizes FromChunkSizes(
+      const Eigen::Vector3d& voxel_sizes, const Eigen::Vector3d& chunk_sizes)
+  {
+    const Vector3i64 chunk_voxel_counts(
+        static_cast<int64_t>(std::ceil(chunk_sizes.x() / voxel_sizes.x())),
+        static_cast<int64_t>(std::ceil(chunk_sizes.y() / voxel_sizes.y())),
+        static_cast<int64_t>(std::ceil(chunk_sizes.z() / voxel_sizes.z())));
+    return DynamicSpatialHashedVoxelGridSizes(voxel_sizes, chunk_voxel_counts);
+  }
+
+  static DynamicSpatialHashedVoxelGridSizes FromChunkSizes(
+      const double voxel_size, const Eigen::Vector3d& chunk_sizes)
+  {
+    return FromChunkSizes(
+        Eigen::Vector3d(voxel_size, voxel_size, voxel_size), chunk_sizes);
+  }
+
+  static DynamicSpatialHashedVoxelGridSizes FromChunkVoxelCounts(
+      const Eigen::Vector3d& voxel_sizes, const Vector3i64& chunk_voxel_counts)
+  {
+    return DynamicSpatialHashedVoxelGridSizes(voxel_sizes, chunk_voxel_counts);
+  }
+
+  static DynamicSpatialHashedVoxelGridSizes FromChunkVoxelCounts(
+      const double voxel_size, const Vector3i64& chunk_voxel_counts)
+  {
+    return FromChunkVoxelCounts(
+        Eigen::Vector3d(voxel_size, voxel_size, voxel_size),
+        chunk_voxel_counts);
+  }
+
+  DynamicSpatialHashedVoxelGridSizes() {}
+
+  // This is exposed only for testing.
+  bool Initialize(
+      const Eigen::Vector3d& voxel_sizes, const Vector3i64& chunk_voxel_counts)
+  {
+    if (CheckPositiveValid(voxel_sizes.x()) &&
+        CheckPositiveValid(voxel_sizes.y()) &&
+        CheckPositiveValid(voxel_sizes.z()) &&
+        CheckPositiveValid(chunk_voxel_counts.x()) &&
+        CheckPositiveValid(chunk_voxel_counts.y()) &&
+        CheckPositiveValid(chunk_voxel_counts.z()))
+    {
+      voxel_sizes_ = Eigen::Vector4d(
+          voxel_sizes.x(), voxel_sizes.y(), voxel_sizes.z(), 1.0);
+      inverse_voxel_sizes_ = voxel_sizes_.cwiseInverse();
+      chunk_voxel_counts_internal_ = Eigen::Vector4d(
+          static_cast<double>(chunk_voxel_counts.x()),
+          static_cast<double>(chunk_voxel_counts.y()),
+          static_cast<double>(chunk_voxel_counts.z()),
+          1.0);
+      inverse_chunk_voxel_counts_internal_ =
+          chunk_voxel_counts_internal_.cwiseInverse();
+      chunk_voxel_counts_ = chunk_voxel_counts;
+      chunk_sizes_ =
+          voxel_sizes_.cwiseProduct(chunk_voxel_counts_internal_).head<3>();
+      chunk_stride_1_ = chunk_voxel_counts_.y() * chunk_voxel_counts_.z();
+      chunk_stride_2_ = chunk_voxel_counts_.z();
+
+      return true;
+    }
+    else
+    {
+      return false;
+    }
+  }
+
+  bool IsValid() const { return chunk_stride_2_ > 0; }
+
+  // Accessors for voxel sizes.
+
+  const Eigen::Vector4d& VoxelSizesInternal() const { return voxel_sizes_; }
+
+  Eigen::Vector3d VoxelSizes() const { return voxel_sizes_.head<3>(); }
+
+  double VoxelXSize() const { return voxel_sizes_(0); }
+
+  double VoxelYSize() const { return voxel_sizes_(1); }
+
+  double VoxelZSize() const { return voxel_sizes_(2); }
+
+  bool HasUniformVoxelSize() const
+  {
+    return voxel_sizes_(0) == voxel_sizes_(1) &&
+           voxel_sizes_(0) == voxel_sizes_(2);
+  }
+
+  // Accessors for inverse voxel sizes.
+
+  const Eigen::Vector4d& InverseVoxelSizesInternal() const
+  {
+    return inverse_voxel_sizes_;
+  }
+
+  Eigen::Vector3d InverseVoxelSizes() const
+  {
+    return inverse_voxel_sizes_.head<3>();
+  }
+
+  double InverseVoxelXSize() const { return inverse_voxel_sizes_(0); }
+
+  double InverseVoxelYSize() const { return inverse_voxel_sizes_(1); }
+
+  double InverseVoxelZSize() const { return inverse_voxel_sizes_(2); }
+
+  // Accessors for chunk sizes.
+
+  const Eigen::Vector3d& ChunkSizes() const { return chunk_sizes_; }
+
+  double ChunkXSize() const { return chunk_sizes_.x(); }
+
+  double ChunkYSize() const { return chunk_sizes_.y(); }
+
+  double ChunkZSize() const { return chunk_sizes_.z(); }
+
+  // Accessors for chunkvoxel counts.
+
+  const Vector3i64& ChunkVoxelCounts() const { return chunk_voxel_counts_; }
+
+  int64_t ChunkNumXVoxels() const { return chunk_voxel_counts_.x(); }
+
+  int64_t ChunkNumYVoxels() const { return chunk_voxel_counts_.y(); }
+
+  int64_t ChunkNumZVoxels() const { return chunk_voxel_counts_.z(); }
+
+  int64_t ChunkNumTotalVoxels() const { return chunk_voxel_counts_.prod(); }
+
+  // Accessors for internal chunk voxel counts used in SIMD operations.
+
+  const Eigen::Vector4d& ChunkVoxelCountsInternal() const
+  {
+    return chunk_voxel_counts_internal_;
+  }
+
+  const Eigen::Vector4d& InverseChunkVoxelCountsInternal() const
+  {
+    return inverse_chunk_voxel_counts_internal_;
+  }
+
+  // Accessors for chunk strides.
+
+  int64_t ChunkStride1() const { return chunk_stride_1_; }
+
+  int64_t ChunkStride2() const { return chunk_stride_2_; }
+
+  // Index bounds checks.
+
+  bool CheckChunkIndexInBounds(const int64_t x_index,
+                               const int64_t y_index,
+                               const int64_t z_index) const
+  {
+    if (x_index >= 0 && x_index < ChunkNumXVoxels() &&
+        y_index >= 0 && y_index < ChunkNumYVoxels() &&
+        z_index >= 0 && z_index < ChunkNumZVoxels())
     {
       return true;
     }
@@ -73,76 +444,201 @@ public:
       return false;
     }
   }
+
+  bool CheckChunkIndexInBounds(const ChunkIndex& index) const
+  {
+    return CheckChunkIndexInBounds(index.X(), index.Y(), index.Z());
+  }
+
+  bool CheckGridIndexInAllowedBounds(const int64_t x_index,
+                                     const int64_t y_index,
+                                     const int64_t z_index) const
+  {
+    return (x_index <= MAXIMUM_ALLOWED_DSHVG_INDEX_AXIS_VALUE ||
+            x_index >= MINIMUM_ALLOWED_DSHVG_INDEX_AXIS_VALUE ||
+            y_index <= MAXIMUM_ALLOWED_DSHVG_INDEX_AXIS_VALUE ||
+            y_index >= MINIMUM_ALLOWED_DSHVG_INDEX_AXIS_VALUE ||
+            z_index <= MAXIMUM_ALLOWED_DSHVG_INDEX_AXIS_VALUE ||
+            z_index >= MINIMUM_ALLOWED_DSHVG_INDEX_AXIS_VALUE);
+  }
+
+  bool CheckGridIndexInAllowedBounds(const GridIndex& index) const
+  {
+    return CheckGridIndexInAllowedBounds(index.X(), index.Y(), index.Z());
+  }
+
+  // Chunk index <-> data index conversions.
+
+  int64_t ChunkIndexToDataIndex(const int64_t x_index,
+                                const int64_t y_index,
+                                const int64_t z_index) const
+  {
+    return (x_index * ChunkStride1()) + (y_index * ChunkStride2()) + z_index;
+  }
+
+  int64_t ChunkIndexToDataIndex(const ChunkIndex& index) const
+  {
+    return ChunkIndexToDataIndex(index.X(), index.Y(), index.Z());
+  }
+
+  ChunkIndex DataIndexToChunkIndex(const int64_t data_index) const
+  {
+    const int64_t x_idx = data_index / ChunkStride1();
+    const int64_t remainder = data_index % ChunkStride1();
+    const int64_t y_idx = remainder / ChunkStride2();
+    const int64_t z_idx = remainder % ChunkStride2();
+    return ChunkIndex(x_idx, y_idx, z_idx);
+  }
+
+  // Grid-frame location <-> index conversions.
+
+  GridIndex LocationInGridFrameToGridIndex3d(
+      const Eigen::Vector3d& location) const
+  {
+    const Eigen::Vector3d raw_index =
+        location.cwiseProduct(InverseVoxelSizes()).array().floor();
+    return GridIndex(
+        static_cast<int64_t>(raw_index.x()),
+        static_cast<int64_t>(raw_index.y()),
+        static_cast<int64_t>(raw_index.z()));
+  }
+
+  GridIndex LocationInGridFrameToGridIndex4d(
+      const Eigen::Vector4d& location) const
+  {
+    const Eigen::Vector4d raw_index =
+        location.cwiseProduct(InverseVoxelSizesInternal()).array().floor();
+    return GridIndex(
+        static_cast<int64_t>(raw_index(0)),
+        static_cast<int64_t>(raw_index(1)),
+        static_cast<int64_t>(raw_index(2)));
+  }
+
+  GridIndex LocationInGridFrameToGridIndex(
+      const double x, const double y, const double z) const
+  {
+    const Eigen::Vector4d location(x, y, z, 1.0);
+    return LocationInGridFrameToGridIndex4d(location);
+  }
+
+  Eigen::Vector4d GridIndexToLocationInGridFrame(
+      const int64_t x_index, const int64_t y_index, const int64_t z_index) const
+  {
+    const Eigen::Vector4d voxel_indexes(
+        static_cast<double>(x_index) + 0.5,
+        static_cast<double>(y_index) + 0.5,
+        static_cast<double>(z_index) + 0.5,
+        1.0);
+    return VoxelSizesInternal().cwiseProduct(voxel_indexes);
+  }
+
+  Eigen::Vector4d GridIndexToLocationInGridFrame(const GridIndex& index) const
+  {
+    return GridIndexToLocationInGridFrame(index.X(), index.Y(), index.Z());
+  }
+
+  // Chunk base <-> grid index conversions.
+
+  ChunkBase GridIndexToChunkBase(const int64_t x_index,
+                                 const int64_t y_index,
+                                 const int64_t z_index) const
+  {
+    const Eigen::Matrix<int64_t, 4, 1> voxel_indexes(
+        x_index, y_index, z_index, 0);
+
+    const Eigen::Vector4d raw_chunk_num =
+        voxel_indexes.cast<double>().cwiseProduct(
+            InverseChunkVoxelCountsInternal()).array().floor();
+
+    const Eigen::Vector4d raw_chunk_base =
+        raw_chunk_num.cwiseProduct(ChunkVoxelCountsInternal());
+
+    return ChunkBase(
+        static_cast<int64_t>(raw_chunk_base(0)),
+        static_cast<int64_t>(raw_chunk_base(1)),
+        static_cast<int64_t>(raw_chunk_base(2)));
+  }
+
+  ChunkBase GridIndexToChunkBase(const GridIndex& index) const
+  {
+    return GridIndexToChunkBase(index.X(), index.Y(), index.Z());
+  }
+
+  GridIndex ChunkBaseToGridIndex(const ChunkBase& base) const
+  {
+    // This conversion is trivial, and is provided for API completeness.
+    return GridIndex(base.X(), base.Y(), base.Z());
+  }
+
+  bool operator==(const DynamicSpatialHashedVoxelGridSizes& other) const
+  {
+    return (VoxelSizesInternal().array() ==
+                other.VoxelSizesInternal().array()).all() &&
+           (ChunkVoxelCounts().array() ==
+                other.ChunkVoxelCounts().array()).all();
+  }
+
+  bool operator!=(const DynamicSpatialHashedVoxelGridSizes& other) const
+  {
+    return !(*this == other);
+  }
 };
 
-/// Enums to help us out.
-enum class DSHVGFillType : uint8_t {FILL_CHUNK, FILL_CELL};
+static_assert(
+    std::is_trivially_destructible<DynamicSpatialHashedVoxelGridSizes>::value,
+    "DynamicSpatialHashedVoxelGridSizes must be trivially destructible");
 
-enum class DSHVGFillStatus : uint8_t {NOT_FILLED, CHUNK_FILLED, CELL_FILLED};
-
-enum class DSHVGFoundStatus : uint8_t
-    {NOT_FOUND, FOUND_IN_CHUNK, FOUND_IN_CELL, MUTABLE_ACCESS_PROHIBITED};
-
-enum class DSHVGSetType : uint8_t {SET_CHUNK, SET_CELL};
-
-enum class DSHVGSetStatus : uint8_t
-    {MUTABLE_ACCESS_PROHIBITED, SET_CHUNK, SET_CELL};
-
+// While this looks like a std::optional<T>, it *does not own* the item of T,
+// unlike std::optional<T>, since it needs to pass the caller a const/mutable
+// reference to the item in the DSHVG.
 template<typename T>
 class DynamicSpatialHashedGridQuery
 {
 private:
   ReferencingMaybe<T> value_;
-  DSHVGFoundStatus found_status_ = DSHVGFoundStatus::NOT_FOUND;
+  AccessStatus status_ = AccessStatus::UNKNOWN;
 
-  DynamicSpatialHashedGridQuery(T& value, const DSHVGFoundStatus found_status)
-      : value_(value), found_status_(found_status)
+  // This struct (and its uses) exists to disambiguate between the value-found
+  // and status constructors.
+  struct AccessStatusSuccess {};
+
+  explicit DynamicSpatialHashedGridQuery(T& value, AccessStatusSuccess)
+      : value_(value), status_(AccessStatus::SUCCESS) {}
+
+  explicit DynamicSpatialHashedGridQuery(const AccessStatus status)
+      : status_(status)
   {
-    if (FoundStatus() == DSHVGFoundStatus::NOT_FOUND &&
-        FoundStatus() == DSHVGFoundStatus::MUTABLE_ACCESS_PROHIBITED)
+    if (status_ == AccessStatus::SUCCESS)
     {
       throw std::invalid_argument(
-          "Cannot return value with NOT_FOUND or MUTABLE_ACCESS_PROHIBITED");
-    }
-  }
-
-  DynamicSpatialHashedGridQuery(const DSHVGFoundStatus found_status)
-      : found_status_(found_status)
-  {
-    if (FoundStatus() == DSHVGFoundStatus::FOUND_IN_CHUNK ||
-        FoundStatus() == DSHVGFoundStatus::FOUND_IN_CELL)
-    {
-      throw std::invalid_argument(
-          "Cannot return FOUND_IN_CHUNK or FOUND_IN_CELL without value");
+          "DynamicSpatialHashedGridQuery cannot be constructed with "
+          "AccessStatus::SUCCESS");
     }
   }
 
 public:
-  static DynamicSpatialHashedGridQuery<T> FoundInChunk(T& value)
+  static DynamicSpatialHashedGridQuery<T> Success(T& value)
   {
-    return DynamicSpatialHashedGridQuery<T>(
-        value, DSHVGFoundStatus::FOUND_IN_CHUNK);
-  }
-
-  static DynamicSpatialHashedGridQuery<T> FoundInCell(T& value)
-  {
-    return DynamicSpatialHashedGridQuery<T>(
-        value, DSHVGFoundStatus::FOUND_IN_CELL);
+    return DynamicSpatialHashedGridQuery<T>(value, AccessStatusSuccess{});
   }
 
   static DynamicSpatialHashedGridQuery<T> NotFound()
   {
-    return DynamicSpatialHashedGridQuery<T>(DSHVGFoundStatus::NOT_FOUND);
+    return DynamicSpatialHashedGridQuery<T>(AccessStatus::NOT_FOUND);
+  }
+
+  static DynamicSpatialHashedGridQuery<T> OutOfBounds()
+  {
+    return DynamicSpatialHashedGridQuery<T>(AccessStatus::OUT_OF_BOUNDS);
   }
 
   static DynamicSpatialHashedGridQuery<T> MutableAccessProhibited()
   {
     return DynamicSpatialHashedGridQuery<T>(
-        DSHVGFoundStatus::MUTABLE_ACCESS_PROHIBITED);
+        AccessStatus::MUTABLE_ACCESS_PROHIBITED);
   }
 
-  DynamicSpatialHashedGridQuery()
-      : found_status_(DSHVGFoundStatus::NOT_FOUND) {}
+  DynamicSpatialHashedGridQuery() {}
 
   DynamicSpatialHashedGridQuery(
       const DynamicSpatialHashedGridQuery<T>& other) = default;
@@ -160,7 +656,7 @@ public:
 
   T& Value() const { return value_.Value(); }
 
-  DSHVGFoundStatus FoundStatus() const { return found_status_; }
+  AccessStatus Status() const { return status_; }
 
   bool HasValue() const { return value_.HasValue(); }
 
@@ -171,48 +667,81 @@ template<typename T, typename BackingStore=std::vector<T>>
 class DynamicSpatialHashedVoxelGridChunk
 {
 private:
-  ChunkRegion region_;
+  ChunkBase base_;
   BackingStore data_;
-  GridSizes sizes_;
-  DSHVGFillStatus fill_status_ = DSHVGFillStatus::NOT_FILLED;
 
-  int64_t GetLocationDataIndex(const Eigen::Vector4d& location) const
+  // TODO(calderpg) Replace with data move once serialization redo lands.
+  DynamicSpatialHashedVoxelGridChunk(
+      const ChunkBase& base, const BackingStore& data)
+      : base_(base), data_(data) {}
+
+public:
+  static uint64_t Serialize(
+      const DynamicSpatialHashedVoxelGridChunk<T, BackingStore>& chunk,
+      std::vector<uint8_t>& buffer,
+      const serialization::Serializer<T>& value_serializer)
   {
-    const Eigen::Vector4d location_wrt_chunk = location - region_.Base();
-    // First, make sure the location is in the range this chunk covers
-    if (location_wrt_chunk(0) < 0.0
-        || location_wrt_chunk(1) < 0.0
-        || location_wrt_chunk(2) < 0.0
-        || location_wrt_chunk(0) >= sizes_.XSize()
-        || location_wrt_chunk(1) >= sizes_.YSize()
-        || location_wrt_chunk(2) >= sizes_.ZSize())
+    const uint64_t start_buffer_size = buffer.size();
+    // Serialize members
+    ChunkBase::Serialize(chunk.Base(), buffer);
+    serialization::SerializeVectorLike<T, BackingStore>(
+          chunk.data_, buffer, value_serializer);
+    // Figure out how many bytes were written
+    const uint64_t end_buffer_size = buffer.size();
+    const uint64_t bytes_written = end_buffer_size - start_buffer_size;
+    return bytes_written;
+  }
+
+  static serialization::Deserialized<
+      DynamicSpatialHashedVoxelGridChunk<T, BackingStore>> Deserialize(
+          const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
+          const serialization::Deserializer<T>& value_deserializer)
+  {
+    uint64_t current_position = starting_offset;
+    // Deserialize members
+    const auto base_deserialized =
+        ChunkBase::Deserialize(buffer, current_position);
+    current_position += base_deserialized.BytesRead();
+    const auto data_deserialized =
+        serialization::DeserializeVectorLike<T, BackingStore>(
+              buffer, current_position, value_deserializer);
+    current_position += data_deserialized.BytesRead();
+    // Figure out how many bytes were read
+    const uint64_t bytes_read = current_position - starting_offset;
+    return serialization::MakeDeserialized(
+        DynamicSpatialHashedVoxelGridChunk<T, BackingStore>(
+            base_deserialized.Value(), data_deserialized.Value()),
+        bytes_read);
+  }
+
+  DynamicSpatialHashedVoxelGridChunk() = default;
+
+  DynamicSpatialHashedVoxelGridChunk(
+      const ChunkBase& base, const int64_t num_elements, const T& value)
+      : base_(base)
+  {
+    data_.clear();
+    data_.resize(
+        static_cast<typename BackingStore::size_type>(num_elements), value);
+  }
+
+  void SetContents(const T& value)
+  {
+    for (auto& voxel_value : data_)
     {
-      return -1;
-    }
-    // Ok, we're inside the chunk
-    else
-    {
-      const int64_t x_cell = static_cast<int64_t>(
-          std::floor(location_wrt_chunk(0) / sizes_.CellXSize()));
-      const int64_t y_cell = static_cast<int64_t>(
-          std::floor(location_wrt_chunk(1) / sizes_.CellYSize()));
-      const int64_t z_cell = static_cast<int64_t>(
-          std::floor(location_wrt_chunk(2) / sizes_.CellZSize()));
-      if (x_cell < 0 || y_cell < 0 || z_cell < 0 || x_cell >= sizes_.NumXCells()
-          || y_cell >= sizes_.NumYCells() || z_cell >= sizes_.NumZCells())
-      {
-        return -1;
-      }
-      else
-      {
-        return sizes_.GetDataIndex(x_cell, y_cell, z_cell);
-      }
+      voxel_value = value;
     }
   }
 
+  const ChunkBase& Base() const { return base_; }
+
+  bool IsInitialized() const { return data_.size() > 0; }
+
+  int64_t NumElements() const { return static_cast<int64_t>(data_.size()); }
+
   T& AccessIndex(const int64_t& data_index)
   {
-    if ((data_index >= 0) && (data_index < static_cast<int64_t>(data_.size())))
+    if ((data_index >= 0) && (data_index < NumElements()))
     {
       // Note: do not refactor to use .at(), since not all vector-like
       // implementations implement it (ex thrust::host_vector<T>).
@@ -226,7 +755,7 @@ private:
 
   const T& AccessIndex(const int64_t& data_index) const
   {
-    if ((data_index >= 0) && (data_index < static_cast<int64_t>(data_.size())))
+    if ((data_index >= 0) && (data_index < NumElements()))
     {
       // Note: do not refactor to use .at(), since not all vector-like
       // implementations implement it (ex thrust::host_vector<T>).
@@ -237,370 +766,226 @@ private:
       throw std::out_of_range("data_index out of range");
     }
   }
+};
 
-  void SetCellFilledContents(const T& value)
-  {
-    data_.clear();
-    data_.resize(static_cast<typename BackingStore::size_type>(
-        sizes_.TotalCells()), value);
-    fill_status_ = DSHVGFillStatus::CELL_FILLED;
-  }
+template<typename T, typename BackingStore=std::vector<T>>
+class DynamicSpatialHashedVoxelGridChunkKeeper
+{
+private:
+  using ChunkType = DynamicSpatialHashedVoxelGridChunk<T, BackingStore>;
 
-  void SetChunkFilledContents(const T& value)
-  {
-    data_.clear();
-    data_.resize(1, value);
-    fill_status_ = DSHVGFillStatus::CHUNK_FILLED;
-  }
+  std::mutex get_or_create_chunk_mutex_;
+  // TODO(calderpg) This almost certainly needs an aligned allocator.
+  std::unordered_map<ChunkBase, ChunkType> chunk_map_;
+
+  // TODO(calderpg) Replace with data move once serialization redo lands.
+  explicit DynamicSpatialHashedVoxelGridChunkKeeper(
+      const std::unordered_map<ChunkBase, ChunkType>& chunk_map)
+      : chunk_map_(chunk_map) {}
 
 public:
-  EIGEN_MAKE_ALIGNED_OPERATOR_NEW
-
   static uint64_t Serialize(
-      const DynamicSpatialHashedVoxelGridChunk<T, BackingStore>& chunk,
+      const DynamicSpatialHashedVoxelGridChunkKeeper<T, BackingStore>& keeper,
       std::vector<uint8_t>& buffer,
       const serialization::Serializer<T>& value_serializer)
   {
-    return chunk.SerializeSelf(buffer, value_serializer);
-  }
-
-  static serialization::Deserialized<
-      DynamicSpatialHashedVoxelGridChunk<T, BackingStore>> Deserialize(
-          const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
-          const serialization::Deserializer<T>& value_deserializer)
-  {
-    DynamicSpatialHashedVoxelGridChunk<T, BackingStore> temp_chunk;
-    const uint64_t bytes_read
-        = temp_chunk.DeserializeSelf(buffer, starting_offset,
-                                    value_deserializer);
-    return serialization::MakeDeserialized(temp_chunk, bytes_read);
-  }
-
-  DynamicSpatialHashedVoxelGridChunk(const ChunkRegion& region,
-                                     const GridSizes& sizes,
-                                     const DSHVGFillType fill_type,
-                                     const T& initial_value)
-      : region_(region), sizes_(sizes)
-  {
-    if (sizes_.Valid())
+    const auto chunk_serializer = [&](
+        const ChunkType& chunk, std::vector<uint8_t>& serialize_buffer)
     {
-      if (fill_type == DSHVGFillType::FILL_CELL)
-      {
-        SetCellFilledContents(initial_value);
-      }
-      else if (fill_type == DSHVGFillType::FILL_CHUNK)
-      {
-        SetChunkFilledContents(initial_value);
-      }
-      else
-      {
-        throw std::invalid_argument("Invalid fill_type");
-      }
-    }
-    else
-    {
-      throw std::invalid_argument("sizes is not valid");
-    }
-  }
+      return ChunkType::Serialize(chunk, serialize_buffer, value_serializer);
+    };
 
-  DynamicSpatialHashedVoxelGridChunk() = default;
-
-  uint64_t SerializeSelf(
-      std::vector<uint8_t>& buffer,
-      const serialization::Serializer<T>& value_serializer) const
-  {
     const uint64_t start_buffer_size = buffer.size();
-    // Serialize the transform
-    ChunkRegion::Serialize(region_, buffer);
-    // Serialize the grid sizes
-    GridSizes::Serialize(sizes_, buffer);
-    // Serialize the data
-    serialization::SerializeVectorLike<T, BackingStore>(
-          data_, buffer, value_serializer);
-    // Serialize the fill status
-    serialization::SerializeMemcpyable<uint8_t>(
-        static_cast<uint8_t>(fill_status_), buffer);
+
+    // First, write a uint64_t size header
+    const uint64_t size = static_cast<uint64_t>(keeper.chunk_map_.size());
+    serialization::SerializeMemcpyable<uint64_t>(size, buffer);
+
+    // Serialize the contained items
+    for (auto itr = keeper.begin(); itr != keeper.end(); ++itr)
+    {
+      serialization::SerializePair<ChunkBase, ChunkType>(
+          *itr, buffer, ChunkBase::Serialize, chunk_serializer);
+    }
+
     // Figure out how many bytes were written
     const uint64_t end_buffer_size = buffer.size();
     const uint64_t bytes_written = end_buffer_size - start_buffer_size;
     return bytes_written;
   }
 
-  uint64_t DeserializeSelf(
+  static serialization::Deserialized<
+      DynamicSpatialHashedVoxelGridChunkKeeper<T, BackingStore>>
+  Deserialize(
       const std::vector<uint8_t>& buffer, const uint64_t starting_offset,
       const serialization::Deserializer<T>& value_deserializer)
   {
+    const auto chunk_deserializer = [&](
+        const std::vector<uint8_t>& deserialize_buffer,
+        const uint64_t deserialize_starting_offset)
+    {
+      return ChunkType::Deserialize(
+          deserialize_buffer, deserialize_starting_offset, value_deserializer);
+    };
+
     uint64_t current_position = starting_offset;
-    // Deserialize the transforms
-    const auto region_deserialized
-        = ChunkRegion::Deserialize(buffer, current_position);
-    region_ = region_deserialized.Value();
-    current_position += region_deserialized.BytesRead();
-    // Deserialize the cell sizes
-    const auto sizes_deserialized
-        = GridSizes::Deserialize(buffer, current_position);
-    sizes_ = sizes_deserialized.Value();
-    current_position += sizes_deserialized.BytesRead();
-    // Deserialize the data
-    const auto data_deserialized
-        = serialization::DeserializeVectorLike<T, BackingStore>(
-              buffer, current_position, value_deserializer);
-    data_ = data_deserialized.Value();
-    current_position += data_deserialized.BytesRead();
-    // Deserialize the fill status
-    const auto fill_status_deserialized
-        = serialization::DeserializeMemcpyable<uint8_t>(buffer,
-                                                        current_position);
-    fill_status_ =
-        static_cast<DSHVGFillStatus>(fill_status_deserialized.Value());
-    current_position += fill_status_deserialized.BytesRead();
-    // Safety checks
-    if (fill_status_ == DSHVGFillStatus::CELL_FILLED)
+
+    // Load the header
+    const serialization::Deserialized<uint64_t> deserialized_size =
+        serialization::DeserializeMemcpyable<uint64_t>(
+            buffer, current_position);
+    const uint64_t size = deserialized_size.Value();
+    current_position += deserialized_size.BytesRead();
+
+    // Deserialize the items
+    std::unordered_map<ChunkBase, ChunkType> chunk_map;
+    chunk_map.reserve(size);
+
+    for (uint64_t idx = 0; idx < size; idx++)
     {
-      if (static_cast<int64_t>(data_.size()) != sizes_.TotalCells())
-      {
-        throw std::runtime_error("sizes_.NumCells() != data_.size()");
-      }
+      const serialization::Deserialized<std::pair<ChunkBase, ChunkType>>
+          deserialized_pair =
+              serialization::DeserializePair<ChunkBase, ChunkType>(
+                  buffer, current_position, ChunkBase::Deserialize,
+                  chunk_deserializer);
+      chunk_map.insert(deserialized_pair.Value());
+      current_position += deserialized_pair.BytesRead();
     }
-    else if (fill_status_ == DSHVGFillStatus::CHUNK_FILLED)
-    {
-      if (data_.size() != 1)
-      {
-        throw std::runtime_error("sizes_.NumCells() != 1");
-      }
-    }
-    else
-    {
-      if (data_.size() != 0)
-      {
-        throw std::runtime_error("sizes_.NumCells() != 0");
-      }
-    }
+
+    DynamicSpatialHashedVoxelGridChunkKeeper<T, BackingStore> keeper(chunk_map);
+
     // Figure out how many bytes were read
     const uint64_t bytes_read = current_position - starting_offset;
-    return bytes_read;
+    return serialization::MakeDeserialized(keeper, bytes_read);
   }
 
-  DSHVGFillStatus FillStatus() const { return fill_status_; }
+  using iterator =
+      typename std::unordered_map<ChunkBase, ChunkType>::iterator;
+  using const_iterator =
+      typename std::unordered_map<ChunkBase, ChunkType>::const_iterator;
 
-  DynamicSpatialHashedGridQuery<const T> GetIndexImmutable(
-      const GridIndex& internal_cell_index) const
+  DynamicSpatialHashedVoxelGridChunkKeeper() = default;
+
+  explicit DynamicSpatialHashedVoxelGridChunkKeeper(
+      const size_t expected_chunks)
   {
-    if (fill_status_ == DSHVGFillStatus::CELL_FILLED)
+    chunk_map_.reserve(expected_chunks);
+  }
+
+  DynamicSpatialHashedVoxelGridChunkKeeper(
+      DynamicSpatialHashedVoxelGridChunkKeeper<T, BackingStore>&& other)
+  {
+    chunk_map_ = std::move(other.chunk_map_);
+  }
+
+  DynamicSpatialHashedVoxelGridChunkKeeper(
+      const DynamicSpatialHashedVoxelGridChunkKeeper<T, BackingStore>& other)
+  {
+    chunk_map_ = other.chunk_map_;
+  }
+
+  DynamicSpatialHashedVoxelGridChunkKeeper<T, BackingStore>& operator=(
+      const DynamicSpatialHashedVoxelGridChunkKeeper<T, BackingStore>& other)
+  {
+    if (this != std::addressof(other))
     {
-      if (sizes_.IndexInBounds(internal_cell_index))
-      {
-        return DynamicSpatialHashedGridQuery<const T>::FoundInCell(
-            AccessIndex(sizes_.GetDataIndex(internal_cell_index)));
-      }
-      else
-      {
-        throw std::runtime_error("internal_cell_index not in chunk");
-      }
+      chunk_map_ = other.chunk_map_;
     }
-    else if (fill_status_ == DSHVGFillStatus::CHUNK_FILLED)
+    return *this;
+  }
+
+  DynamicSpatialHashedVoxelGridChunkKeeper<T, BackingStore>& operator=(
+      DynamicSpatialHashedVoxelGridChunkKeeper<T, BackingStore>&& other)
+  {
+    if (this != std::addressof(other))
     {
-      if (internal_cell_index == GridIndex(0, 0, 0))
-      {
-        return DynamicSpatialHashedGridQuery<const T>::FoundInChunk(
-            AccessIndex(0));
-      }
-      else
-      {
-        throw std::runtime_error("internal_cell_index not in chunk");
-      }
+      chunk_map_ = std::move(other.chunk_map_);
+    }
+    return *this;
+  }
+
+  int64_t NumChunks() const { return static_cast<int64_t>(chunk_map_.size()); }
+
+  ReferencingMaybe<const ChunkType> GetChunkImmutable(
+      const ChunkBase& base) const
+  {
+    const auto& found_itr = chunk_map_.find(base);
+    if (found_itr != chunk_map_.end())
+    {
+      return ReferencingMaybe<const ChunkType>(found_itr->second);
     }
     else
     {
-      throw std::runtime_error("Chunk is not filled");
+      return ReferencingMaybe<const ChunkType>();
     }
   }
 
-  DynamicSpatialHashedGridQuery<T> GetIndexMutable(
-      const GridIndex& internal_cell_index) const
+  ReferencingMaybe<ChunkType> GetChunkMutable(const ChunkBase& base)
   {
-    if (fill_status_ == DSHVGFillStatus::CELL_FILLED)
+    auto& found_itr = chunk_map_.find(base);
+    if (found_itr != chunk_map_.end())
     {
-      if (sizes_.IndexInBounds(internal_cell_index))
-      {
-        return DynamicSpatialHashedGridQuery<T>::FoundInCell(
-            AccessIndex(sizes_.GetDataIndex(internal_cell_index)));
-      }
-      else
-      {
-        throw std::runtime_error("internal_cell_index not in chunk");
-      }
-    }
-    else if (fill_status_ == DSHVGFillStatus::CHUNK_FILLED)
-    {
-      if (internal_cell_index == GridIndex(0, 0, 0))
-      {
-        return DynamicSpatialHashedGridQuery<T>::FoundInChunk(AccessIndex(0));
-      }
-      else
-      {
-        throw std::runtime_error("internal_cell_index not in chunk");
-      }
+      return ReferencingMaybe<ChunkType>(found_itr->second);
     }
     else
     {
-      throw std::runtime_error("Chunk is not filled");
+      return ReferencingMaybe<ChunkType>();
     }
   }
 
-  DynamicSpatialHashedGridQuery<const T> GetLocationImmutable4d(
-      const Eigen::Vector4d& location) const
+  ReferencingMaybe<ChunkType> GetOrCreateChunkMutable(
+      const ChunkBase& base, const int64_t num_elements, const T& default_value)
   {
-    if (fill_status_ == DSHVGFillStatus::CELL_FILLED)
+    std::lock_guard<std::mutex> lock(get_or_create_chunk_mutex_);
+    auto found_itr = chunk_map_.find(base);
+    if (found_itr != chunk_map_.end())
     {
-      const int64_t data_index = GetLocationDataIndex(location);
-      if (data_index >= 0)
-      {
-        return DynamicSpatialHashedGridQuery<const T>::FoundInCell(
-            AccessIndex(data_index));
-      }
-      else
-      {
-        throw std::runtime_error("location not in chunk");
-      }
-    }
-    else if (fill_status_ == DSHVGFillStatus::CHUNK_FILLED)
-    {
-      return DynamicSpatialHashedGridQuery<const T>::FoundInChunk(
-          AccessIndex(0));
+      return ReferencingMaybe<ChunkType>(found_itr->second);
     }
     else
     {
-      throw std::runtime_error("Chunk is not filled");
+      ChunkType new_chunk(base, num_elements, default_value);
+      auto emplace_result = chunk_map_.emplace(base, std::move(new_chunk));
+      auto& emplaced_chunk = emplace_result.first->second;
+      return ReferencingMaybe<ChunkType>(emplaced_chunk);
     }
   }
 
-  DynamicSpatialHashedGridQuery<T> GetLocationMutable4d(
-      const Eigen::Vector4d& location)
+  bool EraseChunk(const ChunkBase& base)
   {
-    if (fill_status_ == DSHVGFillStatus::CELL_FILLED)
+    return chunk_map_.erase(base) > 0;
+  }
+
+  bool EraseChunk(iterator chunk)
+  {
+    return chunk_map_.erase(chunk) > 0;
+  }
+
+  bool EraseChunk(const_iterator chunk)
+  {
+    return chunk_map_.erase(chunk) > 0;
+  }
+
+  void EraseAllChunks()
+  {
+    chunk_map_.clear();
+  }
+
+  void SetContentsAllChunks(const T& value)
+  {
+    for (auto chunk_itr = begin(); chunk_itr != end(); ++chunk_itr)
     {
-      const int64_t data_index = GetLocationDataIndex(location);
-      if (data_index >= 0)
-      {
-        return DynamicSpatialHashedGridQuery<T>::FoundInCell(
-            AccessIndex(data_index));
-      }
-      else
-      {
-        throw std::runtime_error("location not in chunk");
-      }
-    }
-    else if (fill_status_ == DSHVGFillStatus::CHUNK_FILLED)
-    {
-      return DynamicSpatialHashedGridQuery<T>::FoundInChunk(AccessIndex(0));
-    }
-    else
-    {
-      throw std::runtime_error("Chunk is not filled");
+      chunk_itr->second.SetContents(value);
     }
   }
 
-  DSHVGSetStatus SetCellLocation4d(
-      const Eigen::Vector4d& location, const T& value)
-  {
-    if (fill_status_ == DSHVGFillStatus::CHUNK_FILLED)
-    {
-      const T initial_value = AccessIndex(0);
-      SetCellFilledContents(initial_value);
-      fill_status_ = DSHVGFillStatus::CELL_FILLED;
-    }
-    if (fill_status_ == DSHVGFillStatus::CELL_FILLED)
-    {
-      const int64_t data_index = GetLocationDataIndex(location);
-      if (data_index >= 0)
-      {
-        AccessIndex(data_index) = value;
-        return DSHVGSetStatus::SET_CELL;
-      }
-      else
-      {
-        throw std::runtime_error("location not in chunk");
-      }
-    }
-    else
-    {
-      throw std::runtime_error("Cannot cell set unfilled chunk");
-    }
-  }
+  const_iterator begin() const { return chunk_map_.begin(); }
 
-  DSHVGSetStatus SetCellLocation4d(
-      const Eigen::Vector4d& location, T&& value)
-  {
-    if (fill_status_ == DSHVGFillStatus::CHUNK_FILLED)
-    {
-      const T initial_value = AccessIndex(0);
-      SetCellFilledContents(initial_value);
-      fill_status_ = DSHVGFillStatus::CELL_FILLED;
-    }
-    if (fill_status_ == DSHVGFillStatus::CELL_FILLED)
-    {
-      const int64_t data_index = GetLocationDataIndex(location);
-      if (data_index >= 0)
-      {
-        AccessIndex(data_index) = value;
-        return DSHVGSetStatus::SET_CELL;
-      }
-      else
-      {
-        throw std::runtime_error("location not in chunk");
-      }
-    }
-    else
-    {
-      throw std::runtime_error("Cannot cell set unfilled chunk");
-    }
-  }
+  iterator begin() { return chunk_map_.begin(); }
 
-  DSHVGSetStatus SetChunkValue(const T& value)
-  {
-    if (fill_status_ != DSHVGFillStatus::NOT_FILLED)
-    {
-      SetChunkFilledContents(value);
-      return DSHVGSetStatus::SET_CHUNK;
-    }
-    else
-    {
-      throw std::runtime_error("Cannot set unfilled chunk");
-    }
-  }
+  const_iterator end() const { return chunk_map_.end(); }
 
-  DSHVGSetStatus SetChunkValue(T&& value)
-  {
-    if (fill_status_ != DSHVGFillStatus::NOT_FILLED)
-    {
-      SetChunkFilledContents(value);
-      return DSHVGSetStatus::SET_CHUNK;
-    }
-    else
-    {
-      throw std::runtime_error("Cannot set unfilled chunk");
-    }
-  }
-
-  Eigen::Vector4d GetCellLocationInGridFrame(
-      const GridIndex& internal_cell_index) const
-  {
-    Eigen::Vector4d cell_position =
-        sizes_.IndexToLocationInGridFrame(internal_cell_index);
-    // We need to move from position to offset vector
-    cell_position(3) = 0.0;
-    return region_.Base() + cell_position;
-  }
-
-  Eigen::Vector4d GetChunkCenterInGridFrame() const
-  {
-    const Eigen::Vector4d center_offset(sizes_.XSize() * 0.5,
-                                        sizes_.YSize() * 0.5,
-                                        sizes_.ZSize() * 0.5,
-                                        0.0);
-    return region_.Base() + center_offset;
-  }
+  iterator end() { return chunk_map_.end(); }
 };
 
 /// This is the base class for all dynamic spatial hashed voxel grid classes.
@@ -615,19 +1000,42 @@ class DynamicSpatialHashedVoxelGridBase
 {
 private:
   using GridChunk = DynamicSpatialHashedVoxelGridChunk<T, BackingStore>;
-  using ChunkMapAllocator =
-      Eigen::aligned_allocator<std::pair<const ChunkRegion, GridChunk>>;
-  using ChunkMap =
-      std::unordered_map<
-          ChunkRegion, GridChunk, std::hash<ChunkRegion>,
-          std::equal_to<ChunkRegion>, ChunkMapAllocator>;
+  using GridChunkKeeper =
+      DynamicSpatialHashedVoxelGridChunkKeeper<T, BackingStore>;
 
   Eigen::Isometry3d origin_transform_ = Eigen::Isometry3d::Identity();
   Eigen::Isometry3d inverse_origin_transform_ = Eigen::Isometry3d::Identity();
   T default_value_;
-  GridSizes chunk_sizes_;
-  ChunkMap chunks_;
-  bool initialized_ = false;
+  DynamicSpatialHashedVoxelGridSizes voxel_grid_sizes_;
+  GridChunkKeeper chunk_keeper_;
+
+  void Initialize(
+      const Eigen::Isometry3d& origin_transform,
+      const DynamicSpatialHashedVoxelGridSizes& voxel_grid_sizes,
+      const T& default_value, const size_t expected_chunks)
+  {
+    if (voxel_grid_sizes.IsValid())
+    {
+      origin_transform_ = origin_transform;
+      inverse_origin_transform_ = origin_transform_.inverse();
+      voxel_grid_sizes_ = voxel_grid_sizes;
+      default_value_ = default_value;
+      chunk_keeper_ = GridChunkKeeper(expected_chunks);
+    }
+    else
+    {
+      throw std::invalid_argument("voxel_grid_sizes is not valid");
+    }
+  }
+
+  void Initialize(
+      const DynamicSpatialHashedVoxelGridSizes& voxel_grid_sizes,
+      const T& default_value, const size_t expected_chunks)
+  {
+    const Eigen::Isometry3d origin_transform = Eigen::Isometry3d::Identity();
+    Initialize(
+        origin_transform, voxel_grid_sizes, default_value, expected_chunks);
+  }
 
   uint64_t BaseSerializeSelf(
       std::vector<uint8_t>& buffer,
@@ -639,18 +1047,9 @@ private:
     // Serialize the default value
     value_serializer(default_value_, buffer);
     // Serialize the chunk sizes
-    GridSizes::Serialize(chunk_sizes_, buffer);
+    DynamicSpatialHashedVoxelGridSizes::Serialize(voxel_grid_sizes_, buffer);
     // Serialize the data
-    const auto chunk_serializer
-        = [&] (const GridChunk& chunk, std::vector<uint8_t>& serialize_buffer)
-    {
-      return GridChunk::Serialize(chunk, serialize_buffer, value_serializer);
-    };
-    serialization::SerializeMapLike<ChunkRegion, GridChunk, ChunkMap>(
-        chunks_, buffer, ChunkRegion::Serialize, chunk_serializer);
-    // Serialize the initialized
-    serialization::SerializeMemcpyable<uint8_t>(
-        static_cast<uint8_t>(initialized_), buffer);
+    GridChunkKeeper::Serialize(chunk_keeper_, buffer, value_serializer);
     // Figure out how many bytes were written
     const uint64_t end_buffer_size = buffer.size();
     const uint64_t bytes_written = end_buffer_size - start_buffer_size;
@@ -663,90 +1062,73 @@ private:
   {
     uint64_t current_position = starting_offset;
     // Deserialize the transforms
-    const auto origin_transform_deserialized
-        = serialization::DeserializeIsometry3d(buffer, current_position);
+    const auto origin_transform_deserialized =
+        serialization::DeserializeIsometry3d(buffer, current_position);
     origin_transform_ = origin_transform_deserialized.Value();
     current_position += origin_transform_deserialized.BytesRead();
     inverse_origin_transform_ = origin_transform_.inverse();
     // Deserialize the default value
-    const auto default_value_deserialized
-        = value_deserializer(buffer, current_position);
+    const auto default_value_deserialized =
+        value_deserializer(buffer, current_position);
     default_value_ = default_value_deserialized.Value();
     current_position += default_value_deserialized.BytesRead();
     // Deserialize the chunk sizes
-    const auto chunk_sizes_deserialized
-        = GridSizes::Deserialize(buffer, current_position);
-    chunk_sizes_ = chunk_sizes_deserialized.Value();
-    current_position += chunk_sizes_deserialized.BytesRead();
+    const auto voxel_grid_sizes_deserialized =
+        DynamicSpatialHashedVoxelGridSizes::Deserialize(
+            buffer, current_position);
+    voxel_grid_sizes_ = voxel_grid_sizes_deserialized.Value();
+    current_position += voxel_grid_sizes_deserialized.BytesRead();
     // Deserialize the data
-    const auto chunk_deserializer
-        = [&] (const std::vector<uint8_t>& deserialize_buffer,
-               const uint64_t offset)
+    const auto chunk_keeper_deserialized =
+        GridChunkKeeper::Deserialize(
+            buffer, current_position, value_deserializer);
+    chunk_keeper_ = chunk_keeper_deserialized.Value();
+    current_position += chunk_keeper_deserialized.BytesRead();
+    // Sanity check the chunks.
+    if (voxel_grid_sizes_.IsValid())
     {
-      return GridChunk::Deserialize(
-          deserialize_buffer, offset, value_deserializer);
-    };
-    const auto chunks_deserialized
-        = serialization::DeserializeMapLike<ChunkRegion, GridChunk, ChunkMap>(
-            buffer, current_position, ChunkRegion::Deserialize,
-            chunk_deserializer);
-    chunks_ = chunks_deserialized.Value();
-    current_position += chunks_deserialized.BytesRead();
-    // Deserialize the initialized
-    const auto initialized_deserialized
-        = serialization::DeserializeMemcpyable<uint8_t>(buffer,
-                                                        current_position);
-    initialized_ = static_cast<bool>(initialized_deserialized.Value());
-    current_position += initialized_deserialized.BytesRead();
-    // Safety checks
-    if (chunk_sizes_.Valid() != initialized_)
-    {
-      throw std::runtime_error("sizes_.Valid() != initialized_");
+      const int64_t num_expected_chunk_voxels =
+          voxel_grid_sizes_.ChunkNumTotalVoxels();
+
+      for (auto chunk_itr = chunk_keeper_.begin();
+          chunk_itr != chunk_keeper_.end(); ++chunk_itr)
+      {
+        const ChunkBase& chunk_base = chunk_itr->first;
+
+        const GridIndex chunk_base_index =
+            voxel_grid_sizes_.ChunkBaseToGridIndex(chunk_base);
+        const ChunkBase round_trip_chunk_base =
+            voxel_grid_sizes_.GridIndexToChunkBase(chunk_base_index);
+        if (chunk_base != round_trip_chunk_base)
+        {
+          throw std::runtime_error(
+              "Deserialized chunk does not round-trip chunk base");
+        }
+
+        const GridChunk& chunk = chunk_itr->second;
+        if (chunk.NumElements() != num_expected_chunk_voxels)
+        {
+          throw std::runtime_error(
+              "Deserialized chunk does not have the correct number of voxels");
+        }
+      }
     }
-    if (chunks_.size() > 0 && !chunk_sizes_.Valid())
+    else
     {
-      throw std::runtime_error("chunks.size() > 0 with invalid chunk sizes");
+      if (chunk_keeper_.NumChunks() > 0)
+      {
+        throw std::runtime_error(
+            "Non-empty chunk keeper with invalid voxel grid sizes");
+      }
     }
     // Figure out how many bytes were read
     const uint64_t bytes_read = current_position - starting_offset;
     return bytes_read;
   }
 
-  ChunkRegion GetContainingChunkRegion(
-      const Eigen::Vector4d& grid_location) const
+  void SetContents(const T& value)
   {
-    if (chunk_sizes_.Valid())
-    {
-      // Given a location in the grid frame, figure out which chunk region
-      // contains it.
-      const double raw_x_chunk_num = grid_location(0) / chunk_sizes_.XSize();
-      const double raw_y_chunk_num = grid_location(1) / chunk_sizes_.YSize();
-      const double raw_z_chunk_num = grid_location(2) / chunk_sizes_.ZSize();
-      const double region_base_x
-          = std::floor(raw_x_chunk_num) * chunk_sizes_.XSize();
-      const double region_base_y
-          = std::floor(raw_y_chunk_num) * chunk_sizes_.YSize();
-      const double region_base_z
-          = std::floor(raw_z_chunk_num) * chunk_sizes_.ZSize();
-      return ChunkRegion(region_base_x, region_base_y, region_base_z);
-    }
-    else
-    {
-      throw std::runtime_error("chunk_sizes_ is not valid");
-    }
-  }
-
-  void AllocateChunkAt(
-      const ChunkRegion& chunk_region, const DSHVGFillType fill_type)
-  {
-    const auto result = chunks_.emplace(
-        chunk_region,
-        GridChunk(chunk_region, chunk_sizes_, fill_type, default_value_));
-    if (result.second != true)
-    {
-      throw std::runtime_error(
-          "Attempted to allocate new chunk over existing chunk");
-    }
+    chunk_keeper_.SetContentsAllChunks(value);
   }
 
 protected:
@@ -771,7 +1153,14 @@ protected:
   /// disallow access to the grid. For example, this can be used to prohibit
   /// changes to a non-const grid, or to invalidate a cache if voxels are
   /// modified.
-  virtual bool OnMutableAccess(const Eigen::Vector4d& location) = 0;
+  virtual bool OnMutableAccess(const int64_t x_index,
+                               const int64_t y_index,
+                               const int64_t z_index) = 0;
+
+  bool OnMutableAccess(const GridIndex& index)
+  {
+    return OnMutableAccess(index.X(), index.Y(), index.Z());
+  }
 
   /// Callback on any mutable access to the grid. Return true/false to allow or
   /// disallow access to the grid. For example, this can be used to prohibit
@@ -782,31 +1171,20 @@ protected:
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
-  DynamicSpatialHashedVoxelGridBase(const GridSizes& chunk_sizes,
-                                    const T& default_value,
-                                    const size_t expected_chunks)
-      : DynamicSpatialHashedVoxelGridBase<T, BackingStore>(
-          Eigen::Isometry3d::Identity(), chunk_sizes, default_value,
-          expected_chunks) {}
-
-  DynamicSpatialHashedVoxelGridBase(const Eigen::Isometry3d& origin_transform,
-                                    const GridSizes& chunk_sizes,
-                                    const T& default_value,
-                                    const size_t expected_chunks)
+  DynamicSpatialHashedVoxelGridBase(
+      const DynamicSpatialHashedVoxelGridSizes& voxel_grid_sizes,
+      const T& default_value, const size_t expected_chunks)
   {
-    if (chunk_sizes.Valid())
-    {
-      origin_transform_ = origin_transform;
-      inverse_origin_transform_ = origin_transform_.inverse();
-      chunk_sizes_ = chunk_sizes;
-      default_value_ = default_value;
-      chunks_.reserve(expected_chunks);
-      initialized_ = true;
-    }
-    else
-    {
-      throw std::invalid_argument("chunk_sizes is not valid");
-    }
+    Initialize(voxel_grid_sizes, default_value, expected_chunks);
+  }
+
+  DynamicSpatialHashedVoxelGridBase(
+      const Eigen::Isometry3d& origin_transform,
+      const DynamicSpatialHashedVoxelGridSizes& voxel_grid_sizes,
+      const T& default_value, const size_t expected_chunks)
+  {
+    Initialize(
+        origin_transform, voxel_grid_sizes, default_value, expected_chunks);
   }
 
   DynamicSpatialHashedVoxelGridBase() = default;
@@ -841,206 +1219,70 @@ public:
     return bytes_read;
   }
 
-  bool IsInitialized() const { return initialized_; }
+  bool IsInitialized() const { return voxel_grid_sizes_.IsValid(); }
 
-  DynamicSpatialHashedGridQuery<const T> GetLocationImmutable(
-      const double x, const double y, const double z) const
+  void ResetWithDefaultValue()
   {
-    return GetLocationImmutable4d(Eigen::Vector4d(x, y, z, 1.0));
-  }
-
-  DynamicSpatialHashedGridQuery<const T> GetLocationImmutable3d(
-      const Eigen::Vector3d& location) const
-  {
-    return GetLocationImmutable4d(
-        Eigen::Vector4d(location.x(), location.y(), location.z(), 1.0));
-  }
-
-  DynamicSpatialHashedGridQuery<const T> GetLocationImmutable4d(
-      const Eigen::Vector4d& location) const
-  {
-    const Eigen::Vector4d grid_frame_location
-        = inverse_origin_transform_ * location;
-    const ChunkRegion region = GetContainingChunkRegion(grid_frame_location);
-    auto found_chunk_itr = chunks_.find(region);
-    if (found_chunk_itr != chunks_.end())
+    if (OnMutableRawAccess())
     {
-      return found_chunk_itr->second.GetLocationImmutable4d(
-          grid_frame_location);
+      SetContents(DefaultValue());
     }
     else
     {
-      return DynamicSpatialHashedGridQuery<const T>::NotFound();
+      throw std::runtime_error("Mutable raw access is prohibited");
     }
   }
 
-  DynamicSpatialHashedGridQuery<T> GetLocationMutable(
-      const double x, const double y, const double z)
+  void ResetWithNewValue(const T& new_value)
   {
-    return GetLocationMutable4d(Eigen::Vector4d(x, y, z, 1.0));
-  }
-
-  DynamicSpatialHashedGridQuery<T> GetLocationMutable3d(
-      const Eigen::Vector3d& location)
-  {
-    return GetLocationMutable4d(
-        Eigen::Vector4d(location.x(), location.y(), location.z(), 1.0));
-  }
-
-  DynamicSpatialHashedGridQuery<T> GetLocationMutable4d(
-      const Eigen::Vector4d& location)
-  {
-    const Eigen::Vector4d grid_frame_location
-        = inverse_origin_transform_ * location;
-    const ChunkRegion region = GetContainingChunkRegion(grid_frame_location);
-    auto found_chunk_itr = chunks_.find(region);
-    if (found_chunk_itr != chunks_.end())
+    if (OnMutableRawAccess())
     {
-      if (OnMutableAccess(grid_frame_location))
-      {
-        return found_chunk_itr->second.GetLocationMutable4d(grid_frame_location);
-      }
-      else
-      {
-        return DynamicSpatialHashedGridQuery<T>::MutableAccessProhibited();
-      }
+      SetContents(new_value);
     }
     else
     {
-      return DynamicSpatialHashedGridQuery<T>::NotFound();
+      throw std::runtime_error("Mutable raw access is prohibited");
     }
   }
 
-  DSHVGSetStatus SetLocation(
-      const double x, const double y, const double z,
-      const DSHVGSetType set_type, const T& value)
+  void ResetWithNewDefaultValue(const T& new_default)
   {
-    return SetLocation4d(Eigen::Vector4d(x, y, z, 1.0), set_type, value);
-  }
-
-  DSHVGSetStatus SetLocation3d(
-      const Eigen::Vector3d& location, const DSHVGSetType set_type,
-      const T& value)
-  {
-    return SetLocation4d(
-        Eigen::Vector4d(location.x(), location.y(), location.z(), 1.0),
-        set_type, value);
-  }
-
-  DSHVGSetStatus SetLocation4d(
-      const Eigen::Vector4d& location, const DSHVGSetType set_type,
-      const T& value)
-  {
-    const Eigen::Vector4d grid_frame_location
-        = inverse_origin_transform_ * location;
-    if (OnMutableAccess(grid_frame_location))
+    if (OnMutableRawAccess())
     {
-      const ChunkRegion region = GetContainingChunkRegion(grid_frame_location);
-      auto found_chunk_itr = chunks_.find(region);
-      if (found_chunk_itr != chunks_.end())
-      {
-        if (set_type == DSHVGSetType::SET_CELL)
-        {
-          return found_chunk_itr->second.SetCellLocation4d(
-              grid_frame_location, value);
-        }
-        else
-        {
-          return found_chunk_itr->second.SetChunkValue(value);
-        }
-      }
-      else
-      {
-        const DSHVGFillType fill_type
-            = (set_type == DSHVGSetType::SET_CELL)
-                ? DSHVGFillType::FILL_CELL : DSHVGFillType::FILL_CHUNK;
-        AllocateChunkAt(region, fill_type);
-        return SetLocation4d(location, set_type, value);
-      }
+      SetDefaultValue(new_default);
+      ResetWithDefaultValue();
     }
     else
     {
-      return DSHVGSetStatus::MUTABLE_ACCESS_PROHIBITED;
+      throw std::runtime_error("Mutable raw access is prohibited");
     }
   }
 
-  DSHVGSetStatus SetLocation(
-      const double x, const double y, const double z,
-      const DSHVGSetType set_type, T&& value)
-  {
-    return SetLocation4d(Eigen::Vector4d(x, y, z, 1.0), set_type, value);
-  }
-
-  DSHVGSetStatus SetLocation3d(
-      const Eigen::Vector3d& location, const DSHVGSetType set_type,
-      T&& value)
-  {
-    return SetLocation4d(
-        Eigen::Vector4d(location.x(), location.y(), location.z(), 1.0),
-        set_type, value);
-  }
-
-  DSHVGSetStatus SetLocation4d(
-      const Eigen::Vector4d& location, const DSHVGSetType set_type,
-      T&& value)
-  {
-    const Eigen::Vector4d grid_frame_location
-        = inverse_origin_transform_ * location;
-    if (OnMutableAccess(grid_frame_location))
-    {
-      const ChunkRegion region = GetContainingChunkRegion(grid_frame_location);
-      auto found_chunk_itr = chunks_.find(region);
-      if (found_chunk_itr != chunks_.end())
-      {
-        if (set_type == DSHVGSetType::SET_CELL)
-        {
-          return found_chunk_itr->second.SetCellLocation4d(
-              grid_frame_location, value);
-        }
-        else
-        {
-          return found_chunk_itr->second.SetChunkValue(value);
-        }
-      }
-      else
-      {
-        const DSHVGFillType fill_type
-            = (set_type == DSHVGSetType::SET_CELL)
-                ? DSHVGFillType::FILL_CELL : DSHVGFillType::FILL_CHUNK;
-        AllocateChunkAt(region, fill_type);
-        return SetLocation4d(location, set_type, value);
-      }
-    }
-    else
-    {
-      return DSHVGSetStatus::MUTABLE_ACCESS_PROHIBITED;
-    }
-  }
-
-  const GridSizes& GetChunkGridSizes() const { return chunk_sizes_; }
-
-  Eigen::Vector3d GetCellSizes() const { return chunk_sizes_.CellSizes(); }
-
-  Eigen::Vector3d GetChunkSizes() const { return chunk_sizes_.Sizes(); }
-
-  Eigen::Matrix<int64_t, 3, 1> GetChunkNumCells() const
-  {
-    return chunk_sizes_.NumCells();
-  }
-
-  const T& GetDefaultValue() const { return default_value_; }
+  const T& DefaultValue() const { return default_value_; }
 
   void SetDefaultValue(const T& default_value)
   {
-    default_value_ = default_value;
+    if (OnMutableRawAccess())
+    {
+      default_value_ = default_value;
+    }
+    else
+    {
+      throw std::runtime_error("Mutable raw access is prohibited");
+    }
   }
 
-  const Eigen::Isometry3d& GetOriginTransform() const
+  const DynamicSpatialHashedVoxelGridSizes& Sizes() const
+  {
+    return voxel_grid_sizes_;
+  }
+
+  const Eigen::Isometry3d& OriginTransform() const
   {
     return origin_transform_;
   }
 
-  const Eigen::Isometry3d& GetInverseOriginTransform() const
+  const Eigen::Isometry3d& InverseOriginTransform() const
   {
     return inverse_origin_transform_;
   }
@@ -1051,18 +1293,620 @@ public:
     inverse_origin_transform_ = origin_transform_.inverse();
   }
 
-  bool HasUniformCellSize() const { return chunk_sizes_.UniformCellSize(); }
+  // Helpers forwarded from our DynamicSpatialHashedVoxelGridSizes.
 
-  const ChunkMap& GetImmutableInternalChunks() const
+  // Accessors for voxel sizes.
+
+  Eigen::Vector3d VoxelSizes() const { return voxel_grid_sizes_.VoxelSizes(); }
+
+  double VoxelXSize() const { return voxel_grid_sizes_.VoxelXSize(); }
+
+  double VoxelYSize() const { return voxel_grid_sizes_.VoxelYSize(); }
+
+  double VoxelZSize() const { return voxel_grid_sizes_.VoxelZSize(); }
+
+  bool HasUniformVoxelSize() const
   {
-    return chunks_;
+    return voxel_grid_sizes_.HasUniformVoxelSize();
   }
 
-  ChunkMap& GetMutableInternalChunks() const
+  // Accessors for chunk sizes.
+
+  const Eigen::Vector3d& ChunkSizes() const
+  {
+    return voxel_grid_sizes_.ChunkSizes();
+  }
+
+  double ChunkXSize() const { return voxel_grid_sizes_.ChunkXSize(); }
+
+  double ChunkYSize() const { return voxel_grid_sizes_.ChunkYSize(); }
+
+  double ChunkZSize() const { return voxel_grid_sizes_.ChunkZSize(); }
+
+  // Accessors for chunk voxel counts.
+
+  const Vector3i64& ChunkVoxelCounts() const
+  {
+    return voxel_grid_sizes_.ChunkVoxelCounts();
+  }
+
+  int64_t ChunkNumXVoxels() const
+  {
+    return voxel_grid_sizes_.ChunkNumXVoxels();
+  }
+
+  int64_t ChunkNumYVoxels() const
+  {
+    return voxel_grid_sizes_.ChunkNumYVoxels();
+  }
+
+  int64_t ChunkNumZVoxels() const
+  {
+    return voxel_grid_sizes_.ChunkNumZVoxels();
+  }
+
+  int64_t ChunkNumTotalVoxels() const
+  {
+    return voxel_grid_sizes_.ChunkNumTotalVoxels();
+  }
+
+  // Index bounds checks.
+
+  bool CheckChunkIndexInBounds(const int64_t x_index,
+                               const int64_t y_index,
+                               const int64_t z_index) const
+  {
+    return voxel_grid_sizes_.CheckChunkIndexInBounds(x_index, y_index, z_index);
+  }
+
+  bool CheckChunkIndexInBounds(const ChunkIndex& index) const
+  {
+    return voxel_grid_sizes_.CheckChunkIndexInBounds(index);
+  }
+
+  bool CheckGridIndexInAllowedBounds(const int64_t x_index,
+                                     const int64_t y_index,
+                                     const int64_t z_index) const
+  {
+    return voxel_grid_sizes_.CheckGridIndexInAllowedBounds(
+        x_index, y_index, z_index);
+  }
+
+  bool CheckGridIndexInAllowedBounds(const GridIndex& index) const
+  {
+    return voxel_grid_sizes_.CheckGridIndexInAllowedBounds(index);
+  }
+
+  // Chunk index <-> data index conversions.
+
+  int64_t ChunkIndexToDataIndex(const int64_t x_index,
+                                const int64_t y_index,
+                                const int64_t z_index) const
+  {
+    return voxel_grid_sizes_.ChunkIndexToDataIndex(x_index, y_index, z_index);
+  }
+
+  int64_t ChunkIndexToDataIndex(const ChunkIndex& index) const
+  {
+    return voxel_grid_sizes_.ChunkIndexToDataIndex(index);
+  }
+
+  ChunkIndex DataIndexToChunkIndex(const int64_t data_index) const
+  {
+    return voxel_grid_sizes_.DataIndexToChunkIndex(data_index);
+  }
+
+  // Grid-frame location <-> index conversions.
+
+  GridIndex LocationInGridFrameToGridIndex3d(
+      const Eigen::Vector3d& location) const
+  {
+    return voxel_grid_sizes_.LocationInGridFrameToGridIndex3d(location);
+  }
+
+  GridIndex LocationInGridFrameToGridIndex4d(
+      const Eigen::Vector4d& location) const
+  {
+    return voxel_grid_sizes_.LocationInGridFrameToGridIndex4d(location);
+  }
+
+  GridIndex LocationInGridFrameToGridIndex(
+      const double x, const double y, const double z) const
+  {
+    return voxel_grid_sizes_.LocationInGridFrameToGridIndex(x, y, z);
+  }
+
+  Eigen::Vector4d GridIndexToLocationInGridFrame(
+      const int64_t x_index, const int64_t y_index, const int64_t z_index) const
+  {
+    return voxel_grid_sizes_.GridIndexToLocationInGridFrame(
+        x_index, y_index, z_index);
+  }
+
+  Eigen::Vector4d GridIndexToLocationInGridFrame(const GridIndex& index) const
+  {
+    return voxel_grid_sizes_.GridIndexToLocationInGridFrame(index);
+  }
+
+  // Chunk base <-> grid index conversions.
+
+  ChunkBase GridIndexToChunkBase(const int64_t x_index,
+                                 const int64_t y_index,
+                                 const int64_t z_index) const
+  {
+    return voxel_grid_sizes_.GridIndexToChunkBase(x_index, y_index, z_index);
+  }
+
+  ChunkBase GridIndexToChunkBase(const GridIndex& index) const
+  {
+    return voxel_grid_sizes_.GridIndexToChunkBase(index);
+  }
+
+  GridIndex ChunkBaseToGridIndex(const ChunkBase& base) const
+  {
+    return voxel_grid_sizes_.ChunkBaseToGridIndex(base);
+  }
+
+  // Location <-> grid-frame location conversions.
+
+  Eigen::Vector3d LocationToGridFrameLocation3d(
+      const Eigen::Vector3d& location) const
+  {
+    return InverseOriginTransform() * location;
+  }
+
+  Eigen::Vector4d LocationToGridFrameLocation4d(
+      const Eigen::Vector4d& location) const
+  {
+    return InverseOriginTransform() * location;
+  }
+
+  Eigen::Vector4d LocationToGridFrameLocation(
+      const double x, const double y, const double z) const
+  {
+    const Eigen::Vector4d location(x, y, z, 1.0);
+    return LocationToGridFrameLocation4d(location);
+  }
+
+  Eigen::Vector3d GridFrameLocationToLocation3d(
+      const Eigen::Vector3d& location) const
+  {
+    return OriginTransform() * location;
+  }
+
+  Eigen::Vector4d GridFrameLocationToLocation4d(
+      const Eigen::Vector4d& location) const
+  {
+    return OriginTransform() * location;
+  }
+
+  Eigen::Vector4d GridFrameLocationToLocation(
+      const double x, const double y, const double z) const
+  {
+    const Eigen::Vector4d location(x, y, z, 1.0);
+    return GridFrameLocationToLocation4d(location);
+  }
+
+  // Location <-> grid index conversions.
+
+  GridIndex LocationToGridIndex3d(const Eigen::Vector3d& location) const
+  {
+    const Eigen::Vector3d grid_frame_location =
+        LocationToGridFrameLocation3d(location);
+    return LocationInGridFrameToGridIndex3d(grid_frame_location);
+  }
+
+  GridIndex LocationToGridIndex4d(const Eigen::Vector4d& location) const
+  {
+    const Eigen::Vector4d grid_frame_location =
+        LocationToGridFrameLocation4d(location);
+    return LocationInGridFrameToGridIndex4d(grid_frame_location);
+  }
+
+  GridIndex LocationToGridIndex(
+      const double x, const double y, const double z) const
+  {
+    const Eigen::Vector4d grid_frame_location =
+        LocationToGridFrameLocation(x, y, z);
+    return LocationInGridFrameToGridIndex4d(grid_frame_location);
+  }
+
+  Eigen::Vector4d GridIndexToLocation(
+      const int64_t x_index, const int64_t y_index, const int64_t z_index) const
+  {
+    const Eigen::Vector4d grid_frame_location =
+        GridIndexToLocationInGridFrame(x_index, y_index, z_index);
+    return GridFrameLocationToLocation4d(grid_frame_location);
+  }
+
+  Eigen::Vector4d GridIndexToLocation(const GridIndex& index) const
+  {
+    const Eigen::Vector4d grid_frame_location =
+        GridIndexToLocationInGridFrame(index);
+    return GridFrameLocationToLocation4d(grid_frame_location);
+  }
+
+  // Immutable location-based queries.
+
+  DynamicSpatialHashedGridQuery<const T> GetLocationImmutable3d(
+      const Eigen::Vector3d& location) const
+  {
+    return GetIndexImmutable(LocationToGridIndex3d(location));
+  }
+
+  DynamicSpatialHashedGridQuery<const T> GetLocationImmutable4d(
+      const Eigen::Vector4d& location) const
+  {
+    return GetIndexImmutable(LocationToGridIndex4d(location));
+  }
+
+  DynamicSpatialHashedGridQuery<const T> GetLocationImmutable(
+      const double x, const double y, const double z) const
+  {
+    return GetIndexImmutable(LocationToGridIndex(x, y, z));
+  }
+
+  // Immutable index-based queries.
+
+  DynamicSpatialHashedGridQuery<const T> GetIndexImmutable(
+      const GridIndex& index) const
+  {
+    if (CheckGridIndexInAllowedBounds(index))
+    {
+      const ChunkBase chunk_base = GridIndexToChunkBase(index);
+      const auto maybe_chunk = chunk_keeper_.GetChunkImmutable(chunk_base);
+
+      if (maybe_chunk)
+      {
+        const ChunkIndex index_in_chunk = index - chunk_base;
+        const int64_t chunk_data_index =
+            voxel_grid_sizes_.ChunkIndexToDataIndex(index_in_chunk);
+        return DynamicSpatialHashedGridQuery<const T>::Success(
+            maybe_chunk.Value().AccessIndex(chunk_data_index));
+      }
+      else
+      {
+        return DynamicSpatialHashedGridQuery<const T>::NotFound();
+      }
+    }
+    else
+    {
+      return DynamicSpatialHashedGridQuery<const T>::OutOfBounds();
+    }
+  }
+
+  DynamicSpatialHashedGridQuery<const T> GetIndexImmutable(
+      const int64_t x_index, const int64_t y_index, const int64_t z_index) const
+  {
+    return GetIndexImmutable(GridIndex(x_index, y_index, z_index));
+  }
+
+  // Mutable location-based queries.
+
+  DynamicSpatialHashedGridQuery<T> GetLocationMutable3d(
+      const Eigen::Vector3d& location)
+  {
+    return GetIndexMutable(LocationToGridIndex3d(location));
+  }
+
+  DynamicSpatialHashedGridQuery<T> GetLocationMutable4d(
+      const Eigen::Vector4d& location)
+  {
+    return GetIndexMutable(LocationToGridIndex4d(location));
+  }
+
+  DynamicSpatialHashedGridQuery<T> GetLocationMutable(
+      const double x, const double y, const double z)
+  {
+    return GetIndexMutable(LocationToGridIndex(x, y, z));
+  }
+
+  DynamicSpatialHashedGridQuery<T> GetOrCreateLocationMutable3d(
+      const Eigen::Vector3d& location)
+  {
+    return GetOrCreateIndexMutable(LocationToGridIndex3d(location));
+  }
+
+  DynamicSpatialHashedGridQuery<T> GetOrCreateLocationMutable4d(
+      const Eigen::Vector4d& location)
+  {
+    return GetOrCreateIndexMutable(LocationToGridIndex4d(location));
+  }
+
+  DynamicSpatialHashedGridQuery<T> GetOrCreateLocationMutable(
+      const double x, const double y, const double z)
+  {
+    return GetOrCreateIndexMutable(LocationToGridIndex(x, y, z));
+  }
+
+  // Mutable index-based queries.
+
+  DynamicSpatialHashedGridQuery<T> GetIndexMutable(const GridIndex& index)
+  {
+    if (CheckGridIndexInAllowedBounds(index))
+    {
+      if (OnMutableAccess(index))
+      {
+        const ChunkBase chunk_base = GridIndexToChunkBase(index);
+        auto maybe_chunk = chunk_keeper_.GetChunkMutable(chunk_base);
+
+        if (maybe_chunk)
+        {
+          const ChunkIndex index_in_chunk = index - chunk_base;
+          const int64_t chunk_data_index =
+              voxel_grid_sizes_.ChunkIndexToDataIndex(index_in_chunk);
+          return DynamicSpatialHashedGridQuery<T>::Success(
+              maybe_chunk.Value().AccessIndex(chunk_data_index));
+        }
+        else
+        {
+          return DynamicSpatialHashedGridQuery<T>::NotFound();
+        }
+      }
+      else
+      {
+        return DynamicSpatialHashedGridQuery<T>::MutableAccessProhibited();
+      }
+    }
+    else
+    {
+      return DynamicSpatialHashedGridQuery<T>::OutOfBounds();
+    }
+  }
+
+  DynamicSpatialHashedGridQuery<T> GetIndexMutable(
+      const int64_t x_index, const int64_t y_index, const int64_t z_index)
+  {
+    return GetIndexMutable(GridIndex(x_index, y_index, z_index));
+  }
+
+  DynamicSpatialHashedGridQuery<T> GetOrCreateIndexMutable(
+      const GridIndex& index)
+  {
+    if (CheckGridIndexInAllowedBounds(index))
+    {
+      if (OnMutableAccess(index))
+      {
+        const ChunkBase chunk_base = GridIndexToChunkBase(index);
+        auto& chunk = chunk_keeper_.GetOrCreateChunkMutable(
+            chunk_base, ChunkNumTotalVoxels(), DefaultValue()).Value();
+        const ChunkIndex index_in_chunk = index - chunk_base;
+        const int64_t chunk_data_index =
+            voxel_grid_sizes_.ChunkIndexToDataIndex(index_in_chunk);
+        return DynamicSpatialHashedGridQuery<T>::Success(
+            chunk.AccessIndex(chunk_data_index));
+      }
+      else
+      {
+        return DynamicSpatialHashedGridQuery<T>::MutableAccessProhibited();
+      }
+    }
+    else
+    {
+      return DynamicSpatialHashedGridQuery<T>::OutOfBounds();
+    }
+  }
+
+  DynamicSpatialHashedGridQuery<T> GetOrCreateIndexMutable(
+      const int64_t x_index, const int64_t y_index, const int64_t z_index)
+  {
+    return GetOrCreateIndexMutable(GridIndex(x_index, y_index, z_index));
+  }
+
+  // Location-based setters.
+
+  AccessStatus SetLocation3d(const Eigen::Vector3d& location, const T& value)
+  {
+    return SetIndex(LocationToGridIndex3d(location), value);
+  }
+
+  AccessStatus SetLocation4d(const Eigen::Vector4d& location, const T& value)
+  {
+    return SetIndex(LocationToGridIndex4d(location), value);
+  }
+
+  AccessStatus SetLocation(
+      const double x, const double y, const double z, const T& value)
+  {
+    return SetIndex(LocationToGridIndex(x, y, z), value);
+  }
+
+  // Index-based setters.
+
+  AccessStatus SetIndex(const GridIndex& index, const T& value)
+  {
+    if (CheckGridIndexInAllowedBounds(index))
+    {
+      if (OnMutableAccess(index))
+      {
+        const ChunkBase chunk_base = GridIndexToChunkBase(index);
+        auto& chunk = chunk_keeper_.GetOrCreateChunkMutable(
+            chunk_base, ChunkNumTotalVoxels(), DefaultValue()).Value();
+        const ChunkIndex index_in_chunk = index - chunk_base;
+        const int64_t chunk_data_index =
+            voxel_grid_sizes_.ChunkIndexToDataIndex(index_in_chunk);
+        chunk.AccessIndex(chunk_data_index) = value;
+        return AccessStatus::SUCCESS;
+      }
+      else
+      {
+        return AccessStatus::MUTABLE_ACCESS_PROHIBITED;
+      }
+    }
+    else
+    {
+      return AccessStatus::OUT_OF_BOUNDS;
+    }
+  }
+
+  AccessStatus SetIndex(
+      const int64_t x_index, const int64_t y_index, const int64_t z_index,
+      const T& value)
+  {
+    return SetIndex(GridIndex(x_index, y_index, z_index), value);
+  }
+
+  // Location-based setters (for temporary values).
+
+  AccessStatus SetLocation3d(const Eigen::Vector3d& location, T&& value)
+  {
+    return SetIndex(LocationToGridIndex3d(location), value);
+  }
+
+  AccessStatus SetLocation4d(const Eigen::Vector4d& location, T&& value)
+  {
+    return SetIndex(LocationToGridIndex4d(location), value);
+  }
+
+  AccessStatus SetLocation(
+      const double x, const double y, const double z, T&& value)
+  {
+    return SetIndex(LocationToGridIndex(x, y, z), value);
+  }
+
+  // Index-based setters (for temporary values).
+
+  AccessStatus SetIndex(const GridIndex& index, T&& value)
+  {
+    if (CheckGridIndexInAllowedBounds(index))
+    {
+      if (OnMutableAccess(index))
+      {
+        const ChunkBase chunk_base = GridIndexToChunkBase(index);
+        auto& chunk = chunk_keeper_.GetOrCreateChunkMutable(
+            chunk_base, ChunkNumTotalVoxels(), DefaultValue()).Value();
+        const ChunkIndex index_in_chunk = index - chunk_base;
+        const int64_t chunk_data_index =
+            voxel_grid_sizes_.ChunkIndexToDataIndex(index_in_chunk);
+        chunk.AccessIndex(chunk_data_index) = value;
+        return AccessStatus::SUCCESS;
+      }
+      else
+      {
+        return AccessStatus::MUTABLE_ACCESS_PROHIBITED;
+      }
+    }
+    else
+    {
+      return AccessStatus::OUT_OF_BOUNDS;
+    }
+  }
+
+  AccessStatus SetIndex(
+      const int64_t x_index, const int64_t y_index, const int64_t z_index,
+      T&& value)
+  {
+    return SetIndex(GridIndex(x_index, y_index, z_index), std::move(value));
+  }
+
+  // Erase operations.
+
+  AccessStatus EraseChunkContainingLocation3d(const Eigen::Vector3d& location)
+  {
+    return EraseChunkContainingIndex(LocationToGridIndex3d(location));
+  }
+
+  AccessStatus EraseChunkContainingLocation4d(const Eigen::Vector3d& location)
+  {
+    return EraseChunkContainingIndex(LocationToGridIndex4d(location));
+  }
+
+  AccessStatus EraseChunkContainingLocation(
+      const double x, const double y, const double z)
+  {
+    return EraseChunkContainingIndex(LocationToGridIndex(x, y, z));
+  }
+
+  AccessStatus EraseChunkContainingIndex(const GridIndex& index)
+  {
+    if (CheckGridIndexInAllowedBounds(index))
+    {
+      if (OnMutableAccess(index))
+      {
+        const ChunkBase chunk_base = GridIndexToChunkBase(index);
+        const bool erased = chunk_keeper_.EraseChunk(chunk_base);
+
+        if (erased)
+        {
+          return AccessStatus::SUCCESS;
+        }
+        else
+        {
+          return AccessStatus::NOT_FOUND;
+        }
+      }
+      else
+      {
+        return AccessStatus::MUTABLE_ACCESS_PROHIBITED;
+      }
+    }
+    else
+    {
+      return AccessStatus::OUT_OF_BOUNDS;
+    }
+  }
+
+  AccessStatus EraseChunkContainingIndex(
+      const int64_t x_index, const int64_t y_index, const int64_t z_index)
+  {
+    return EraseChunkContainingIndex(GridIndex(x_index, y_index, z_index));
+  }
+
+  AccessStatus EraseChunk(const ChunkBase& chunk_base)
+  {
+    const GridIndex index = ChunkBaseToGridIndex(chunk_base);
+
+    if (CheckGridIndexInAllowedBounds(index))
+    {
+      if (OnMutableAccess(index))
+      {
+        const bool erased = chunk_keeper_.EraseChunk(chunk_base);
+
+        if (erased)
+        {
+          return AccessStatus::SUCCESS;
+        }
+        else
+        {
+          return AccessStatus::NOT_FOUND;
+        }
+      }
+      else
+      {
+        return AccessStatus::MUTABLE_ACCESS_PROHIBITED;
+      }
+    }
+    else
+    {
+      return AccessStatus::OUT_OF_BOUNDS;
+    }
+  }
+
+  AccessStatus EraseAllChunks()
   {
     if (OnMutableRawAccess())
     {
-      return chunks_;
+      chunk_keeper_.EraseAllChunks();
+      return AccessStatus::SUCCESS;
+    }
+    else
+    {
+      return AccessStatus::MUTABLE_ACCESS_PROHIBITED;
+    }
+  }
+
+  int64_t NumChunks() const { return chunk_keeper_.NumChunks(); }
+
+  const GridChunkKeeper& GetImmutableInternalChunkKeeper() const
+  {
+    return chunk_keeper_;
+  }
+
+  GridChunkKeeper& GetMutableInternalChunkKeeper() const
+  {
+    if (OnMutableRawAccess())
+    {
+      return chunk_keeper_;
     }
     else
     {
@@ -1104,9 +1948,13 @@ private:
     return 0;
   }
 
-  bool OnMutableAccess(const Eigen::Vector4d& location) override
+  bool OnMutableAccess(const int64_t x_index,
+                       const int64_t y_index,
+                       const int64_t z_index) override
   {
-    CRU_UNUSED(location);
+    CRU_UNUSED(x_index);
+    CRU_UNUSED(y_index);
+    CRU_UNUSED(z_index);
     return true;
   }
 
@@ -1127,25 +1975,23 @@ public:
           const serialization::Deserializer<T>& value_deserializer)
   {
     DynamicSpatialHashedVoxelGrid<T, BackingStore> temp_grid;
-    const uint64_t bytes_read
-        = temp_grid.DeserializeSelf(buffer, starting_offset,
-                                    value_deserializer);
+    const uint64_t bytes_read = temp_grid.DeserializeSelf(
+        buffer, starting_offset, value_deserializer);
     return serialization::MakeDeserialized(temp_grid, bytes_read);
   }
 
-  DynamicSpatialHashedVoxelGrid(const GridSizes& chunk_sizes,
-                                const T& default_value,
-                                const size_t expected_chunks)
+  DynamicSpatialHashedVoxelGrid(
+      const DynamicSpatialHashedVoxelGridSizes& voxel_grid_sizes,
+      const T& default_value, const size_t expected_chunks)
       : DynamicSpatialHashedVoxelGridBase<T, BackingStore>(
-          Eigen::Isometry3d::Identity(), chunk_sizes, default_value,
-          expected_chunks) {}
+          voxel_grid_sizes, default_value, expected_chunks) {}
 
-  DynamicSpatialHashedVoxelGrid(const Eigen::Isometry3d& origin_transform,
-                                const GridSizes& chunk_sizes,
-                                const T& default_value,
-                                const size_t expected_chunks)
+  DynamicSpatialHashedVoxelGrid(
+      const Eigen::Isometry3d& origin_transform,
+      const DynamicSpatialHashedVoxelGridSizes& voxel_grid_sizes,
+      const T& default_value, const size_t expected_chunks)
       : DynamicSpatialHashedVoxelGridBase<T, BackingStore>(
-          origin_transform, chunk_sizes, default_value, expected_chunks) {}
+          origin_transform, voxel_grid_sizes, default_value, expected_chunks) {}
 
   DynamicSpatialHashedVoxelGrid()
       : DynamicSpatialHashedVoxelGridBase<T, BackingStore>() {}
@@ -1157,15 +2003,14 @@ CRU_NAMESPACE_END
 namespace std
 {
   template <>
-  struct hash<common_robotics_utilities::voxel_grid::ChunkRegion>
+  struct hash<common_robotics_utilities::voxel_grid::ChunkBase>
   {
     std::size_t operator()(
-        const common_robotics_utilities::voxel_grid::ChunkRegion& region) const
+        const common_robotics_utilities::voxel_grid::ChunkBase& base) const
     {
-      const Eigen::Vector4d& base = region.Base();
       std::size_t hash_val = 0;
       common_robotics_utilities::utility::hash_combine(
-          hash_val, base(0), base(1), base(2));
+          hash_val, base.X(), base.Y(), base.Z());
       return hash_val;
     }
   };

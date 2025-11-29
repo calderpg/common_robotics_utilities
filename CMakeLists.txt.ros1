@@ -111,6 +111,7 @@ add_library(${PROJECT_NAME}
             include/${PROJECT_NAME}/time_optimal_trajectory_parametrization.hpp
             include/${PROJECT_NAME}/utility.hpp
             include/${PROJECT_NAME}/voxel_grid.hpp
+            include/${PROJECT_NAME}/voxel_grid_common.hpp
             include/${PROJECT_NAME}/zlib_helpers.hpp
             src/${PROJECT_NAME}/base64_helpers.cpp
             src/${PROJECT_NAME}/conversions.cpp

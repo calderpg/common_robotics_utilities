@@ -1006,35 +1006,35 @@ private:
   Eigen::Isometry3d origin_transform_ = Eigen::Isometry3d::Identity();
   Eigen::Isometry3d inverse_origin_transform_ = Eigen::Isometry3d::Identity();
   T default_value_;
-  DynamicSpatialHashedVoxelGridSizes voxel_grid_sizes_;
+  DynamicSpatialHashedVoxelGridSizes control_sizes_;
   GridChunkKeeper chunk_keeper_;
 
   void Initialize(
       const Eigen::Isometry3d& origin_transform,
-      const DynamicSpatialHashedVoxelGridSizes& voxel_grid_sizes,
+      const DynamicSpatialHashedVoxelGridSizes& control_sizes,
       const T& default_value, const size_t expected_chunks)
   {
-    if (voxel_grid_sizes.IsValid())
+    if (control_sizes.IsValid())
     {
       origin_transform_ = origin_transform;
       inverse_origin_transform_ = origin_transform_.inverse();
-      voxel_grid_sizes_ = voxel_grid_sizes;
+      control_sizes_ = control_sizes;
       default_value_ = default_value;
       chunk_keeper_ = GridChunkKeeper(expected_chunks);
     }
     else
     {
-      throw std::invalid_argument("voxel_grid_sizes is not valid");
+      throw std::invalid_argument("control_sizes is not valid");
     }
   }
 
   void Initialize(
-      const DynamicSpatialHashedVoxelGridSizes& voxel_grid_sizes,
+      const DynamicSpatialHashedVoxelGridSizes& control_sizes,
       const T& default_value, const size_t expected_chunks)
   {
     const Eigen::Isometry3d origin_transform = Eigen::Isometry3d::Identity();
     Initialize(
-        origin_transform, voxel_grid_sizes, default_value, expected_chunks);
+        origin_transform, control_sizes, default_value, expected_chunks);
   }
 
   uint64_t BaseSerializeSelf(
@@ -1047,7 +1047,7 @@ private:
     // Serialize the default value
     value_serializer(default_value_, buffer);
     // Serialize the chunk sizes
-    DynamicSpatialHashedVoxelGridSizes::Serialize(voxel_grid_sizes_, buffer);
+    DynamicSpatialHashedVoxelGridSizes::Serialize(control_sizes_, buffer);
     // Serialize the data
     GridChunkKeeper::Serialize(chunk_keeper_, buffer, value_serializer);
     // Figure out how many bytes were written
@@ -1073,11 +1073,11 @@ private:
     default_value_ = default_value_deserialized.Value();
     current_position += default_value_deserialized.BytesRead();
     // Deserialize the chunk sizes
-    const auto voxel_grid_sizes_deserialized =
+    const auto control_sizes_deserialized =
         DynamicSpatialHashedVoxelGridSizes::Deserialize(
             buffer, current_position);
-    voxel_grid_sizes_ = voxel_grid_sizes_deserialized.Value();
-    current_position += voxel_grid_sizes_deserialized.BytesRead();
+    control_sizes_ = control_sizes_deserialized.Value();
+    current_position += control_sizes_deserialized.BytesRead();
     // Deserialize the data
     const auto chunk_keeper_deserialized =
         GridChunkKeeper::Deserialize(
@@ -1085,10 +1085,10 @@ private:
     chunk_keeper_ = chunk_keeper_deserialized.Value();
     current_position += chunk_keeper_deserialized.BytesRead();
     // Sanity check the chunks.
-    if (voxel_grid_sizes_.IsValid())
+    if (control_sizes_.IsValid())
     {
       const int64_t num_expected_chunk_voxels =
-          voxel_grid_sizes_.ChunkNumTotalVoxels();
+          control_sizes_.ChunkNumTotalVoxels();
 
       for (auto chunk_itr = chunk_keeper_.begin();
           chunk_itr != chunk_keeper_.end(); ++chunk_itr)
@@ -1096,9 +1096,9 @@ private:
         const ChunkBase& chunk_base = chunk_itr->first;
 
         const GridIndex chunk_base_index =
-            voxel_grid_sizes_.ChunkBaseToGridIndex(chunk_base);
+            control_sizes_.ChunkBaseToGridIndex(chunk_base);
         const ChunkBase round_trip_chunk_base =
-            voxel_grid_sizes_.GridIndexToChunkBase(chunk_base_index);
+            control_sizes_.GridIndexToChunkBase(chunk_base_index);
         if (chunk_base != round_trip_chunk_base)
         {
           throw std::runtime_error(
@@ -1172,19 +1172,19 @@ public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
   DynamicSpatialHashedVoxelGridBase(
-      const DynamicSpatialHashedVoxelGridSizes& voxel_grid_sizes,
+      const DynamicSpatialHashedVoxelGridSizes& control_sizes,
       const T& default_value, const size_t expected_chunks)
   {
-    Initialize(voxel_grid_sizes, default_value, expected_chunks);
+    Initialize(control_sizes, default_value, expected_chunks);
   }
 
   DynamicSpatialHashedVoxelGridBase(
       const Eigen::Isometry3d& origin_transform,
-      const DynamicSpatialHashedVoxelGridSizes& voxel_grid_sizes,
+      const DynamicSpatialHashedVoxelGridSizes& control_sizes,
       const T& default_value, const size_t expected_chunks)
   {
     Initialize(
-        origin_transform, voxel_grid_sizes, default_value, expected_chunks);
+        origin_transform, control_sizes, default_value, expected_chunks);
   }
 
   DynamicSpatialHashedVoxelGridBase() = default;
@@ -1219,7 +1219,7 @@ public:
     return bytes_read;
   }
 
-  bool IsInitialized() const { return voxel_grid_sizes_.IsValid(); }
+  bool IsInitialized() const { return control_sizes_.IsValid(); }
 
   void ResetWithDefaultValue()
   {
@@ -1272,9 +1272,9 @@ public:
     }
   }
 
-  const DynamicSpatialHashedVoxelGridSizes& Sizes() const
+  const DynamicSpatialHashedVoxelGridSizes& ControlSizes() const
   {
-    return voxel_grid_sizes_;
+    return control_sizes_;
   }
 
   const Eigen::Isometry3d& OriginTransform() const
@@ -1297,57 +1297,48 @@ public:
 
   // Accessors for voxel sizes.
 
-  Eigen::Vector3d VoxelSizes() const { return voxel_grid_sizes_.VoxelSizes(); }
+  Eigen::Vector3d VoxelSizes() const { return control_sizes_.VoxelSizes(); }
 
-  double VoxelXSize() const { return voxel_grid_sizes_.VoxelXSize(); }
+  double VoxelXSize() const { return control_sizes_.VoxelXSize(); }
 
-  double VoxelYSize() const { return voxel_grid_sizes_.VoxelYSize(); }
+  double VoxelYSize() const { return control_sizes_.VoxelYSize(); }
 
-  double VoxelZSize() const { return voxel_grid_sizes_.VoxelZSize(); }
+  double VoxelZSize() const { return control_sizes_.VoxelZSize(); }
 
   bool HasUniformVoxelSize() const
   {
-    return voxel_grid_sizes_.HasUniformVoxelSize();
+    return control_sizes_.HasUniformVoxelSize();
   }
 
   // Accessors for chunk sizes.
 
   const Eigen::Vector3d& ChunkSizes() const
   {
-    return voxel_grid_sizes_.ChunkSizes();
+    return control_sizes_.ChunkSizes();
   }
 
-  double ChunkXSize() const { return voxel_grid_sizes_.ChunkXSize(); }
+  double ChunkXSize() const { return control_sizes_.ChunkXSize(); }
 
-  double ChunkYSize() const { return voxel_grid_sizes_.ChunkYSize(); }
+  double ChunkYSize() const { return control_sizes_.ChunkYSize(); }
 
-  double ChunkZSize() const { return voxel_grid_sizes_.ChunkZSize(); }
+  double ChunkZSize() const { return control_sizes_.ChunkZSize(); }
 
   // Accessors for chunk voxel counts.
 
   const Vector3i64& ChunkVoxelCounts() const
   {
-    return voxel_grid_sizes_.ChunkVoxelCounts();
+    return control_sizes_.ChunkVoxelCounts();
   }
 
-  int64_t ChunkNumXVoxels() const
-  {
-    return voxel_grid_sizes_.ChunkNumXVoxels();
-  }
+  int64_t ChunkNumXVoxels() const { return control_sizes_.ChunkNumXVoxels(); }
 
-  int64_t ChunkNumYVoxels() const
-  {
-    return voxel_grid_sizes_.ChunkNumYVoxels();
-  }
+  int64_t ChunkNumYVoxels() const { return control_sizes_.ChunkNumYVoxels(); }
 
-  int64_t ChunkNumZVoxels() const
-  {
-    return voxel_grid_sizes_.ChunkNumZVoxels();
-  }
+  int64_t ChunkNumZVoxels() const { return control_sizes_.ChunkNumZVoxels(); }
 
   int64_t ChunkNumTotalVoxels() const
   {
-    return voxel_grid_sizes_.ChunkNumTotalVoxels();
+    return control_sizes_.ChunkNumTotalVoxels();
   }
 
   // Index bounds checks.
@@ -1356,25 +1347,25 @@ public:
                                const int64_t y_index,
                                const int64_t z_index) const
   {
-    return voxel_grid_sizes_.CheckChunkIndexInBounds(x_index, y_index, z_index);
+    return control_sizes_.CheckChunkIndexInBounds(x_index, y_index, z_index);
   }
 
   bool CheckChunkIndexInBounds(const ChunkIndex& index) const
   {
-    return voxel_grid_sizes_.CheckChunkIndexInBounds(index);
+    return control_sizes_.CheckChunkIndexInBounds(index);
   }
 
   bool CheckGridIndexInAllowedBounds(const int64_t x_index,
                                      const int64_t y_index,
                                      const int64_t z_index) const
   {
-    return voxel_grid_sizes_.CheckGridIndexInAllowedBounds(
+    return control_sizes_.CheckGridIndexInAllowedBounds(
         x_index, y_index, z_index);
   }
 
   bool CheckGridIndexInAllowedBounds(const GridIndex& index) const
   {
-    return voxel_grid_sizes_.CheckGridIndexInAllowedBounds(index);
+    return control_sizes_.CheckGridIndexInAllowedBounds(index);
   }
 
   // Chunk index <-> data index conversions.
@@ -1383,17 +1374,17 @@ public:
                                 const int64_t y_index,
                                 const int64_t z_index) const
   {
-    return voxel_grid_sizes_.ChunkIndexToDataIndex(x_index, y_index, z_index);
+    return control_sizes_.ChunkIndexToDataIndex(x_index, y_index, z_index);
   }
 
   int64_t ChunkIndexToDataIndex(const ChunkIndex& index) const
   {
-    return voxel_grid_sizes_.ChunkIndexToDataIndex(index);
+    return control_sizes_.ChunkIndexToDataIndex(index);
   }
 
   ChunkIndex DataIndexToChunkIndex(const int64_t data_index) const
   {
-    return voxel_grid_sizes_.DataIndexToChunkIndex(data_index);
+    return control_sizes_.DataIndexToChunkIndex(data_index);
   }
 
   // Grid-frame location <-> index conversions.
@@ -1401,31 +1392,31 @@ public:
   GridIndex LocationInGridFrameToGridIndex3d(
       const Eigen::Vector3d& location) const
   {
-    return voxel_grid_sizes_.LocationInGridFrameToGridIndex3d(location);
+    return control_sizes_.LocationInGridFrameToGridIndex3d(location);
   }
 
   GridIndex LocationInGridFrameToGridIndex4d(
       const Eigen::Vector4d& location) const
   {
-    return voxel_grid_sizes_.LocationInGridFrameToGridIndex4d(location);
+    return control_sizes_.LocationInGridFrameToGridIndex4d(location);
   }
 
   GridIndex LocationInGridFrameToGridIndex(
       const double x, const double y, const double z) const
   {
-    return voxel_grid_sizes_.LocationInGridFrameToGridIndex(x, y, z);
+    return control_sizes_.LocationInGridFrameToGridIndex(x, y, z);
   }
 
   Eigen::Vector4d GridIndexToLocationInGridFrame(
       const int64_t x_index, const int64_t y_index, const int64_t z_index) const
   {
-    return voxel_grid_sizes_.GridIndexToLocationInGridFrame(
+    return control_sizes_.GridIndexToLocationInGridFrame(
         x_index, y_index, z_index);
   }
 
   Eigen::Vector4d GridIndexToLocationInGridFrame(const GridIndex& index) const
   {
-    return voxel_grid_sizes_.GridIndexToLocationInGridFrame(index);
+    return control_sizes_.GridIndexToLocationInGridFrame(index);
   }
 
   // Chunk base <-> grid index conversions.
@@ -1434,17 +1425,17 @@ public:
                                  const int64_t y_index,
                                  const int64_t z_index) const
   {
-    return voxel_grid_sizes_.GridIndexToChunkBase(x_index, y_index, z_index);
+    return control_sizes_.GridIndexToChunkBase(x_index, y_index, z_index);
   }
 
   ChunkBase GridIndexToChunkBase(const GridIndex& index) const
   {
-    return voxel_grid_sizes_.GridIndexToChunkBase(index);
+    return control_sizes_.GridIndexToChunkBase(index);
   }
 
   GridIndex ChunkBaseToGridIndex(const ChunkBase& base) const
   {
-    return voxel_grid_sizes_.ChunkBaseToGridIndex(base);
+    return control_sizes_.ChunkBaseToGridIndex(base);
   }
 
   // Location <-> grid-frame location conversions.
@@ -1560,7 +1551,7 @@ public:
       {
         const ChunkIndex index_in_chunk = index - chunk_base;
         const int64_t chunk_data_index =
-            voxel_grid_sizes_.ChunkIndexToDataIndex(index_in_chunk);
+            control_sizes_.ChunkIndexToDataIndex(index_in_chunk);
         return DynamicSpatialHashedGridQuery<const T>::Success(
             maybe_chunk.Value().AccessIndex(chunk_data_index));
       }
@@ -1634,7 +1625,7 @@ public:
         {
           const ChunkIndex index_in_chunk = index - chunk_base;
           const int64_t chunk_data_index =
-              voxel_grid_sizes_.ChunkIndexToDataIndex(index_in_chunk);
+              control_sizes_.ChunkIndexToDataIndex(index_in_chunk);
           return DynamicSpatialHashedGridQuery<T>::Success(
               maybe_chunk.Value().AccessIndex(chunk_data_index));
         }
@@ -1672,7 +1663,7 @@ public:
             chunk_base, ChunkNumTotalVoxels(), DefaultValue()).Value();
         const ChunkIndex index_in_chunk = index - chunk_base;
         const int64_t chunk_data_index =
-            voxel_grid_sizes_.ChunkIndexToDataIndex(index_in_chunk);
+            control_sizes_.ChunkIndexToDataIndex(index_in_chunk);
         return DynamicSpatialHashedGridQuery<T>::Success(
             chunk.AccessIndex(chunk_data_index));
       }
@@ -1724,7 +1715,7 @@ public:
             chunk_base, ChunkNumTotalVoxels(), DefaultValue()).Value();
         const ChunkIndex index_in_chunk = index - chunk_base;
         const int64_t chunk_data_index =
-            voxel_grid_sizes_.ChunkIndexToDataIndex(index_in_chunk);
+            control_sizes_.ChunkIndexToDataIndex(index_in_chunk);
         chunk.AccessIndex(chunk_data_index) = value;
         return AccessStatus::SUCCESS;
       }
@@ -1777,7 +1768,7 @@ public:
             chunk_base, ChunkNumTotalVoxels(), DefaultValue()).Value();
         const ChunkIndex index_in_chunk = index - chunk_base;
         const int64_t chunk_data_index =
-            voxel_grid_sizes_.ChunkIndexToDataIndex(index_in_chunk);
+            control_sizes_.ChunkIndexToDataIndex(index_in_chunk);
         chunk.AccessIndex(chunk_data_index) = value;
         return AccessStatus::SUCCESS;
       }
@@ -1981,17 +1972,17 @@ public:
   }
 
   DynamicSpatialHashedVoxelGrid(
-      const DynamicSpatialHashedVoxelGridSizes& voxel_grid_sizes,
+      const DynamicSpatialHashedVoxelGridSizes& control_sizes,
       const T& default_value, const size_t expected_chunks)
       : DynamicSpatialHashedVoxelGridBase<T, BackingStore>(
-          voxel_grid_sizes, default_value, expected_chunks) {}
+          control_sizes, default_value, expected_chunks) {}
 
   DynamicSpatialHashedVoxelGrid(
       const Eigen::Isometry3d& origin_transform,
-      const DynamicSpatialHashedVoxelGridSizes& voxel_grid_sizes,
+      const DynamicSpatialHashedVoxelGridSizes& control_sizes,
       const T& default_value, const size_t expected_chunks)
       : DynamicSpatialHashedVoxelGridBase<T, BackingStore>(
-          origin_transform, voxel_grid_sizes, default_value, expected_chunks) {}
+          origin_transform, control_sizes, default_value, expected_chunks) {}
 
   DynamicSpatialHashedVoxelGrid()
       : DynamicSpatialHashedVoxelGridBase<T, BackingStore>() {}

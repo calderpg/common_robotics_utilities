@@ -230,11 +230,11 @@ public:
 
   const Eigen::Vector3d& GridSizes() const { return grid_sizes_; }
 
-  double XSize() const { return grid_sizes_.x(); }
+  double GridXSize() const { return grid_sizes_.x(); }
 
-  double YSize() const { return grid_sizes_.y(); }
+  double GridYSize() const { return grid_sizes_.y(); }
 
-  double ZSize() const { return grid_sizes_.z(); }
+  double GridZSize() const { return grid_sizes_.z(); }
 
   // Accessors for voxel counts.
 
@@ -475,37 +475,37 @@ private:
   T default_value_;
   T oob_value_;
   BackingStore data_;
-  VoxelGridSizes voxel_grid_sizes_;
+  VoxelGridSizes control_sizes_;
 
   void Initialize(const Eigen::Isometry3d& origin_transform,
-                  const VoxelGridSizes& voxel_grid_sizes,
+                  const VoxelGridSizes& control_sizes,
                   const T& default_value,
                   const T& oob_value)
   {
-    if (voxel_grid_sizes.IsValid())
+    if (control_sizes.IsValid())
     {
       origin_transform_ = origin_transform;
       inverse_origin_transform_ = origin_transform_.inverse();
       default_value_ = default_value;
       oob_value_ = oob_value;
-      voxel_grid_sizes_ = voxel_grid_sizes;
+      control_sizes_ = control_sizes;
       SetContents(default_value_);
     }
     else
     {
-      throw std::invalid_argument("voxel_grid_sizes is not valid");
+      throw std::invalid_argument("control_sizes is not valid");
     }
   }
 
-  void Initialize(const VoxelGridSizes& voxel_grid_sizes,
+  void Initialize(const VoxelGridSizes& control_sizes,
                   const T& default_value,
                   const T& oob_value)
   {
     const Eigen::Translation3d origin_translation(
-        voxel_grid_sizes.GridSizes() * -0.5);
+        control_sizes.GridSizes() * -0.5);
     const Eigen::Isometry3d origin_transform =
         origin_translation * Eigen::Quaterniond::Identity();
-    Initialize(origin_transform, voxel_grid_sizes, default_value, oob_value);
+    Initialize(origin_transform, control_sizes, default_value, oob_value);
   }
 
   T& AccessIndex(const int64_t& data_index)
@@ -558,7 +558,7 @@ private:
     serialization::SerializeVectorLike<T, BackingStore>(
           data_, buffer, value_serializer);
     // Serialize the grid sizes
-    VoxelGridSizes::Serialize(voxel_grid_sizes_, buffer);
+    VoxelGridSizes::Serialize(control_sizes_, buffer);
     // Figure out how many bytes were written
     const uint64_t end_buffer_size = buffer.size();
     const uint64_t bytes_written = end_buffer_size - start_buffer_size;
@@ -592,16 +592,16 @@ private:
               buffer, current_position, value_deserializer);
     data_ = data_deserialized.Value();
     current_position += data_deserialized.BytesRead();
-    // Deserialize the cell sizes
-    const auto voxel_grid_sizes_deserialized =
+    // Deserialize the sizes
+    const auto control_sizes_deserialized =
         VoxelGridSizes::Deserialize(buffer, current_position);
-    voxel_grid_sizes_ = voxel_grid_sizes_deserialized.Value();
-    current_position += voxel_grid_sizes_deserialized.BytesRead();
-    if (voxel_grid_sizes_.NumTotalVoxels() !=
+    control_sizes_ = control_sizes_deserialized.Value();
+    current_position += control_sizes_deserialized.BytesRead();
+    if (control_sizes_.NumTotalVoxels() !=
             static_cast<int64_t>(data_.size()))
     {
       throw std::runtime_error(
-          "voxel_grid_sizes_.NumTotalVoxels() != data_.size()");
+          "control_sizes_.NumTotalVoxels() != data_.size()");
     }
     // Figure out how many bytes were read
     const uint64_t bytes_read = current_position - starting_offset;
@@ -644,18 +644,18 @@ public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
 
   VoxelGridBase(const Eigen::Isometry3d& origin_transform,
-                const VoxelGridSizes& voxel_grid_sizes,
+                const VoxelGridSizes& control_sizes,
                 const T& default_value,
                 const T& oob_value)
   {
-    Initialize(origin_transform, voxel_grid_sizes, default_value, oob_value);
+    Initialize(origin_transform, control_sizes, default_value, oob_value);
   }
 
-  VoxelGridBase(const VoxelGridSizes& voxel_grid_sizes,
+  VoxelGridBase(const VoxelGridSizes& control_sizes,
                 const T& default_value,
                 const T& oob_value)
   {
-    Initialize(voxel_grid_sizes, default_value, oob_value);
+    Initialize(control_sizes, default_value, oob_value);
   }
 
   VoxelGridBase() = default;
@@ -689,7 +689,7 @@ public:
     return bytes_read;
   }
 
-  bool IsInitialized() const { return voxel_grid_sizes_.IsValid(); }
+  bool IsInitialized() const { return control_sizes_.IsValid(); }
 
   void ResetWithDefaultValue()
   {
@@ -756,7 +756,7 @@ public:
     }
   }
 
-  const VoxelGridSizes& Sizes() const { return voxel_grid_sizes_; }
+  const VoxelGridSizes& ControlSizes() const { return control_sizes_; }
 
   const Eigen::Isometry3d& OriginTransform() const
   {
@@ -778,46 +778,43 @@ public:
 
   // Accessors for voxel sizes.
 
-  Eigen::Vector3d VoxelSizes() const { return voxel_grid_sizes_.VoxelSizes(); }
+  Eigen::Vector3d VoxelSizes() const { return control_sizes_.VoxelSizes(); }
 
-  double VoxelXSize() const { return voxel_grid_sizes_.VoxelXSize(); }
+  double VoxelXSize() const { return control_sizes_.VoxelXSize(); }
 
-  double VoxelYSize() const { return voxel_grid_sizes_.VoxelYSize(); }
+  double VoxelYSize() const { return control_sizes_.VoxelYSize(); }
 
-  double VoxelZSize() const { return voxel_grid_sizes_.VoxelZSize(); }
+  double VoxelZSize() const { return control_sizes_.VoxelZSize(); }
 
   bool HasUniformVoxelSize() const
   {
-    return voxel_grid_sizes_.HasUniformVoxelSize();
+    return control_sizes_.HasUniformVoxelSize();
   }
 
   // Accessors for grid sizes.
 
   const Eigen::Vector3d& GridSizes() const
   {
-    return voxel_grid_sizes_.GridSizes();
+    return control_sizes_.GridSizes();
   }
 
-  double XSize() const { return voxel_grid_sizes_.XSize(); }
+  double GridXSize() const { return control_sizes_.GridXSize(); }
 
-  double YSize() const { return voxel_grid_sizes_.YSize(); }
+  double GridYSize() const { return control_sizes_.GridYSize(); }
 
-  double ZSize() const { return voxel_grid_sizes_.ZSize(); }
+  double GridZSize() const { return control_sizes_.GridZSize(); }
 
   // Accessors for voxel counts.
 
-  const Vector3i64& VoxelCounts() const
-  {
-    return voxel_grid_sizes_.VoxelCounts();
-  }
+  const Vector3i64& VoxelCounts() const { return control_sizes_.VoxelCounts(); }
 
-  int64_t NumXVoxels() const { return voxel_grid_sizes_.NumXVoxels(); }
+  int64_t NumXVoxels() const { return control_sizes_.NumXVoxels(); }
 
-  int64_t NumYVoxels() const { return voxel_grid_sizes_.NumYVoxels(); }
+  int64_t NumYVoxels() const { return control_sizes_.NumYVoxels(); }
 
-  int64_t NumZVoxels() const { return voxel_grid_sizes_.NumZVoxels(); }
+  int64_t NumZVoxels() const { return control_sizes_.NumZVoxels(); }
 
-  int64_t NumTotalVoxels() const { return voxel_grid_sizes_.NumTotalVoxels(); }
+  int64_t NumTotalVoxels() const { return control_sizes_.NumTotalVoxels(); }
 
   // Index bounds checks.
 
@@ -825,12 +822,12 @@ public:
                               const int64_t y_index,
                               const int64_t z_index) const
   {
-    return voxel_grid_sizes_.CheckGridIndexInBounds(x_index, y_index, z_index);
+    return control_sizes_.CheckGridIndexInBounds(x_index, y_index, z_index);
   }
 
   bool CheckGridIndexInBounds(const GridIndex& index) const
   {
-    return voxel_grid_sizes_.CheckGridIndexInBounds(index);
+    return control_sizes_.CheckGridIndexInBounds(index);
   }
 
   // Grid index <-> data index conversions.
@@ -839,17 +836,17 @@ public:
                                const int64_t y_index,
                                const int64_t z_index) const
   {
-    return voxel_grid_sizes_.GridIndexToDataIndex(x_index, y_index, z_index);
+    return control_sizes_.GridIndexToDataIndex(x_index, y_index, z_index);
   }
 
   int64_t GridIndexToDataIndex(const GridIndex& index) const
   {
-    return voxel_grid_sizes_.GridIndexToDataIndex(index);
+    return control_sizes_.GridIndexToDataIndex(index);
   }
 
   GridIndex DataIndexToGridIndex(const int64_t data_index) const
   {
-    return voxel_grid_sizes_.DataIndexToGridIndex(data_index);
+    return control_sizes_.DataIndexToGridIndex(data_index);
   }
 
   // Grid-frame location <-> index conversions.
@@ -857,49 +854,49 @@ public:
   GridIndex LocationInGridFrameToGridIndex3d(
       const Eigen::Vector3d& location) const
   {
-    return voxel_grid_sizes_.LocationInGridFrameToGridIndex3d(location);
+    return control_sizes_.LocationInGridFrameToGridIndex3d(location);
   }
 
   GridIndex LocationInGridFrameToGridIndex4d(
       const Eigen::Vector4d& location) const
   {
-    return voxel_grid_sizes_.LocationInGridFrameToGridIndex4d(location);
+    return control_sizes_.LocationInGridFrameToGridIndex4d(location);
   }
 
   GridIndex LocationInGridFrameToGridIndex(
       const double x, const double y, const double z) const
   {
-    return voxel_grid_sizes_.LocationInGridFrameToGridIndex(x, y, z);
+    return control_sizes_.LocationInGridFrameToGridIndex(x, y, z);
   }
 
   Eigen::Vector4d GridIndexToLocationInGridFrame(
       const int64_t x_index, const int64_t y_index, const int64_t z_index) const
   {
-    return voxel_grid_sizes_.GridIndexToLocationInGridFrame(
+    return control_sizes_.GridIndexToLocationInGridFrame(
         x_index, y_index, z_index);
   }
 
   Eigen::Vector4d GridIndexToLocationInGridFrame(const GridIndex& index) const
   {
-    return voxel_grid_sizes_.GridIndexToLocationInGridFrame(index);
+    return control_sizes_.GridIndexToLocationInGridFrame(index);
   }
 
   // Grid-frame location bounds checks.
 
   bool CheckGridFrameLocationInBounds3d(const Eigen::Vector3d& location) const
   {
-    return voxel_grid_sizes_.CheckGridFrameLocationInBounds3d(location);
+    return control_sizes_.CheckGridFrameLocationInBounds3d(location);
   }
 
   bool CheckGridFrameLocationInBounds4d(const Eigen::Vector4d& location) const
   {
-    return voxel_grid_sizes_.CheckGridFrameLocationInBounds4d(location);
+    return control_sizes_.CheckGridFrameLocationInBounds4d(location);
   }
 
   bool CheckGridFrameLocationInBounds(
       const double x, const double y, const double z) const
   {
-    return voxel_grid_sizes_.CheckGridFrameLocationInBounds(x, y, z);
+    return control_sizes_.CheckGridFrameLocationInBounds(x, y, z);
   }
 
   // Location <-> grid-frame location conversions.
@@ -1342,27 +1339,27 @@ public:
   }
 
   VoxelGrid(const Eigen::Isometry3d& origin_transform,
-            const VoxelGridSizes& voxel_grid_sizes,
+            const VoxelGridSizes& control_sizes,
             const T& default_value)
       : VoxelGridBase<T, BackingStore>(
-          origin_transform, voxel_grid_sizes, default_value, default_value) {}
+          origin_transform, control_sizes, default_value, default_value) {}
 
   VoxelGrid(const Eigen::Isometry3d& origin_transform,
-            const VoxelGridSizes& voxel_grid_sizes,
+            const VoxelGridSizes& control_sizes,
             const T& default_value,
             const T& oob_value)
       : VoxelGridBase<T, BackingStore>(
-          origin_transform, voxel_grid_sizes, default_value, oob_value) {}
+          origin_transform, control_sizes, default_value, oob_value) {}
 
-  VoxelGrid(const VoxelGridSizes& voxel_grid_sizes, const T& default_value)
+  VoxelGrid(const VoxelGridSizes& control_sizes, const T& default_value)
       : VoxelGridBase<T, BackingStore>(
-          voxel_grid_sizes, default_value, default_value) {}
+          control_sizes, default_value, default_value) {}
 
-  VoxelGrid(const VoxelGridSizes& voxel_grid_sizes,
+  VoxelGrid(const VoxelGridSizes& control_sizes,
             const T& default_value,
             const T& oob_value)
       : VoxelGridBase<T, BackingStore>(
-          voxel_grid_sizes, default_value, oob_value) {}
+          control_sizes, default_value, oob_value) {}
 
   VoxelGrid() : VoxelGridBase<T, BackingStore>() {}
 };

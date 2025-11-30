@@ -82,17 +82,11 @@ public:
   ChunkBase(const int64_t x, const int64_t y, const int64_t z)
       : x_(x), y_(y), z_(z) {}
 
-  const int64_t& X() const { return x_; }
+  int64_t X() const { return x_; }
 
-  const int64_t& Y() const { return y_; }
+  int64_t Y() const { return y_; }
 
-  const int64_t& Z() const { return z_; }
-
-  int64_t& X() { return x_; }
-
-  int64_t& Y() { return y_; }
-
-  int64_t& Z() { return z_; }
+  int64_t Z() const { return z_; }
 
   bool operator==(const ChunkBase& other) const
   {
@@ -1468,7 +1462,14 @@ public:
   Eigen::Vector4d LocationToGridFrameLocation4d(
       const Eigen::Vector4d& location) const
   {
-    return InverseOriginTransform() * location;
+    if (location(3) == 1.0)
+    {
+      return InverseOriginTransform() * location;
+    }
+    else
+    {
+      throw std::invalid_argument("location(3) != 1.0");
+    }
   }
 
   Eigen::Vector4d LocationToGridFrameLocation(
@@ -1487,7 +1488,14 @@ public:
   Eigen::Vector4d GridFrameLocationToLocation4d(
       const Eigen::Vector4d& location) const
   {
-    return OriginTransform() * location;
+    if (location(3) == 1.0)
+    {
+      return OriginTransform() * location;
+    }
+    else
+    {
+      throw std::invalid_argument("location(3) != 1.0");
+    }
   }
 
   Eigen::Vector4d GridFrameLocationToLocation(

@@ -929,7 +929,14 @@ public:
   Eigen::Vector4d LocationToGridFrameLocation4d(
       const Eigen::Vector4d& location) const
   {
-    return InverseOriginTransform() * location;
+    if (location(3) == 1.0)
+    {
+      return InverseOriginTransform() * location;
+    }
+    else
+    {
+      throw std::invalid_argument("location(3) != 1.0");
+    }
   }
 
   Eigen::Vector4d LocationToGridFrameLocation(
@@ -948,7 +955,14 @@ public:
   Eigen::Vector4d GridFrameLocationToLocation4d(
       const Eigen::Vector4d& location) const
   {
-    return OriginTransform() * location;
+    if (location(3) == 1.0)
+    {
+      return OriginTransform() * location;
+    }
+    else
+    {
+      throw std::invalid_argument("location(3) != 1.0");
+    }
   }
 
   Eigen::Vector4d GridFrameLocationToLocation(

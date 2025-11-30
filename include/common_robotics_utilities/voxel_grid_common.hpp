@@ -1,19 +1,13 @@
 #pragma once
 
-#include <cmath>
 #include <cstdint>
 #include <limits>
-#include <memory>
 #include <ostream>
-#include <stdexcept>
-#include <string>
 #include <type_traits>
 #include <vector>
 
 #include <Eigen/Geometry>
 #include <common_robotics_utilities/cru_namespace.hpp>
-#include <common_robotics_utilities/maybe.hpp>
-#include <common_robotics_utilities/serialization.hpp>
 #include <common_robotics_utilities/utility.hpp>
 
 namespace common_robotics_utilities

@@ -2,10 +2,8 @@
 
 #include <cmath>
 #include <cstdint>
-#include <limits>
 #include <memory>
 #include <stdexcept>
-#include <string>
 #include <type_traits>
 #include <vector>
 
@@ -31,6 +29,7 @@ private:
   Eigen::Vector4d inverse_voxel_sizes_ = Eigen::Vector4d::Zero();
   Eigen::Vector3d grid_sizes_ = Eigen::Vector3d::Zero();
   Vector3i64 voxel_counts_ = Vector3i64::Zero();
+  int64_t num_total_voxels_ = 0;
   int64_t stride_1_ = 0;
   int64_t stride_2_ = 0;
 
@@ -175,6 +174,7 @@ public:
           voxel_sizes.x(), voxel_sizes.y(), voxel_sizes.z(), 1.0);
       inverse_voxel_sizes_ = voxel_sizes_.cwiseInverse();
       voxel_counts_ = voxel_counts;
+      num_total_voxels_ = voxel_counts_.prod();
       grid_sizes_ =
           voxel_sizes_.head<3>().cwiseProduct(voxel_counts_.cast<double>());
       stride_1_ = voxel_counts_.y() * voxel_counts_.z();
@@ -246,7 +246,7 @@ public:
 
   int64_t NumZVoxels() const { return voxel_counts_.z(); }
 
-  int64_t NumTotalVoxels() const { return voxel_counts_.prod(); }
+  int64_t NumTotalVoxels() const { return num_total_voxels_; }
 
   // Accessors for strides.
 
@@ -260,21 +260,19 @@ public:
                               const int64_t y_index,
                               const int64_t z_index) const
   {
-    if (x_index >= 0 && x_index < NumXVoxels() &&
-        y_index >= 0 && y_index < NumYVoxels() &&
-        z_index >= 0 && z_index < NumZVoxels())
-    {
-      return true;
-    }
-    else
-    {
-      return false;
-    }
+    return x_index >= 0 && x_index < NumXVoxels() &&
+           y_index >= 0 && y_index < NumYVoxels() &&
+           z_index >= 0 && z_index < NumZVoxels();
   }
 
   bool CheckGridIndexInBounds(const GridIndex& index) const
   {
     return CheckGridIndexInBounds(index.X(), index.Y(), index.Z());
+  }
+
+  bool CheckDataIndexInBounds(const int64_t data_index) const
+  {
+    return data_index >= 0 && data_index < NumTotalVoxels();
   }
 
   // Grid index <-> data index conversions.
@@ -283,7 +281,15 @@ public:
                                const int64_t y_index,
                                const int64_t z_index) const
   {
-    return (x_index * Stride1()) + (y_index * Stride2()) + z_index;
+    if (CheckGridIndexInBounds(x_index, y_index, z_index))
+    {
+      return (x_index * Stride1()) + (y_index * Stride2()) + z_index;
+    }
+    else
+    {
+      // Return a clearly invalid data index for grid indices out of bounds.
+      return std::numeric_limits<int64_t>::lowest();
+    }
   }
 
   int64_t GridIndexToDataIndex(const GridIndex& index) const
@@ -293,11 +299,19 @@ public:
 
   GridIndex DataIndexToGridIndex(const int64_t data_index) const
   {
-    const int64_t x_idx = data_index / Stride1();
-    const int64_t remainder = data_index % Stride1();
-    const int64_t y_idx = remainder / Stride2();
-    const int64_t z_idx = remainder % Stride2();
-    return GridIndex(x_idx, y_idx, z_idx);
+    if (CheckDataIndexInBounds(data_index))
+    {
+      const int64_t x_idx = data_index / Stride1();
+      const int64_t remainder = data_index % Stride1();
+      const int64_t y_idx = remainder / Stride2();
+      const int64_t z_idx = remainder % Stride2();
+      return GridIndex(x_idx, y_idx, z_idx);
+    }
+    else
+    {
+      // Return a default-value (clearly invalid) for data indices out of range.
+      return GridIndex();
+    }
   }
 
   // Grid-frame location <-> index conversions.
@@ -828,6 +842,11 @@ public:
   bool CheckGridIndexInBounds(const GridIndex& index) const
   {
     return control_sizes_.CheckGridIndexInBounds(index);
+  }
+
+  bool CheckDataIndexInBounds(const int64_t data_index) const
+  {
+    return control_sizes_.CheckDataIndexInBounds(data_index);
   }
 
   // Grid index <-> data index conversions.

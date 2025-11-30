@@ -5,7 +5,6 @@
 #include <memory>
 #include <mutex>
 #include <stdexcept>
-#include <string>
 #include <unordered_map>
 #include <utility>
 #include <vector>
@@ -178,6 +177,7 @@ private:
   // "Normal" chunk sizes and voxel counts.
   Eigen::Vector3d chunk_sizes_ = Eigen::Vector3d::Zero();
   Vector3i64 chunk_voxel_counts_ = Vector3i64::Zero();
+  int64_t chunk_num_total_voxels_ = 0;
   int64_t chunk_stride_1_ = 0;
   int64_t chunk_stride_2_ = 0;
 
@@ -336,6 +336,7 @@ public:
       inverse_chunk_voxel_counts_internal_ =
           chunk_voxel_counts_internal_.cwiseInverse();
       chunk_voxel_counts_ = chunk_voxel_counts;
+      chunk_num_total_voxels_ = chunk_voxel_counts_.prod();
       chunk_sizes_ =
           voxel_sizes_.cwiseProduct(chunk_voxel_counts_internal_).head<3>();
       chunk_stride_1_ = chunk_voxel_counts_.y() * chunk_voxel_counts_.z();
@@ -407,7 +408,7 @@ public:
 
   int64_t ChunkNumZVoxels() const { return chunk_voxel_counts_.z(); }
 
-  int64_t ChunkNumTotalVoxels() const { return chunk_voxel_counts_.prod(); }
+  int64_t ChunkNumTotalVoxels() const { return chunk_num_total_voxels_; }
 
   // Accessors for internal chunk voxel counts used in SIMD operations.
 
@@ -433,16 +434,9 @@ public:
                                const int64_t y_index,
                                const int64_t z_index) const
   {
-    if (x_index >= 0 && x_index < ChunkNumXVoxels() &&
-        y_index >= 0 && y_index < ChunkNumYVoxels() &&
-        z_index >= 0 && z_index < ChunkNumZVoxels())
-    {
-      return true;
-    }
-    else
-    {
-      return false;
-    }
+    return x_index >= 0 && x_index < ChunkNumXVoxels() &&
+           y_index >= 0 && y_index < ChunkNumYVoxels() &&
+           z_index >= 0 && z_index < ChunkNumZVoxels();
   }
 
   bool CheckChunkIndexInBounds(const ChunkIndex& index) const
@@ -454,17 +448,22 @@ public:
                                      const int64_t y_index,
                                      const int64_t z_index) const
   {
-    return (x_index <= MAXIMUM_ALLOWED_DSHVG_INDEX_AXIS_VALUE ||
-            x_index >= MINIMUM_ALLOWED_DSHVG_INDEX_AXIS_VALUE ||
-            y_index <= MAXIMUM_ALLOWED_DSHVG_INDEX_AXIS_VALUE ||
-            y_index >= MINIMUM_ALLOWED_DSHVG_INDEX_AXIS_VALUE ||
-            z_index <= MAXIMUM_ALLOWED_DSHVG_INDEX_AXIS_VALUE ||
-            z_index >= MINIMUM_ALLOWED_DSHVG_INDEX_AXIS_VALUE);
+    return x_index <= MAXIMUM_ALLOWED_DSHVG_INDEX_AXIS_VALUE &&
+           x_index >= MINIMUM_ALLOWED_DSHVG_INDEX_AXIS_VALUE &&
+           y_index <= MAXIMUM_ALLOWED_DSHVG_INDEX_AXIS_VALUE &&
+           y_index >= MINIMUM_ALLOWED_DSHVG_INDEX_AXIS_VALUE &&
+           z_index <= MAXIMUM_ALLOWED_DSHVG_INDEX_AXIS_VALUE &&
+           z_index >= MINIMUM_ALLOWED_DSHVG_INDEX_AXIS_VALUE;
   }
 
   bool CheckGridIndexInAllowedBounds(const GridIndex& index) const
   {
     return CheckGridIndexInAllowedBounds(index.X(), index.Y(), index.Z());
+  }
+
+  bool CheckChunkDataIndexInBounds(const int64_t data_index) const
+  {
+    return data_index >= 0 && data_index < ChunkNumTotalVoxels();
   }
 
   // Chunk index <-> data index conversions.
@@ -473,7 +472,15 @@ public:
                                 const int64_t y_index,
                                 const int64_t z_index) const
   {
-    return (x_index * ChunkStride1()) + (y_index * ChunkStride2()) + z_index;
+    if (CheckChunkIndexInBounds(x_index, y_index, z_index))
+    {
+      return (x_index * ChunkStride1()) + (y_index * ChunkStride2()) + z_index;
+    }
+    else
+    {
+      // Return a clearly invalid data index for grid indices out of bounds.
+      return std::numeric_limits<int64_t>::lowest();
+    }
   }
 
   int64_t ChunkIndexToDataIndex(const ChunkIndex& index) const
@@ -483,11 +490,19 @@ public:
 
   ChunkIndex DataIndexToChunkIndex(const int64_t data_index) const
   {
-    const int64_t x_idx = data_index / ChunkStride1();
-    const int64_t remainder = data_index % ChunkStride1();
-    const int64_t y_idx = remainder / ChunkStride2();
-    const int64_t z_idx = remainder % ChunkStride2();
-    return ChunkIndex(x_idx, y_idx, z_idx);
+    if (CheckChunkDataIndexInBounds(data_index))
+    {
+      const int64_t x_idx = data_index / ChunkStride1();
+      const int64_t remainder = data_index % ChunkStride1();
+      const int64_t y_idx = remainder / ChunkStride2();
+      const int64_t z_idx = remainder % ChunkStride2();
+      return ChunkIndex(x_idx, y_idx, z_idx);
+    }
+    else
+    {
+      // Return a default-value (clearly invalid) for data indices out of range.
+      return ChunkIndex();
+    }
   }
 
   // Grid-frame location <-> index conversions.
@@ -775,7 +790,6 @@ private:
   using ChunkType = DynamicSpatialHashedVoxelGridChunk<T, BackingStore>;
 
   std::mutex get_or_create_chunk_mutex_;
-  // TODO(calderpg) This almost certainly needs an aligned allocator.
   std::unordered_map<ChunkBase, ChunkType> chunk_map_;
 
   // TODO(calderpg) Replace with data move once serialization redo lands.
@@ -1368,6 +1382,11 @@ public:
     return control_sizes_.CheckGridIndexInAllowedBounds(index);
   }
 
+  bool CheckChunkDataIndexInBounds(const int64_t data_index) const
+  {
+    return control_sizes_.CheckChunkDataIndexInBounds(data_index);
+  }
+
   // Chunk index <-> data index conversions.
 
   int64_t ChunkIndexToDataIndex(const int64_t x_index,
@@ -1550,8 +1569,7 @@ public:
       if (maybe_chunk)
       {
         const ChunkIndex index_in_chunk = index - chunk_base;
-        const int64_t chunk_data_index =
-            control_sizes_.ChunkIndexToDataIndex(index_in_chunk);
+        const int64_t chunk_data_index = ChunkIndexToDataIndex(index_in_chunk);
         return DynamicSpatialHashedGridQuery<const T>::Success(
             maybe_chunk.Value().AccessIndex(chunk_data_index));
       }
@@ -1625,7 +1643,7 @@ public:
         {
           const ChunkIndex index_in_chunk = index - chunk_base;
           const int64_t chunk_data_index =
-              control_sizes_.ChunkIndexToDataIndex(index_in_chunk);
+              ChunkIndexToDataIndex(index_in_chunk);
           return DynamicSpatialHashedGridQuery<T>::Success(
               maybe_chunk.Value().AccessIndex(chunk_data_index));
         }
@@ -1662,8 +1680,7 @@ public:
         auto& chunk = chunk_keeper_.GetOrCreateChunkMutable(
             chunk_base, ChunkNumTotalVoxels(), DefaultValue()).Value();
         const ChunkIndex index_in_chunk = index - chunk_base;
-        const int64_t chunk_data_index =
-            control_sizes_.ChunkIndexToDataIndex(index_in_chunk);
+        const int64_t chunk_data_index = ChunkIndexToDataIndex(index_in_chunk);
         return DynamicSpatialHashedGridQuery<T>::Success(
             chunk.AccessIndex(chunk_data_index));
       }
@@ -1714,8 +1731,7 @@ public:
         auto& chunk = chunk_keeper_.GetOrCreateChunkMutable(
             chunk_base, ChunkNumTotalVoxels(), DefaultValue()).Value();
         const ChunkIndex index_in_chunk = index - chunk_base;
-        const int64_t chunk_data_index =
-            control_sizes_.ChunkIndexToDataIndex(index_in_chunk);
+        const int64_t chunk_data_index = ChunkIndexToDataIndex(index_in_chunk);
         chunk.AccessIndex(chunk_data_index) = value;
         return AccessStatus::SUCCESS;
       }
@@ -1767,8 +1783,7 @@ public:
         auto& chunk = chunk_keeper_.GetOrCreateChunkMutable(
             chunk_base, ChunkNumTotalVoxels(), DefaultValue()).Value();
         const ChunkIndex index_in_chunk = index - chunk_base;
-        const int64_t chunk_data_index =
-            control_sizes_.ChunkIndexToDataIndex(index_in_chunk);
+        const int64_t chunk_data_index = ChunkIndexToDataIndex(index_in_chunk);
         chunk.AccessIndex(chunk_data_index) = value;
         return AccessStatus::SUCCESS;
       }

@@ -1916,7 +1916,7 @@ public:
     return chunk_keeper_;
   }
 
-  GridChunkKeeper& GetMutableInternalChunkKeeper() const
+  GridChunkKeeper& GetMutableInternalChunkKeeper()
   {
     if (OnMutableRawAccess())
     {

@@ -964,14 +964,14 @@ public:
     return chunk_map_.erase(base) > 0;
   }
 
-  bool EraseChunk(iterator chunk)
+  iterator EraseChunk(iterator chunk)
   {
-    return chunk_map_.erase(chunk) > 0;
+    return chunk_map_.erase(chunk);
   }
 
-  bool EraseChunk(const_iterator chunk)
+  iterator EraseChunk(const_iterator chunk)
   {
-    return chunk_map_.erase(chunk) > 0;
+    return chunk_map_.erase(chunk);
   }
 
   void EraseAllChunks()

@@ -24,11 +24,14 @@ namespace simple_graph
 /// Edge stores from and to node indices into the graph.
 class GraphEdge
 {
+public:
+  static constexpr uint64_t DefaultScratchpad = 0;
+
 private:
   int64_t from_index_ = -1;
   int64_t to_index_ = -1;
   double weight_ = 0.0;
-  uint64_t scratchpad_ = 0;
+  uint64_t scratchpad_ = DefaultScratchpad;
 
 public:
   static uint64_t Serialize(const GraphEdge& edge, std::vector<uint8_t>& buffer)
@@ -721,8 +724,25 @@ public:
     return static_cast<int64_t>(nodes_.size() - 1);
   }
 
-  void AddEdgeBetweenNodes(const int64_t from_index, const int64_t to_index,
-                           const double edge_weight)
+  void AddEdgeBetweenNodes(
+      const int64_t from_index, const int64_t to_index,
+      const double edge_weight)
+  {
+    AddEdgeBetweenNodes(
+        from_index, to_index, edge_weight, EdgeType::DefaultScratchpad);
+  }
+
+  void AddEdgesBetweenNodes(
+      const int64_t first_index, const int64_t second_index,
+      const double edge_weight)
+  {
+    AddEdgeBetweenNodes(
+        first_index, second_index, edge_weight, EdgeType::DefaultScratchpad);
+  }
+
+  void AddEdgeBetweenNodes(
+      const int64_t from_index, const int64_t to_index,
+      const double edge_weight, const uint64_t edge_scratchpad)
   {
     // We retrieve the nodes first, since retrieval performs bounds checks first
     NodeType& from_node = GetNodeMutable(from_index);
@@ -732,14 +752,14 @@ public:
       throw std::invalid_argument(
           "Invalid circular edge from == to not allowed");
     }
-    const EdgeType new_edge(from_index, to_index, edge_weight);
+    const EdgeType new_edge(from_index, to_index, edge_weight, edge_scratchpad);
     from_node.AddOutEdge(new_edge);
     to_node.AddInEdge(new_edge);
   }
 
-  void AddEdgesBetweenNodes(const int64_t first_index,
-                            const int64_t second_index,
-                            const double edge_weight)
+  void AddEdgesBetweenNodes(
+      const int64_t first_index, const int64_t second_index,
+      const double edge_weight, const uint64_t edge_scratchpad)
   {
     // We retrieve the nodes first, since retrieval performs bounds checks first
     NodeType& first_node = GetNodeMutable(first_index);
@@ -749,10 +769,12 @@ public:
       throw std::invalid_argument(
           "Invalid circular edge first == second not allowed");
     }
-    const EdgeType first_edge(first_index, second_index, edge_weight);
+    const EdgeType first_edge(
+        first_index, second_index, edge_weight, edge_scratchpad);
     first_node.AddOutEdge(first_edge);
     second_node.AddInEdge(first_edge);
-    const EdgeType second_edge(second_index, first_index, edge_weight);
+    const EdgeType second_edge(
+        second_index, first_index, edge_weight, edge_scratchpad);
     second_node.AddOutEdge(second_edge);
     first_node.AddInEdge(second_edge);
   }

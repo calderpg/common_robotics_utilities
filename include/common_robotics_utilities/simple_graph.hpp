@@ -736,7 +736,7 @@ public:
       const int64_t first_index, const int64_t second_index,
       const double edge_weight)
   {
-    AddEdgeBetweenNodes(
+    AddEdgesBetweenNodes(
         first_index, second_index, edge_weight, EdgeType::DefaultScratchpad);
   }
 

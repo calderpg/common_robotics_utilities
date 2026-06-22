@@ -269,7 +269,8 @@ double Distance(const Eigen::Quaterniond& q1,
 
 double Distance(const Eigen::Isometry3d& t1,
                 const Eigen::Isometry3d& t2,
-                const double alpha=0.5);
+                const double translation_weight,
+                const double rotation_weight);
 
 double SquaredDistance(const std::vector<double>& p1,
                        const std::vector<double>& p2);

@@ -557,15 +557,23 @@ double Distance(const Eigen::Quaterniond& q1, const Eigen::Quaterniond& q2)
 
 double Distance(const Eigen::Isometry3d& t1,
                 const Eigen::Isometry3d& t2,
-                const double alpha)
+                const double translation_weight,
+                const double rotation_weight)
 {
-  const double real_alpha = utility::ClampValue(alpha, 0.0, 1.0);
+  if (translation_weight < 0.0)
+  {
+    throw std::invalid_argument("translation_weight < 0.0");
+  }
+  if (rotation_weight < 0.0)
+  {
+    throw std::invalid_argument("rotation_weight < 0.0");
+  }
   const Eigen::Vector3d v1 = t1.translation();
   const Eigen::Quaterniond q1(t1.rotation());
   const Eigen::Vector3d v2 = t2.translation();
   const Eigen::Quaterniond q2(t2.rotation());
-  const double vdist = Distance(v1, v2) * (1.0 - real_alpha);
-  const double qdist = Distance(q1, q2) * (real_alpha);
+  const double vdist = Distance(v1, v2) * translation_weight;
+  const double qdist = Distance(q1, q2) * rotation_weight;
   return vdist + qdist;
 }
 

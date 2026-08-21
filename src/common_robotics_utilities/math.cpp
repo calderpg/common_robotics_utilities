@@ -267,9 +267,10 @@ Eigen::Matrix4d TwistHat(const Twist& twist)
 
 Twist TwistUnhat(const Eigen::Matrix4d& hatted_twist)
 {
-  const Eigen::Vector3d trans_velocity = hatted_twist.block<3, 1>(0, 3);
-  const Eigen::Vector3d rot_velocity = Unskew(hatted_twist.block<3, 3>(0, 0));
-  return Twist(trans_velocity, rot_velocity);
+  const Eigen::Vector3d linear_velocity = hatted_twist.block<3, 1>(0, 3);
+  const Eigen::Vector3d angular_velocity
+      = Unskew(hatted_twist.block<3, 3>(0, 0));
+  return Twist(linear_velocity, angular_velocity);
 }
 
 Eigen::Matrix<double, 6, 6> AdjointFromTransform(
@@ -320,25 +321,23 @@ Eigen::Matrix3d ExpMatrixExact(const Eigen::Matrix3d& hatted_rot_velocity,
 
 Eigen::Isometry3d ExpTwist(const Twist& twist, const double delta_t)
 {
-  const Eigen::Vector3d& trans_velocity = twist.linear();
-  const Eigen::Vector3d& rot_velocity = twist.angular();
-  const double trans_velocity_norm = trans_velocity.norm();
-  const double rot_velocity_norm = rot_velocity.norm();
+  const double linear_velocity_norm = twist.linear().norm();
+  const double angular_velocity_norm = twist.angular().norm();
   Eigen::Matrix4d raw_transform = Eigen::Matrix4d::Identity();
-  if (rot_velocity_norm >= 1e-100)
+  if (angular_velocity_norm >= 1e-100)
   {
-    const double scaled_delta_t = delta_t * rot_velocity_norm;
-    const Eigen::Vector3d scaled_trans_velocity
-        = trans_velocity / rot_velocity_norm;
-    const Eigen::Vector3d scaled_rot_velocity
-        = rot_velocity / rot_velocity_norm;
+    const double scaled_delta_t = delta_t * angular_velocity_norm;
+    const Eigen::Vector3d scaled_linear_velocity
+        = twist.linear() / angular_velocity_norm;
+    const Eigen::Vector3d scaled_angular_velocity
+        = twist.angular() / angular_velocity_norm;
     const Eigen::Matrix3d rotation_displacement
-        = ExpMatrixExact(Skew(scaled_rot_velocity), scaled_delta_t);
+        = ExpMatrixExact(Skew(scaled_angular_velocity), scaled_delta_t);
     const Eigen::Vector3d translation_displacement
         = ((Eigen::Matrix3d::Identity() - rotation_displacement)
-           * scaled_rot_velocity.cross(scaled_trans_velocity))
-          + (scaled_rot_velocity * scaled_rot_velocity.transpose()
-             * scaled_trans_velocity * scaled_delta_t);
+           * scaled_angular_velocity.cross(scaled_linear_velocity))
+          + (scaled_angular_velocity * scaled_angular_velocity.transpose()
+             * scaled_linear_velocity * scaled_delta_t);
     raw_transform.block<3, 3>(0, 0) = rotation_displacement;
     raw_transform.block<3, 1>(0, 3) = translation_displacement;
   }
@@ -346,24 +345,24 @@ Eigen::Isometry3d ExpTwist(const Twist& twist, const double delta_t)
   {
     // NOTE: you may encounter numerical instability using ExpTwist(...) with
     // translation and rotational norm < 1e-100.
-    if ((trans_velocity_norm >= 1e-100) || (rot_velocity_norm == 0.0))
+    if ((linear_velocity_norm >= 1e-100) || (angular_velocity_norm == 0.0))
     {
-      raw_transform.block<3, 1>(0, 3) = trans_velocity * delta_t;
+      raw_transform.block<3, 1>(0, 3) = twist.linear() * delta_t;
     }
     else
     {
-      const double scaled_delta_t = delta_t * rot_velocity_norm;
-      const Eigen::Vector3d scaled_trans_velocity
-          = trans_velocity / rot_velocity_norm;
-      const Eigen::Vector3d scaled_rot_velocity
-          = rot_velocity / rot_velocity_norm;
+      const double scaled_delta_t = delta_t * angular_velocity_norm;
+      const Eigen::Vector3d scaled_linear_velocity
+          = twist.linear() / angular_velocity_norm;
+      const Eigen::Vector3d scaled_angular_velocity
+          = twist.angular() / angular_velocity_norm;
       const Eigen::Matrix3d rotation_displacement
-          = ExpMatrixExact(Skew(scaled_rot_velocity), scaled_delta_t);
+          = ExpMatrixExact(Skew(scaled_angular_velocity), scaled_delta_t);
       const Eigen::Vector3d translation_displacement
           = ((Eigen::Matrix3d::Identity() - rotation_displacement)
-             * scaled_rot_velocity.cross(scaled_trans_velocity))
-            + (scaled_rot_velocity * scaled_rot_velocity.transpose()
-               * scaled_trans_velocity * scaled_delta_t);
+             * scaled_angular_velocity.cross(scaled_linear_velocity))
+            + (scaled_angular_velocity * scaled_angular_velocity.transpose()
+               * scaled_linear_velocity * scaled_delta_t);
       raw_transform.block<3, 3>(0, 0) = rotation_displacement;
       raw_transform.block<3, 1>(0, 3) = translation_displacement;
     }

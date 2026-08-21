@@ -256,24 +256,20 @@ Eigen::Vector3d Unskew(const Eigen::Matrix3d& matrix)
   return unskewed;
 }
 
-Eigen::Matrix4d TwistHat(const Eigen::Matrix<double, 6, 1>& twist)
+Eigen::Matrix4d TwistHat(const Twist& twist)
 {
-  const Eigen::Vector3d trans_velocity = twist.segment<3>(0);
-  const Eigen::Matrix3d hatted_rot_velocity = Skew(twist.segment<3>(3));
+  const Eigen::Matrix3d hatted_rot_velocity = Skew(twist.angular());
   Eigen::Matrix4d hatted_twist = Eigen::Matrix4d::Zero();
   hatted_twist.block<3, 3>(0, 0) = hatted_rot_velocity;
-  hatted_twist.block<3, 1>(0, 3) = trans_velocity;
+  hatted_twist.block<3, 1>(0, 3) = twist.linear();
   return hatted_twist;
 }
 
-Eigen::Matrix<double, 6, 1> TwistUnhat(const Eigen::Matrix4d& hatted_twist)
+Twist TwistUnhat(const Eigen::Matrix4d& hatted_twist)
 {
-   const Eigen::Vector3d trans_velocity = hatted_twist.block<3, 1>(0, 3);
-   const Eigen::Vector3d rot_velocity = Unskew(hatted_twist.block<3, 3>(0, 0));
-   Eigen::Matrix<double, 6, 1> twist;
-   twist.segment<3>(0) = trans_velocity;
-   twist.segment<3>(3) = rot_velocity;
-   return twist;
+  const Eigen::Vector3d trans_velocity = hatted_twist.block<3, 1>(0, 3);
+  const Eigen::Vector3d rot_velocity = Unskew(hatted_twist.block<3, 3>(0, 0));
+  return Twist(trans_velocity, rot_velocity);
 }
 
 Eigen::Matrix<double, 6, 6> AdjointFromTransform(
@@ -291,17 +287,14 @@ Eigen::Matrix<double, 6, 6> AdjointFromTransform(
   return adjoint;
 }
 
-Eigen::Matrix<double, 6, 1> TransformTwist(
-    const Eigen::Isometry3d& transform,
-    const Eigen::Matrix<double, 6, 1>& initial_twist)
+Twist TransformTwist(const Eigen::Isometry3d& transform,
+                     const Twist& initial_twist)
 {
-  return static_cast<Eigen::Matrix<double, 6, 1>>(
-      AdjointFromTransform(transform) * initial_twist);
+  return Twist(AdjointFromTransform(transform) * initial_twist.matrix());
 }
 
-Eigen::Matrix<double, 6, 1> TwistBetweenTransforms(
-    const Eigen::Isometry3d& start,
-    const Eigen::Isometry3d& end)
+Twist TwistBetweenTransforms(const Eigen::Isometry3d& start,
+                             const Eigen::Isometry3d& end)
 {
   const Eigen::Isometry3d t_diff = start.inverse() * end;
   return TwistUnhat(t_diff.matrix().log());
@@ -325,11 +318,10 @@ Eigen::Matrix3d ExpMatrixExact(const Eigen::Matrix3d& hatted_rot_velocity,
   }
 }
 
-Eigen::Isometry3d ExpTwist(const Eigen::Matrix<double, 6, 1>& twist,
-                           const double delta_t)
+Eigen::Isometry3d ExpTwist(const Twist& twist, const double delta_t)
 {
-  const Eigen::Vector3d trans_velocity = twist.segment<3>(0);
-  const Eigen::Vector3d rot_velocity = twist.segment<3>(3);
+  const Eigen::Vector3d& trans_velocity = twist.linear();
+  const Eigen::Vector3d& rot_velocity = twist.angular();
   const double trans_velocity_norm = trans_velocity.norm();
   const double rot_velocity_norm = rot_velocity.norm();
   Eigen::Matrix4d raw_transform = Eigen::Matrix4d::Identity();

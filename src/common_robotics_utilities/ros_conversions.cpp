@@ -185,6 +185,37 @@ GeometryTransformStamped EigenIsometry3dToGeometryTransformStamped(
   return transform_stamped;
 }
 
+common_robotics_utilities::math::Twist GeometryTwistToTwist(
+    const GeometryTwist& twist)
+{
+  return common_robotics_utilities::math::Twist(
+      twist.linear.x, twist.linear.y, twist.linear.z,
+      twist.angular.x, twist.angular.y, twist.angular.z);
+}
+
+GeometryTwist TwistToGeometryTwist(
+    const common_robotics_utilities::math::Twist& twist)
+{
+  GeometryTwist geom_twist;
+  geom_twist.linear.x = twist.linear().x();
+  geom_twist.linear.y = twist.linear().y();
+  geom_twist.linear.z = twist.linear().z();
+  geom_twist.angular.x = twist.angular().x();
+  geom_twist.angular.y = twist.angular().y();
+  geom_twist.angular.z = twist.angular().z();
+  return geom_twist;
+}
+
+GeometryTwistStamped TwistToGeometryTwistStamped(
+    const common_robotics_utilities::math::Twist& twist,
+    const std::string& frame_id)
+{
+  GeometryTwistStamped twist_stamped;
+  twist_stamped.header.frame_id = frame_id;
+  twist_stamped.twist = TwistToGeometryTwist(twist);
+  return twist_stamped;
+}
+
 Eigen::Matrix3Xd VectorGeometryPointToEigenMatrix3Xd(
     const std::vector<GeometryPoint>& vector_geom)
 {

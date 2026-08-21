@@ -136,6 +136,12 @@ public:
     data_ << linear_x, linear_y, linear_z, angular_x, angular_y, angular_z;
   }
 
+  /// Convenience constructor for the common planar case.
+  Twist(const double linear_x,
+        const double linear_y,
+        const double angular_z)
+      : Twist(linear_x, linear_y, 0.0, 0.0, 0.0, angular_z) {}
+
   Twist(const Eigen::Ref<const Eigen::Vector3d>& linear,
         const Eigen::Ref<const Eigen::Vector3d>& angular)
   {

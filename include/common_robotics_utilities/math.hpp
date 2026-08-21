@@ -216,6 +216,8 @@ Eigen::Isometry3d Interpolate(const Eigen::Isometry3d& t1,
                               const Eigen::Isometry3d& t2,
                               const double ratio);
 
+Twist Interpolate(const Twist& t1, const Twist& t2, const double ratio);
+
 template<typename T>
 T LinearInterpolate(const double low_point,
                     const double high_point,

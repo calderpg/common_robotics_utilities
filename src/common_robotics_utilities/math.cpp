@@ -489,6 +489,16 @@ Eigen::Isometry3d Interpolate(const Eigen::Isometry3d& t1,
   return tint;
 }
 
+Twist Interpolate(const Twist& t1, const Twist& t2, const double ratio)
+{
+  // Safety check ratio
+  const double real_ratio = utility::ClampValue(ratio, 0.0, 1.0);
+  // Interpolate
+  // This is the numerically stable version,
+  // rather than  (p1 + (p2 - p1) * real_ratio)
+  return Twist((t1.matrix() * (1.0 - real_ratio)) + (t2.matrix() * real_ratio));
+}
+
 double SquaredDistance(const Eigen::Vector2d& v1, const Eigen::Vector2d& v2)
 {
   const double xd = v2.x() - v1.x();

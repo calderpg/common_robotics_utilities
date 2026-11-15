@@ -20,8 +20,6 @@ cd ~/ws/src
 git clone https://github.com/calderpg/common_robotics_utilities.git
 ```
 
-
-
 Finally, use [`rosdep`](https://docs.ros.org/independent/api/rosdep/html/)
 to ensure all dependencies in the `package.xml` are satisfied:
 
@@ -32,15 +30,7 @@ rosdep install -i -y --from-path src
 
 ## Building
 
-Use [`catkin_make`](http://wiki.ros.org/catkin/commands/catkin_make) or
-[`colcon`](https://colcon.readthedocs.io/en/released/) accordingly.
-
-*For ROS 1 Kinetic+*
-```sh
-cd ~/ws
-catkin_make  # the entire workspace
-catkin_make --pkg common_robotics_utilities  # the package only
-```
+Use [`colcon`](https://colcon.readthedocs.io/en/released/):
 
 *For ROS 2 Galactic+*
 ```sh
@@ -51,15 +41,7 @@ colcon build --packages-select common_robotics_utilities  # the package only
 
 ## Testing
 
-Use [`catkin_make`](http://wiki.ros.org/catkin/commands/catkin_make) or
-[`colcon`](https://colcon.readthedocs.io/en/released/) accordingly.
-
-*For ROS 1 Kinetic+*
-```sh
-cd ~/ws
-catkin_make run_tests  # the entire workspace
-catkin_make run_tests_common_robotics_utilities  # the package only
-```
+Use [`colcon`](https://colcon.readthedocs.io/en/released/):
 
 *For ROS 2 Galactic+*
 ```sh

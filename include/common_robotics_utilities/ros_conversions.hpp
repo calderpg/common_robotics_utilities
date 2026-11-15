@@ -5,20 +5,10 @@
 #include <Eigen/Geometry>
 #include <common_robotics_utilities/cru_namespace.hpp>
 #include <common_robotics_utilities/math.hpp>
-
-#if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
 #include <geometry_msgs/msg/twist_stamped.hpp>
-#elif COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 1
-#include <geometry_msgs/PointStamped.h>
-#include <geometry_msgs/PoseStamped.h>
-#include <geometry_msgs/TransformStamped.h>
-#include <geometry_msgs/TwistStamped.h>
-#else
-#error "Undefined or unknown COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION"
-#endif
 
 namespace common_robotics_utilities
 {
@@ -26,7 +16,6 @@ CRU_NAMESPACE_BEGIN
 namespace ros_conversions
 {
 
-#if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
 using GeometryPoint = geometry_msgs::msg::Point;
 using GeometryPointStamped = geometry_msgs::msg::PointStamped;
 using GeometryPose = geometry_msgs::msg::Pose;
@@ -37,18 +26,6 @@ using GeometryTransformStamped = geometry_msgs::msg::TransformStamped;
 using GeometryTwist = geometry_msgs::msg::Twist;
 using GeometryTwistStamped = geometry_msgs::msg::TwistStamped;
 using GeometryVector3 = geometry_msgs::msg::Vector3;
-#elif COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 1
-using GeometryPoint = geometry_msgs::Point;
-using GeometryPointStamped = geometry_msgs::PointStamped;
-using GeometryPose = geometry_msgs::Pose;
-using GeometryPoseStamped = geometry_msgs::PoseStamped;
-using GeometryQuaternion = geometry_msgs::Quaternion;
-using GeometryTransform = geometry_msgs::Transform;
-using GeometryTransformStamped = geometry_msgs::TransformStamped;
-using GeometryTwist = geometry_msgs::Twist;
-using GeometryTwistStamped = geometry_msgs::TwistStamped;
-using GeometryVector3 = geometry_msgs::Vector3;
-#endif
 
 Eigen::Vector3d GeometryPointToEigenVector3d(const GeometryPoint& point);
 

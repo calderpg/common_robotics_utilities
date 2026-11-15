@@ -8,6 +8,7 @@
 #include <geometry_msgs/msg/point_stamped.hpp>
 #include <geometry_msgs/msg/pose_stamped.hpp>
 #include <geometry_msgs/msg/transform_stamped.hpp>
+#include <geometry_msgs/msg/twist_stamped.hpp>
 
 namespace common_robotics_utilities
 {
@@ -22,6 +23,8 @@ using GeometryPoseStamped = geometry_msgs::msg::PoseStamped;
 using GeometryQuaternion = geometry_msgs::msg::Quaternion;
 using GeometryTransform = geometry_msgs::msg::Transform;
 using GeometryTransformStamped = geometry_msgs::msg::TransformStamped;
+using GeometryTwist = geometry_msgs::msg::Twist;
+using GeometryTwistStamped = geometry_msgs::msg::TwistStamped;
 using GeometryVector3 = geometry_msgs::msg::Vector3;
 
 Eigen::Vector3d GeometryPointToEigenVector3d(const GeometryPoint& point);
@@ -65,6 +68,16 @@ GeometryTransform EigenIsometry3dToGeometryTransform(
 GeometryTransformStamped EigenIsometry3dToGeometryTransformStamped(
     const Eigen::Isometry3d& transform, const std::string& frame_id,
     const std::string& child_frame_id);
+
+common_robotics_utilities::math::Twist GeometryTwistToTwist(
+    const GeometryTwist& twist);
+
+GeometryTwist TwistToGeometryTwist(
+    const common_robotics_utilities::math::Twist& twist);
+
+GeometryTwistStamped TwistToGeometryTwistStamped(
+    const common_robotics_utilities::math::Twist& twist,
+    const std::string& frame_id);
 
 Eigen::Matrix3Xd VectorGeometryPointToEigenMatrix3Xd(
     const std::vector<GeometryPoint>& vector_geom);

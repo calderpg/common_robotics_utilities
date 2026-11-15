@@ -121,26 +121,76 @@ Eigen::Matrix3d Skew(const Eigen::Vector3d& vector);
 
 Eigen::Vector3d Unskew(const Eigen::Matrix3d& matrix);
 
-Eigen::Matrix4d TwistHat(const Eigen::Matrix<double, 6, 1>& twist);
+class Twist
+{
+public:
+  Twist() = default;
 
-Eigen::Matrix<double, 6, 1> TwistUnhat(const Eigen::Matrix4d& hatted_twist);
+  Twist(const double linear_x,
+        const double linear_y,
+        const double linear_z,
+        const double angular_x,
+        const double angular_y,
+        const double angular_z)
+  {
+    data_ << linear_x, linear_y, linear_z, angular_x, angular_y, angular_z;
+  }
+
+  /// Convenience constructor for the common planar case.
+  Twist(const double linear_x,
+        const double linear_y,
+        const double angular_z)
+      : Twist(linear_x, linear_y, 0.0, 0.0, 0.0, angular_z) {}
+
+  Twist(const Eigen::Ref<const Eigen::Vector3d>& linear,
+        const Eigen::Ref<const Eigen::Vector3d>& angular)
+  {
+    this->linear() = linear;
+    this->angular() = angular;
+  }
+
+  explicit Twist(const Eigen::Ref<const Eigen::Matrix<double, 6, 1>>& matrix)
+      : data_(matrix) {}
+
+  Twist(const Twist& other) = default;
+
+  Twist(Twist&& other) = default;
+
+  Twist& operator=(const Twist& other) = default;
+
+  Twist& operator=(Twist&& other) = default;
+
+  Eigen::Ref<const Eigen::Vector3d> linear() const { return data_.head<3>(); }
+
+  Eigen::Ref<const Eigen::Vector3d> angular() const { return data_.tail<3>(); }
+
+  Eigen::Ref<Eigen::Vector3d> linear() { return data_.head<3>(); }
+
+  Eigen::Ref<Eigen::Vector3d> angular() { return data_.tail<3>(); }
+
+  const Eigen::Matrix<double, 6, 1>& matrix() const { return data_; }
+
+private:
+  Eigen::Matrix<double, 6, 1> data_ = Eigen::Matrix<double, 6, 1>::Zero();
+};
+
+Eigen::Matrix4d TwistHat(const Twist& twist);
+
+Twist TwistUnhat(const Eigen::Matrix4d& hatted_twist);
 
 Eigen::Matrix<double, 6, 6> AdjointFromTransform(
     const Eigen::Isometry3d& transform);
 
-Eigen::Matrix<double, 6, 1> TransformTwist(
-    const Eigen::Isometry3d& transform,
-    const Eigen::Matrix<double, 6, 1>& initial_twist);
+Twist TransformTwist(const Eigen::Isometry3d& transform,
+                     const Twist& initial_twist);
 
-Eigen::Matrix<double, 6, 1> TwistBetweenTransforms(
-    const Eigen::Isometry3d& start,
-    const Eigen::Isometry3d& end);
+Twist TwistBetweenTransforms(const Eigen::Isometry3d& start,
+                             const Eigen::Isometry3d& end);
 
 Eigen::Matrix3d ExpMatrixExact(const Eigen::Matrix3d& hatted_rot_velocity,
                                const double delta_t);
 
-Eigen::Isometry3d ExpTwist(const Eigen::Matrix<double, 6, 1>& twist,
-                           const double delta_t);
+Eigen::Isometry3d ExpTwist(const Twist& twist, const double delta_t);
 
 double Interpolate(const double p1, const double p2, const double ratio);
 
@@ -171,6 +221,8 @@ Eigen::Vector4d Interpolate4d(const Eigen::Vector4d& v1,
 Eigen::Isometry3d Interpolate(const Eigen::Isometry3d& t1,
                               const Eigen::Isometry3d& t2,
                               const double ratio);
+
+Twist Interpolate(const Twist& t1, const Twist& t2, const double ratio);
 
 template<typename T>
 T LinearInterpolate(const double low_point,

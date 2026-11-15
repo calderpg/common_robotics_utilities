@@ -3,14 +3,8 @@
 #include <common_robotics_utilities/print.hpp>
 #include <common_robotics_utilities/voxel_grid.hpp>
 
-#if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
 #include <common_robotics_utilities/ros_helpers.hpp>
 #include <geometry_msgs/msg/point.hpp>
-#elif COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 1
-#include <geometry_msgs/Point.h>
-#else
-#error "Undefined or unknown COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION"
-#endif
 
 #include <gtest/gtest.h>
 
@@ -43,11 +37,7 @@ GTEST_TEST(PrintTest, CanPrintIfADLCanFindStreamOperator)
 
 GTEST_TEST(PrintTest, CanPrintROSMessages)
 {
-#if COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 2
   using Point = geometry_msgs::msg::Point;
-#elif COMMON_ROBOTICS_UTILITIES__SUPPORTED_ROS_VERSION == 1
-  using Point = geometry_msgs::Point;
-#endif
   std::cout << print::Print(std::vector<Point>(3)) << std::endl;
 }
 }  // namespace

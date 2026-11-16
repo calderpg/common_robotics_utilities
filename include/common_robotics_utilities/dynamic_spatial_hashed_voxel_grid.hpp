@@ -1016,6 +1016,8 @@ private:
   T default_value_;
   DynamicSpatialHashedVoxelGridSizes control_sizes_;
   GridChunkKeeper chunk_keeper_;
+  // NOTE: this is not serialized, and not exposed in the constructor.
+  bool check_mutable_access_ = true;
 
   void Initialize(
       const Eigen::Isometry3d& origin_transform,
@@ -1139,6 +1141,36 @@ private:
     chunk_keeper_.SetContentsAllChunks(value);
   }
 
+  bool AllowMutableAccess(
+      const int64_t x_index, const int64_t y_index, const int64_t z_index)
+  {
+    if (check_mutable_access_)
+    {
+      return OnMutableAccess(x_index, y_index, z_index);
+    }
+    else
+    {
+      return true;
+    }
+  }
+
+  bool AllowMutableAccess(const GridIndex& index)
+  {
+    return AllowMutableAccess(index.X(), index.Y(), index.Z());
+  }
+
+  bool AllowMutableRawAccess()
+  {
+    if (check_mutable_access_)
+    {
+      return OnMutableRawAccess();
+    }
+    else
+    {
+      return true;
+    }
+  }
+
 protected:
   // These are pure-virtual in the base class to force their implementation in
   // derived classes.
@@ -1164,11 +1196,6 @@ protected:
   virtual bool OnMutableAccess(const int64_t x_index,
                                const int64_t y_index,
                                const int64_t z_index) = 0;
-
-  bool OnMutableAccess(const GridIndex& index)
-  {
-    return OnMutableAccess(index.X(), index.Y(), index.Z());
-  }
 
   /// Callback on any mutable access to the grid. Return true/false to allow or
   /// disallow access to the grid. For example, this can be used to prohibit
@@ -1229,9 +1256,24 @@ public:
 
   bool IsInitialized() const { return control_sizes_.IsValid(); }
 
+  bool IsCheckMutableAccessEnabled() const { return check_mutable_access_; }
+
+  // Control over mutable access checks must be used with care, as changing this
+  // make break invariants in derived classes. If these checks are disabled in a
+  // specific function for performance reasons, they should be re-enabled before
+  // returning.
+  void SetCheckMutableAccessEnabled(const bool enabled)
+  {
+    check_mutable_access_ = enabled;
+  }
+
+  void EnableCheckMutableAccess() { SetCheckMutableAccessEnabled(true); }
+
+  void DisableCheckMutableAccess() { SetCheckMutableAccessEnabled(false); }
+
   void ResetWithDefaultValue()
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       SetContents(DefaultValue());
     }
@@ -1243,7 +1285,7 @@ public:
 
   void ResetWithNewValue(const T& new_value)
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       SetContents(new_value);
     }
@@ -1255,7 +1297,7 @@ public:
 
   void ResetWithNewDefaultValue(const T& new_default)
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       SetDefaultValue(new_default);
       ResetWithDefaultValue();
@@ -1270,7 +1312,7 @@ public:
 
   void SetDefaultValue(const T& default_value)
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       default_value_ = default_value;
     }
@@ -1642,7 +1684,7 @@ public:
   {
     if (CheckGridIndexInAllowedBounds(index))
     {
-      if (OnMutableAccess(index))
+      if (AllowMutableAccess(index))
       {
         const ChunkBase chunk_base = GridIndexToChunkBase(index);
         auto maybe_chunk = chunk_keeper_.GetChunkMutable(chunk_base);
@@ -1682,7 +1724,7 @@ public:
   {
     if (CheckGridIndexInAllowedBounds(index))
     {
-      if (OnMutableAccess(index))
+      if (AllowMutableAccess(index))
       {
         const ChunkBase chunk_base = GridIndexToChunkBase(index);
         auto& chunk = chunk_keeper_.GetOrCreateChunkMutable(
@@ -1733,7 +1775,7 @@ public:
   {
     if (CheckGridIndexInAllowedBounds(index))
     {
-      if (OnMutableAccess(index))
+      if (AllowMutableAccess(index))
       {
         const ChunkBase chunk_base = GridIndexToChunkBase(index);
         auto& chunk = chunk_keeper_.GetOrCreateChunkMutable(
@@ -1785,7 +1827,7 @@ public:
   {
     if (CheckGridIndexInAllowedBounds(index))
     {
-      if (OnMutableAccess(index))
+      if (AllowMutableAccess(index))
       {
         const ChunkBase chunk_base = GridIndexToChunkBase(index);
         auto& chunk = chunk_keeper_.GetOrCreateChunkMutable(
@@ -1835,7 +1877,7 @@ public:
   {
     if (CheckGridIndexInAllowedBounds(index))
     {
-      if (OnMutableAccess(index))
+      if (AllowMutableAccess(index))
       {
         const ChunkBase chunk_base = GridIndexToChunkBase(index);
         const bool erased = chunk_keeper_.EraseChunk(chunk_base);
@@ -1872,7 +1914,7 @@ public:
 
     if (CheckGridIndexInAllowedBounds(index))
     {
-      if (OnMutableAccess(index))
+      if (AllowMutableAccess(index))
       {
         const bool erased = chunk_keeper_.EraseChunk(chunk_base);
 
@@ -1898,7 +1940,7 @@ public:
 
   AccessStatus EraseAllChunks()
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       chunk_keeper_.EraseAllChunks();
       return AccessStatus::SUCCESS;
@@ -1918,7 +1960,7 @@ public:
 
   GridChunkKeeper& GetMutableInternalChunkKeeper()
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       return chunk_keeper_;
     }
@@ -1998,17 +2040,26 @@ public:
       const DynamicSpatialHashedVoxelGridSizes& control_sizes,
       const T& default_value, const size_t expected_chunks)
       : DynamicSpatialHashedVoxelGridBase<T, BackingStore>(
-          control_sizes, default_value, expected_chunks) {}
+          control_sizes, default_value, expected_chunks)
+  {
+    this->DisableCheckMutableAccess();
+  }
 
   DynamicSpatialHashedVoxelGrid(
       const Eigen::Isometry3d& origin_transform,
       const DynamicSpatialHashedVoxelGridSizes& control_sizes,
       const T& default_value, const size_t expected_chunks)
       : DynamicSpatialHashedVoxelGridBase<T, BackingStore>(
-          origin_transform, control_sizes, default_value, expected_chunks) {}
+          origin_transform, control_sizes, default_value, expected_chunks)
+  {
+    this->DisableCheckMutableAccess();
+  }
 
   DynamicSpatialHashedVoxelGrid()
-      : DynamicSpatialHashedVoxelGridBase<T, BackingStore>() {}
+      : DynamicSpatialHashedVoxelGridBase<T, BackingStore>()
+  {
+    this->DisableCheckMutableAccess();
+  }
 };
 }  // namespace voxel_grid
 CRU_NAMESPACE_END

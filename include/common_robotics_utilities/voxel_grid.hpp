@@ -480,7 +480,7 @@ public:
 /// derived-class memeber de/serialization) in concrete implementations. This is
 /// the class to inherit from if you want a VoxelGrid-like type. If all you want
 /// is a voxel grid of T, see VoxelGrid<T, BackingStore> below.
-template<typename T, typename BackingStore=std::vector<T>>
+template<typename T, typename BackingStore>
 class VoxelGridBase
 {
 private:
@@ -490,6 +490,8 @@ private:
   T oob_value_;
   BackingStore data_;
   VoxelGridSizes control_sizes_;
+  // NOTE: this is not serialized, and not exposed in the constructor.
+  bool check_mutable_access_ = true;
 
   void Initialize(const Eigen::Isometry3d& origin_transform,
                   const VoxelGridSizes& control_sizes,
@@ -622,6 +624,31 @@ private:
     return bytes_read;
   }
 
+  bool AllowMutableAccess(
+      const int64_t x_index, const int64_t y_index, const int64_t z_index)
+  {
+    if (check_mutable_access_)
+    {
+      return OnMutableAccess(x_index, y_index, z_index);
+    }
+    else
+    {
+      return true;
+    }
+  }
+
+  bool AllowMutableRawAccess()
+  {
+    if (check_mutable_access_)
+    {
+      return OnMutableRawAccess();
+    }
+    else
+    {
+      return true;
+    }
+  }
+
 protected:
   // These are pure-virtual in the base class to force their implementation in
   // derived classes.
@@ -705,9 +732,24 @@ public:
 
   bool IsInitialized() const { return control_sizes_.IsValid(); }
 
+  bool IsCheckMutableAccessEnabled() const { return check_mutable_access_; }
+
+  // Control over mutable access checks must be used with care, as changing this
+  // make break invariants in derived classes. If these checks are disabled in a
+  // specific function for performance reasons, they should be re-enabled before
+  // returning.
+  void SetCheckMutableAccessEnabled(const bool enabled)
+  {
+    check_mutable_access_ = enabled;
+  }
+
+  void EnableCheckMutableAccess() { SetCheckMutableAccessEnabled(true); }
+
+  void DisableCheckMutableAccess() { SetCheckMutableAccessEnabled(false); }
+
   void ResetWithDefaultValue()
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       SetContents(DefaultValue());
     }
@@ -719,7 +761,7 @@ public:
 
   void ResetWithNewValue(const T& new_value)
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       SetContents(new_value);
     }
@@ -731,7 +773,7 @@ public:
 
   void ResetWithNewDefaultValue(const T& new_default)
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       SetDefaultValue(new_default);
       ResetWithDefaultValue();
@@ -748,7 +790,7 @@ public:
 
   void SetDefaultValue(const T& default_value)
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       default_value_ = default_value;
     }
@@ -760,7 +802,7 @@ public:
 
   void SetOOBValue(const T& oob_value)
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       oob_value_ = oob_value;
     }
@@ -1107,7 +1149,7 @@ public:
   {
     if (CheckGridIndexInBounds(x_index, y_index, z_index))
     {
-      if (OnMutableAccess(x_index, y_index, z_index))
+      if (AllowMutableAccess(x_index, y_index, z_index))
       {
         return VoxelGridQuery<T>::Success(
             AccessIndex(GridIndexToDataIndex(x_index, y_index, z_index)));
@@ -1154,7 +1196,7 @@ public:
   {
     if (CheckGridIndexInBounds(x_index, y_index, z_index))
     {
-      if (OnMutableAccess(x_index, y_index, z_index))
+      if (AllowMutableAccess(x_index, y_index, z_index))
       {
         AccessIndex(GridIndexToDataIndex(x_index, y_index, z_index)) = value;
         return AccessStatus::SUCCESS;
@@ -1201,7 +1243,7 @@ public:
   {
     if (CheckGridIndexInBounds(x_index, y_index, z_index))
     {
-      if (OnMutableAccess(x_index, y_index, z_index))
+      if (AllowMutableAccess(x_index, y_index, z_index))
       {
         AccessIndex(GridIndexToDataIndex(x_index, y_index, z_index)) = value;
         return AccessStatus::SUCCESS;
@@ -1228,7 +1270,7 @@ public:
 
   T& GetDataIndexMutable(const int64_t data_index)
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       return AccessIndex(data_index);
     }
@@ -1240,7 +1282,7 @@ public:
 
   void SetDataIndex(const int64_t data_index, const T& value)
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       AccessIndex(data_index) = value;
     }
@@ -1252,7 +1294,7 @@ public:
 
   void SetDataIndex(const int64_t data_index, T&& value)
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       AccessIndex(data_index) = value;
     }
@@ -1264,7 +1306,7 @@ public:
 
   BackingStore& GetMutableRawData()
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       return data_;
     }
@@ -1278,7 +1320,7 @@ public:
 
   void SetRawData(const BackingStore& data)
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       const int64_t expected_length = NumTotalVoxels();
       if (static_cast<int64_t>(data.size()) == expected_length)
@@ -1375,26 +1417,41 @@ public:
             const VoxelGridSizes& control_sizes,
             const T& default_value)
       : VoxelGridBase<T, BackingStore>(
-          origin_transform, control_sizes, default_value, default_value) {}
+          origin_transform, control_sizes, default_value, default_value)
+  {
+    this->DisableCheckMutableAccess();
+  }
 
   VoxelGrid(const Eigen::Isometry3d& origin_transform,
             const VoxelGridSizes& control_sizes,
             const T& default_value,
             const T& oob_value)
       : VoxelGridBase<T, BackingStore>(
-          origin_transform, control_sizes, default_value, oob_value) {}
+          origin_transform, control_sizes, default_value, oob_value)
+  {
+    this->DisableCheckMutableAccess();
+  }
 
   VoxelGrid(const VoxelGridSizes& control_sizes, const T& default_value)
       : VoxelGridBase<T, BackingStore>(
-          control_sizes, default_value, default_value) {}
+          control_sizes, default_value, default_value)
+  {
+    this->DisableCheckMutableAccess();
+  }
 
   VoxelGrid(const VoxelGridSizes& control_sizes,
             const T& default_value,
             const T& oob_value)
       : VoxelGridBase<T, BackingStore>(
-          control_sizes, default_value, oob_value) {}
+          control_sizes, default_value, oob_value)
+  {
+    this->DisableCheckMutableAccess();
+  }
 
-  VoxelGrid() : VoxelGridBase<T, BackingStore>() {}
+  VoxelGrid() : VoxelGridBase<T, BackingStore>()
+  {
+    this->DisableCheckMutableAccess();
+  }
 };
 
 }  // namespace voxel_grid

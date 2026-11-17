@@ -480,7 +480,7 @@ public:
 /// derived-class memeber de/serialization) in concrete implementations. This is
 /// the class to inherit from if you want a VoxelGrid-like type. If all you want
 /// is a voxel grid of T, see VoxelGrid<T, BackingStore> below.
-template<typename T, typename BackingStore=std::vector<T>>
+template<typename T, typename BackingStore, bool CheckMutableAccess>
 class VoxelGridBase
 {
 private:
@@ -622,12 +622,55 @@ private:
     return bytes_read;
   }
 
+  bool AllowMutableAccessImpl(
+      const int64_t x_index, const int64_t y_index, const int64_t z_index,
+      std::true_type)
+  {
+    return OnMutableAccess(x_index, y_index, z_index);
+  }
+
+  bool AllowMutableAccessImpl(
+      const int64_t x_index, const int64_t y_index, const int64_t z_index,
+      std::false_type)
+  {
+    CRU_UNUSED(x_index);
+    CRU_UNUSED(y_index);
+    CRU_UNUSED(z_index);
+    return true;
+  }
+
+  bool AllowMutableAccess(
+      const int64_t x_index, const int64_t y_index, const int64_t z_index)
+  {
+    using ImplType =
+        std::conditional_t<CheckMutableAccess, std::true_type, std::false_type>;
+    return AllowMutableAccessImpl(x_index, y_index, z_index, ImplType{});
+  }
+
+  bool AllowMutableRawAccessImpl(std::true_type)
+  {
+    return OnMutableRawAccess();
+  }
+
+  bool AllowMutableRawAccessImpl(std::false_type)
+  {
+    return true;
+  }
+
+  bool AllowMutableRawAccess()
+  {
+    using ImplType =
+        std::conditional_t<CheckMutableAccess, std::true_type, std::false_type>;
+    return AllowMutableRawAccessImpl(ImplType{});
+  }
+
 protected:
   // These are pure-virtual in the base class to force their implementation in
   // derived classes.
 
   /// Do the work necessary for Clone() to copy the current object.
-  virtual std::unique_ptr<VoxelGridBase<T, BackingStore>> DoClone() const = 0;
+  virtual std::unique_ptr<VoxelGridBase<T, BackingStore, CheckMutableAccess>>
+  DoClone() const = 0;
 
   /// Serialize any derived-specific members into the provided buffer.
   virtual uint64_t DerivedSerializeSelf(
@@ -645,14 +688,20 @@ protected:
   /// modified.
   virtual bool OnMutableAccess(const int64_t x_index,
                                const int64_t y_index,
-                               const int64_t z_index) = 0;
+                               const int64_t z_index)
+  {
+    CRU_UNUSED(x_index);
+    CRU_UNUSED(y_index);
+    CRU_UNUSED(z_index);
+    return true;
+  }
 
   /// Callback on any mutable raw access to the grid (i.e. via data index or
   /// access to the backing store). Return true/false to allow or disallow
   /// mutable access to grid elements. For example, this can be used to prohibit
   /// changes to a non-const grid, or to invalidate a cache if voxels are
   /// modified.
-  virtual bool OnMutableRawAccess() = 0;
+  virtual bool OnMutableRawAccess() { return true; }
 
 public:
   EIGEN_MAKE_ALIGNED_OPERATOR_NEW
@@ -676,10 +725,8 @@ public:
 
   virtual ~VoxelGridBase() {}
 
-  std::unique_ptr<VoxelGridBase<T, BackingStore>> Clone() const
-  {
-    return DoClone();
-  }
+  std::unique_ptr<VoxelGridBase<T, BackingStore, CheckMutableAccess>>
+  Clone() const { return DoClone(); }
 
   uint64_t SerializeSelf(
       std::vector<uint8_t>& buffer,
@@ -707,7 +754,7 @@ public:
 
   void ResetWithDefaultValue()
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       SetContents(DefaultValue());
     }
@@ -719,7 +766,7 @@ public:
 
   void ResetWithNewValue(const T& new_value)
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       SetContents(new_value);
     }
@@ -731,7 +778,7 @@ public:
 
   void ResetWithNewDefaultValue(const T& new_default)
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       SetDefaultValue(new_default);
       ResetWithDefaultValue();
@@ -748,7 +795,7 @@ public:
 
   void SetDefaultValue(const T& default_value)
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       default_value_ = default_value;
     }
@@ -760,7 +807,7 @@ public:
 
   void SetOOBValue(const T& oob_value)
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       oob_value_ = oob_value;
     }
@@ -1107,7 +1154,7 @@ public:
   {
     if (CheckGridIndexInBounds(x_index, y_index, z_index))
     {
-      if (OnMutableAccess(x_index, y_index, z_index))
+      if (AllowMutableAccess(x_index, y_index, z_index))
       {
         return VoxelGridQuery<T>::Success(
             AccessIndex(GridIndexToDataIndex(x_index, y_index, z_index)));
@@ -1154,7 +1201,7 @@ public:
   {
     if (CheckGridIndexInBounds(x_index, y_index, z_index))
     {
-      if (OnMutableAccess(x_index, y_index, z_index))
+      if (AllowMutableAccess(x_index, y_index, z_index))
       {
         AccessIndex(GridIndexToDataIndex(x_index, y_index, z_index)) = value;
         return AccessStatus::SUCCESS;
@@ -1201,7 +1248,7 @@ public:
   {
     if (CheckGridIndexInBounds(x_index, y_index, z_index))
     {
-      if (OnMutableAccess(x_index, y_index, z_index))
+      if (AllowMutableAccess(x_index, y_index, z_index))
       {
         AccessIndex(GridIndexToDataIndex(x_index, y_index, z_index)) = value;
         return AccessStatus::SUCCESS;
@@ -1228,7 +1275,7 @@ public:
 
   T& GetDataIndexMutable(const int64_t data_index)
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       return AccessIndex(data_index);
     }
@@ -1240,7 +1287,7 @@ public:
 
   void SetDataIndex(const int64_t data_index, const T& value)
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       AccessIndex(data_index) = value;
     }
@@ -1252,7 +1299,7 @@ public:
 
   void SetDataIndex(const int64_t data_index, T&& value)
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       AccessIndex(data_index) = value;
     }
@@ -1264,7 +1311,7 @@ public:
 
   BackingStore& GetMutableRawData()
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       return data_;
     }
@@ -1278,7 +1325,7 @@ public:
 
   void SetRawData(const BackingStore& data)
   {
-    if (OnMutableRawAccess())
+    if (AllowMutableRawAccess())
     {
       const int64_t expected_length = NumTotalVoxels();
       if (static_cast<int64_t>(data.size()) == expected_length)
@@ -1310,13 +1357,20 @@ public:
   }
 };
 
+template<typename T, typename BackingStore=std::vector<T>>
+using VoxelGridCheckedBase = VoxelGridBase<T, BackingStore, true>;
+
+template<typename T, typename BackingStore=std::vector<T>>
+using VoxelGridUncheckedBase = VoxelGridBase<T, BackingStore, false>;
+
 /// If you want a VoxelGrid<T> this is the class to use. Since you should never
 /// inherit from it, this class is final.
 template<typename T, typename BackingStore=std::vector<T>>
-class VoxelGrid final : public VoxelGridBase<T, BackingStore>
+class VoxelGrid final : public VoxelGridUncheckedBase<T, BackingStore>
 {
 private:
-  std::unique_ptr<VoxelGridBase<T, BackingStore>> DoClone() const override
+  std::unique_ptr<VoxelGridUncheckedBase<T, BackingStore>>
+  DoClone() const override
   {
     return std::unique_ptr<VoxelGrid<T, BackingStore>>(
         new VoxelGrid<T, BackingStore>(*this));
@@ -1341,18 +1395,6 @@ private:
     return 0;
   }
 
-  bool OnMutableAccess(const int64_t x_index,
-                       const int64_t y_index,
-                       const int64_t z_index) override
-  {
-    CRU_UNUSED(x_index);
-    CRU_UNUSED(y_index);
-    CRU_UNUSED(z_index);
-    return true;
-  }
-
-  bool OnMutableRawAccess() override { return true; }
-
 public:
   static uint64_t Serialize(
       const VoxelGrid<T, BackingStore>& grid, std::vector<uint8_t>& buffer,
@@ -1374,27 +1416,27 @@ public:
   VoxelGrid(const Eigen::Isometry3d& origin_transform,
             const VoxelGridSizes& control_sizes,
             const T& default_value)
-      : VoxelGridBase<T, BackingStore>(
+      : VoxelGridUncheckedBase<T, BackingStore>(
           origin_transform, control_sizes, default_value, default_value) {}
 
   VoxelGrid(const Eigen::Isometry3d& origin_transform,
             const VoxelGridSizes& control_sizes,
             const T& default_value,
             const T& oob_value)
-      : VoxelGridBase<T, BackingStore>(
+      : VoxelGridUncheckedBase<T, BackingStore>(
           origin_transform, control_sizes, default_value, oob_value) {}
 
   VoxelGrid(const VoxelGridSizes& control_sizes, const T& default_value)
-      : VoxelGridBase<T, BackingStore>(
+      : VoxelGridUncheckedBase<T, BackingStore>(
           control_sizes, default_value, default_value) {}
 
   VoxelGrid(const VoxelGridSizes& control_sizes,
             const T& default_value,
             const T& oob_value)
-      : VoxelGridBase<T, BackingStore>(
+      : VoxelGridUncheckedBase<T, BackingStore>(
           control_sizes, default_value, oob_value) {}
 
-  VoxelGrid() : VoxelGridBase<T, BackingStore>() {}
+  VoxelGrid() : VoxelGridUncheckedBase<T, BackingStore>() {}
 };
 
 }  // namespace voxel_grid

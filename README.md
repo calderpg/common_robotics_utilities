@@ -4,7 +4,7 @@ Common utility functions and algorithms for robotics work used by ARC &amp; ARM 
 ## Setup
 
 For convenience of building, `common_robotics_utilities` is a ROS package which
-supports [ROS 2 Galactic](https://index.ros.org/doc/ros2/Installation/) and
+supports [ROS 2 Jazzy](https://docs.ros.org/en/rolling/Installation.html) and
 newer ROS 2 distributions. Prior distributions of ROS 2 can be supported by
 removing ROS 2 message printing support from
 `include/common_robotics_utilities/print.hpp`. Most of this project can be built
@@ -32,7 +32,6 @@ rosdep install -i -y --from-path src
 
 Use [`colcon`](https://colcon.readthedocs.io/en/released/):
 
-*For ROS 2 Galactic+*
 ```sh
 cd ~/ws
 colcon build  # the entire workspace
@@ -43,7 +42,6 @@ colcon build --packages-select common_robotics_utilities  # the package only
 
 Use [`colcon`](https://colcon.readthedocs.io/en/released/):
 
-*For ROS 2 Galactic+*
 ```sh
 cd ~/ws
 colcon test --event-handlers=console_direct+  # the entire workspace

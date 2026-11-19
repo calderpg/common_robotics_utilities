@@ -6,13 +6,17 @@
   <maintainer email="calder.pg@gmail.com">Calder Phillips-Grafflin</maintainer>
   <license>BSD</license>
 
-  <buildtool_depend>ament_cmake_ros</buildtool_depend>
+  <buildtool_depend>cmake</buildtool_depend>
 
   <depend>rclcpp</depend>
   <depend>geometry_msgs</depend>
   <depend>visualization_msgs</depend>
+  <depend>eigen</depend>
+  <depend>zlib</depend>
+
+  <test_depend>gtest</test_depend>
 
   <export>
-    <build_type>ament_cmake</build_type>
+    <build_type>cmake</build_type>
   </export>
 </package>

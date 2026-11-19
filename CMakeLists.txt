@@ -1,172 +1,160 @@
-cmake_minimum_required(VERSION 3.5)
-project(common_robotics_utilities)
+cmake_minimum_required(VERSION 3.28...4.2)
+project(common_robotics_utilities VERSION 0.1.0 LANGUAGES CXX)
 
-find_package(ament_cmake_ros REQUIRED)
+include(CMakePackageConfigHelpers)
+include(CheckIPOSupported)
+include(CTest)
+include(GNUInstallDirs)
 
+option(BUILD_SHARED_LIBS "Build shared libraries" ON)
+option(COMMON_ROBOTICS_UTILITIES_BUILD_EXAMPLES "Build the examples" ON)
+
+find_package(Eigen3 REQUIRED)
+find_package(OpenMP)
+find_package(ZLIB REQUIRED)
 find_package(rclcpp REQUIRED)
 find_package(geometry_msgs REQUIRED)
 find_package(visualization_msgs REQUIRED)
 
-find_package(Eigen3 REQUIRED)
-set(Eigen3_INCLUDE_DIRS ${EIGEN3_INCLUDE_DIR})
-find_package(OpenMP)
-find_package(ZLIB REQUIRED)
-
-## We don't depend on Drake, but we do use different build flags if present.
-find_package(drake QUIET)
-
-###########
-## Build ##
-###########
-
-## Specify additional locations of header files
-## Your package locations should be listed before other locations
-include_directories(include SYSTEM ${Eigen3_INCLUDE_DIRS} ${ZLIB_INCLUDE_DIRS})
-
-## Build options
-set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ON)
-cmake_policy(SET CMP0069 NEW)
-
-add_compile_options(-std=c++17)
-add_compile_options(-Wall)
-add_compile_options(-Wextra)
-add_compile_options(-Werror)
-add_compile_options(-Wconversion)
-add_compile_options(-Wshadow)
-add_compile_options(-O3)
-add_compile_options(-g)
-add_compile_options(-Werror=non-virtual-dtor)
-add_compile_options(-Wold-style-cast)
-add_compile_options(-Wpessimizing-move)
-add_compile_options(-Wuninitialized)
-add_compile_options(-Wmissing-declarations)
-
-if(drake_FOUND)
-    message(STATUS "Drake found, disabling -march=native")
-else()
-    message(STATUS "Drake NOT found, enabling -march=native")
-    add_compile_options(-march=native)
+# Defaults when this project is built on its own, as colcon does. A parent
+# project or the command line can override them.
+if(PROJECT_IS_TOP_LEVEL)
+  if(NOT CMAKE_BUILD_TYPE AND NOT CMAKE_CONFIGURATION_TYPES)
+    set(CMAKE_BUILD_TYPE RelWithDebInfo CACHE STRING "Build type" FORCE)
+  endif()
+  if(NOT DEFINED CMAKE_COMPILE_WARNING_AS_ERROR)
+    set(CMAKE_COMPILE_WARNING_AS_ERROR ON)
+  endif()
+  if(NOT DEFINED CMAKE_INTERPROCEDURAL_OPTIMIZATION)
+    check_ipo_supported(RESULT ipo_supported)
+    set(CMAKE_INTERPROCEDURAL_OPTIMIZATION ${ipo_supported})
+  endif()
 endif()
 
-## It's not clear if add_compile_options does the right things for flags that
-## may differ between languages and target type.
-set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} ${OpenMP_C_FLAGS}")
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} ${OpenMP_CXX_FLAGS}")
-set(CMAKE_EXE_LINKER_FLAGS
-    "${CMAKE_EXE_LINKER_FLAGS} ${OpenMP_EXE_LINKER_FLAGS}")
-set(CMAKE_SHARED_LINKER_FLAGS
-    "${CMAKE_SHARED_LINKER_FLAGS} ${OpenMP_SHARED_LINKER_FLAGS}")
+# Flags for this project's own targets only; consumers don't inherit them.
+add_library(cru_compile_options INTERFACE)
+set(cru_warning_flags
+  -Wall -Wextra -Wconversion -Wshadow -Wold-style-cast -Wpessimizing-move
+  -Wuninitialized -Wmissing-declarations -Werror=non-virtual-dtor)
+target_compile_options(cru_compile_options INTERFACE
+  "$<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:${cru_warning_flags}>")
 
-# Utility library
-add_library(${PROJECT_NAME}
-            include/${PROJECT_NAME}/base64_helpers.hpp
-            include/${PROJECT_NAME}/color_builder.hpp
-            include/${PROJECT_NAME}/conversions.hpp
-            include/${PROJECT_NAME}/cru_namespace.hpp
-            include/${PROJECT_NAME}/dynamic_spatial_hashed_voxel_grid.hpp
-            include/${PROJECT_NAME}/gaussian_distributions.hpp
-            include/${PROJECT_NAME}/math.hpp
-            include/${PROJECT_NAME}/maybe.hpp
-            include/${PROJECT_NAME}/openmp_helpers.hpp
-            include/${PROJECT_NAME}/parallelism.hpp
-            include/${PROJECT_NAME}/path_processing.hpp
-            include/${PROJECT_NAME}/print.hpp
-            include/${PROJECT_NAME}/random_rotation_generator.hpp
-            include/${PROJECT_NAME}/ros_conversions.hpp
-            include/${PROJECT_NAME}/ros_helpers.hpp
-            include/${PROJECT_NAME}/serialization.hpp
-            include/${PROJECT_NAME}/simple_astar_search.hpp
-            include/${PROJECT_NAME}/simple_dtw.hpp
-            include/${PROJECT_NAME}/simple_graph.hpp
-            include/${PROJECT_NAME}/simple_graph_search.hpp
-            include/${PROJECT_NAME}/simple_hausdorff_distance.hpp
-            include/${PROJECT_NAME}/simple_hierarchical_clustering.hpp
-            include/${PROJECT_NAME}/simple_kmeans_clustering.hpp
-            include/${PROJECT_NAME}/simple_knearest_neighbors.hpp
-            include/${PROJECT_NAME}/simple_prm_planner.hpp
-            include/${PROJECT_NAME}/simple_prngs.hpp
-            include/${PROJECT_NAME}/simple_robot_model_interface.hpp
-            include/${PROJECT_NAME}/simple_rrt_planner.hpp
-            include/${PROJECT_NAME}/simple_task_planner.hpp
-            include/${PROJECT_NAME}/time_optimal_trajectory_parametrization.hpp
-            include/${PROJECT_NAME}/utility.hpp
-            include/${PROJECT_NAME}/voxel_grid.hpp
-            include/${PROJECT_NAME}/voxel_grid_common.hpp
-            include/${PROJECT_NAME}/zlib_helpers.hpp
-            src/${PROJECT_NAME}/base64_helpers.cpp
-            src/${PROJECT_NAME}/conversions.cpp
-            src/${PROJECT_NAME}/math.cpp
-            src/${PROJECT_NAME}/ros_conversions.cpp
-            src/${PROJECT_NAME}/serialization.cpp
-            src/${PROJECT_NAME}/time_optimal_trajectory_parametrization.cpp
-            src/${PROJECT_NAME}/zlib_helpers.cpp)
-ament_target_dependencies(${PROJECT_NAME} rclcpp geometry_msgs visualization_msgs)
-target_link_libraries(${PROJECT_NAME} ${ZLIB_LIBRARIES})
+# We don't depend on Drake, but we do use different build flags if present.
+find_package(drake QUIET)
+if(drake_FOUND)
+  message(STATUS "Drake found, disabling -march=native")
+else()
+  message(STATUS "Drake NOT found, enabling -march=native")
+  target_compile_options(cru_compile_options INTERFACE
+    $<$<COMPILE_LANGUAGE:CXX>:-march=native>)
+endif()
 
-# Examples
-add_executable(clustering_example example/clustering_example.cpp)
-target_link_libraries(clustering_example ${PROJECT_NAME})
+add_library(${PROJECT_NAME})
+add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
+target_sources(${PROJECT_NAME}
+  PRIVATE
+    src/${PROJECT_NAME}/base64_helpers.cpp
+    src/${PROJECT_NAME}/conversions.cpp
+    src/${PROJECT_NAME}/math.cpp
+    src/${PROJECT_NAME}/ros_conversions.cpp
+    src/${PROJECT_NAME}/serialization.cpp
+    src/${PROJECT_NAME}/time_optimal_trajectory_parametrization.cpp
+    src/${PROJECT_NAME}/zlib_helpers.cpp
+  PUBLIC
+    FILE_SET HEADERS
+    BASE_DIRS include
+    FILES
+      include/common_robotics_utilities/base64_helpers.hpp
+      include/common_robotics_utilities/color_builder.hpp
+      include/common_robotics_utilities/conversions.hpp
+      include/common_robotics_utilities/cru_namespace.hpp
+      include/common_robotics_utilities/dynamic_spatial_hashed_voxel_grid.hpp
+      include/common_robotics_utilities/gaussian_distributions.hpp
+      include/common_robotics_utilities/math.hpp
+      include/common_robotics_utilities/maybe.hpp
+      include/common_robotics_utilities/openmp_helpers.hpp
+      include/common_robotics_utilities/parallelism.hpp
+      include/common_robotics_utilities/path_processing.hpp
+      include/common_robotics_utilities/print.hpp
+      include/common_robotics_utilities/random_rotation_generator.hpp
+      include/common_robotics_utilities/ros_conversions.hpp
+      include/common_robotics_utilities/ros_helpers.hpp
+      include/common_robotics_utilities/serialization.hpp
+      include/common_robotics_utilities/simple_astar_search.hpp
+      include/common_robotics_utilities/simple_dtw.hpp
+      include/common_robotics_utilities/simple_graph.hpp
+      include/common_robotics_utilities/simple_graph_search.hpp
+      include/common_robotics_utilities/simple_hausdorff_distance.hpp
+      include/common_robotics_utilities/simple_hierarchical_clustering.hpp
+      include/common_robotics_utilities/simple_kmeans_clustering.hpp
+      include/common_robotics_utilities/simple_knearest_neighbors.hpp
+      include/common_robotics_utilities/simple_prm_planner.hpp
+      include/common_robotics_utilities/simple_prngs.hpp
+      include/common_robotics_utilities/simple_robot_model_interface.hpp
+      include/common_robotics_utilities/simple_rrt_planner.hpp
+      include/common_robotics_utilities/simple_task_planner.hpp
+      include/common_robotics_utilities/time_optimal_trajectory_parametrization.hpp
+      include/common_robotics_utilities/utility.hpp
+      include/common_robotics_utilities/voxel_grid.hpp
+      include/common_robotics_utilities/voxel_grid_common.hpp
+      include/common_robotics_utilities/zlib_helpers.hpp)
+target_compile_features(${PROJECT_NAME} PUBLIC cxx_std_17)
+target_link_libraries(${PROJECT_NAME}
+  PUBLIC
+    Eigen3::Eigen
+    rclcpp::rclcpp
+    ${geometry_msgs_TARGETS}
+    ${visualization_msgs_TARGETS}
+  PRIVATE
+    ZLIB::ZLIB
+    $<BUILD_INTERFACE:cru_compile_options>)
+if(OpenMP_CXX_FOUND)
+  target_link_libraries(${PROJECT_NAME} PUBLIC OpenMP::OpenMP_CXX)
+endif()
 
-add_executable(dtw_example example/dtw_example.cpp)
-target_link_libraries(dtw_example ${PROJECT_NAME})
+if(COMMON_ROBOTICS_UTILITIES_BUILD_EXAMPLES)
+  foreach(example clustering_example dtw_example)
+    add_executable(${example} example/${example}.cpp)
+    target_link_libraries(${example} PRIVATE ${PROJECT_NAME} cru_compile_options)
+  endforeach()
+endif()
 
 if(BUILD_TESTING)
-    # Tests
-    find_package(ament_cmake_gtest REQUIRED)
-
-    ament_add_gtest(hausdorff_distance_test test/hausdorff_distance_test.cpp)
-    target_link_libraries(hausdorff_distance_test ${PROJECT_NAME})
-
-    ament_add_gtest(math_test test/math_test.cpp)
-    target_link_libraries(math_test ${PROJECT_NAME})
-
-    ament_add_gtest(maybe_test test/maybe_test.cpp)
-    target_link_libraries(maybe_test ${PROJECT_NAME})
-
-    ament_add_gtest(parallelism_test test/parallelism_test.cpp)
-    target_link_libraries(parallelism_test ${PROJECT_NAME})
-
-    ament_add_gtest(planning_test test/planning_test.cpp)
-    target_link_libraries(planning_test ${PROJECT_NAME})
-
-    ament_add_gtest(task_planning_test test/task_planning_test.cpp)
-    target_link_libraries(task_planning_test ${PROJECT_NAME})
-
-    ament_add_gtest(ros_helpers_test test/ros_helpers_test.cpp)
-    add_dependencies(ros_helpers_test ${PROJECT_NAME})
-    target_link_libraries(ros_helpers_test ${PROJECT_NAME})
-
-    ament_add_gtest(utility_test test/utility_test.cpp)
-    add_dependencies(utility_test ${PROJECT_NAME})
-    target_link_libraries(utility_test ${PROJECT_NAME})
-
-    ament_add_gtest(voxel_grid_test test/voxel_grid_test.cpp)
-    target_link_libraries(voxel_grid_test ${PROJECT_NAME})
-
-    ament_add_gtest(print_test test/print_test.cpp)
-    target_link_libraries(print_test ${PROJECT_NAME})
+  find_package(GTest REQUIRED)
+  include(GoogleTest)
+  foreach(test
+      hausdorff_distance_test
+      math_test
+      maybe_test
+      parallelism_test
+      planning_test
+      print_test
+      ros_helpers_test
+      task_planning_test
+      utility_test
+      voxel_grid_test)
+    add_executable(${test} test/${test}.cpp)
+    target_link_libraries(${test}
+      PRIVATE ${PROJECT_NAME} cru_compile_options GTest::gtest_main)
+    gtest_discover_tests(${test})
+  endforeach()
 endif()
 
-#############
-## Install ##
-#############
-
 install(TARGETS ${PROJECT_NAME}
-    ARCHIVE DESTINATION lib
-    LIBRARY DESTINATION lib
-    RUNTIME DESTINATION bin
-)
-
-install(
-    DIRECTORY include/
-    DESTINATION include
-)
-
-ament_export_include_directories(include)
-ament_export_libraries(${PROJECT_NAME})
-
-ament_export_dependencies(rclcpp)
-ament_export_dependencies(geometry_msgs)
-ament_export_dependencies(visualization_msgs)
-
-ament_package(CONFIG_EXTRAS cmake/common_robotics_utilities-dependencies.cmake)
+  EXPORT ${PROJECT_NAME}Targets
+  FILE_SET HEADERS)
+install(EXPORT ${PROJECT_NAME}Targets
+  NAMESPACE ${PROJECT_NAME}::
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}/cmake)
+configure_package_config_file(
+  cmake/${PROJECT_NAME}Config.cmake.in
+  ${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake
+  INSTALL_DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}/cmake)
+write_basic_package_version_file(
+  ${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake
+  COMPATIBILITY SameMinorVersion)
+install(FILES
+    ${PROJECT_BINARY_DIR}/${PROJECT_NAME}Config.cmake
+    ${PROJECT_BINARY_DIR}/${PROJECT_NAME}ConfigVersion.cmake
+  DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME}/cmake)
+install(FILES package.xml DESTINATION ${CMAKE_INSTALL_DATADIR}/${PROJECT_NAME})

@@ -178,15 +178,21 @@ void StaticParallelForRangeLoop(
     std::mutex exception_mutex;
     std::exception_ptr loop_exception;
 
+    int32_t num_loop_threads = 1;
 #if defined(_OPENMP)
-#pragma omp parallel for num_threads(real_num_threads) schedule(static)
+#pragma omp parallel num_threads(real_num_threads)
+    // Don't dispatch the loop with more threads than the OpenMP runtime
+    // actually gave us.
+    num_loop_threads =
+        std::min(real_num_threads, openmp_helpers::GetContextNumOmpThreads());
+#pragma omp for schedule(static)
 #endif
-    for (int32_t thread_num = 0; thread_num < real_num_threads; thread_num++)
+    for (int32_t thread_num = 0; thread_num < num_loop_threads; thread_num++)
     {
       try
       {
         const auto thread_range_start_end = CalcStaticThreadRangeStartAndEnd(
-            range_start, range_end, real_num_threads, thread_num);
+            range_start, range_end, num_loop_threads, thread_num);
         const ThreadWorkRange work_range(
             thread_range_start_end.first, thread_range_start_end.second,
             openmp_helpers::GetContextOmpThreadNum());

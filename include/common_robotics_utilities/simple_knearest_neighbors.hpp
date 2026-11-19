@@ -196,11 +196,16 @@ inline std::vector<IndexAndDistance> GetKNearestNeighborsInRangeParallel(
       const auto per_range_work = [&](
           const parallelism::ThreadWorkRange& work_range)
       {
-        per_thread_nearests[work_range.GetThreadNum()] =
+        std::vector<IndexAndDistance> range_nearests =
             GetKNearestNeighborsInRangeSerial<Item, Value, Container>(
                 items, static_cast<size_t>(work_range.GetRangeStart()),
                 static_cast<size_t>(work_range.GetRangeEnd()), current,
                 distance_fn, K);
+        std::vector<IndexAndDistance>& thread_nearests =
+            per_thread_nearests.at(work_range.GetThreadNum());
+        thread_nearests.insert(
+            thread_nearests.end(), range_nearests.begin(),
+            range_nearests.end());
       };
 
       // Dispatch, preferably using OpenMP if available, std::async otherwise.

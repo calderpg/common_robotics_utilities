@@ -8,8 +8,6 @@ include(GNUInstallDirs)
 
 option(BUILD_SHARED_LIBS "Build shared libraries" ON)
 option(COMMON_ROBOTICS_UTILITIES_BUILD_EXAMPLES "Build the examples" ON)
-option(COMMON_ROBOTICS_UTILITIES_NATIVE_ARCH
-       "Compile with -march=native (only safe if every consumer does too)" OFF)
 
 find_package(Eigen3 REQUIRED)
 find_package(OpenMP)
@@ -33,13 +31,23 @@ if(PROJECT_IS_TOP_LEVEL)
   endif()
 endif()
 
-# Warnings for this project's own targets only; consumers don't inherit them.
-add_library(cru_warnings INTERFACE)
+# Flags for this project's own targets only; consumers don't inherit them.
+add_library(cru_compile_options INTERFACE)
 set(cru_warning_flags
   -Wall -Wextra -Wconversion -Wshadow -Wold-style-cast -Wpessimizing-move
   -Wuninitialized -Wmissing-declarations -Werror=non-virtual-dtor)
-target_compile_options(cru_warnings INTERFACE
+target_compile_options(cru_compile_options INTERFACE
   "$<$<COMPILE_LANG_AND_ID:CXX,GNU,Clang,AppleClang>:${cru_warning_flags}>")
+
+# We don't depend on Drake, but we do use different build flags if present.
+find_package(drake QUIET)
+if(drake_FOUND)
+  message(STATUS "Drake found, disabling -march=native")
+else()
+  message(STATUS "Drake NOT found, enabling -march=native")
+  target_compile_options(cru_compile_options INTERFACE
+    $<$<COMPILE_LANGUAGE:CXX>:-march=native>)
+endif()
 
 add_library(${PROJECT_NAME})
 add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
@@ -99,18 +107,15 @@ target_link_libraries(${PROJECT_NAME}
     ${visualization_msgs_TARGETS}
   PRIVATE
     ZLIB::ZLIB
-    $<BUILD_INTERFACE:cru_warnings>)
+    $<BUILD_INTERFACE:cru_compile_options>)
 if(OpenMP_CXX_FOUND)
   target_link_libraries(${PROJECT_NAME} PUBLIC OpenMP::OpenMP_CXX)
-endif()
-if(COMMON_ROBOTICS_UTILITIES_NATIVE_ARCH)
-  target_compile_options(${PROJECT_NAME} PUBLIC -march=native)
 endif()
 
 if(COMMON_ROBOTICS_UTILITIES_BUILD_EXAMPLES)
   foreach(example clustering_example dtw_example)
     add_executable(${example} example/${example}.cpp)
-    target_link_libraries(${example} PRIVATE ${PROJECT_NAME} cru_warnings)
+    target_link_libraries(${example} PRIVATE ${PROJECT_NAME} cru_compile_options)
   endforeach()
 endif()
 
@@ -130,7 +135,7 @@ if(BUILD_TESTING)
       voxel_grid_test)
     add_executable(${test} test/${test}.cpp)
     target_link_libraries(${test}
-      PRIVATE ${PROJECT_NAME} cru_warnings GTest::gtest_main)
+      PRIVATE ${PROJECT_NAME} cru_compile_options GTest::gtest_main)
     gtest_discover_tests(${test})
   endforeach()
 endif()
